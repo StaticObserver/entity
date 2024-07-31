@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "ms-vscode.cpptools",
+    "ms-python.python",
+    "xaver.clang-format",
+    "ms-vscode.cmake-tools",
+    "tamasfe.even-better-toml",
+  ]
+}
