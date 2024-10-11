@@ -259,7 +259,7 @@ template <class M>
 
     real_t ep_cntrv { metric.alpha(xp) * metric.template transform<1, Idx::U, Idx::D>(xp, Dp_cntrv) };
 
-    real_t pp { ux1(p) };
+    real_t pp { px1(p) };
     
 
     /* -------------------------------- Leapfrog -------------------------------- */
@@ -281,7 +281,7 @@ template <class M>
     dx1(p) = dx1_;
 
     /* update velocity */
-    ux1(p) = pp_upd;
+    px1(p) = pp_upd;
  
 
     boundaryConditions(p);

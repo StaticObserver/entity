@@ -53,7 +53,7 @@ namespace metric {
     }
 
     Inline auto omega(const real_t& r) const -> real_t {
-      return TWO * a * r / A(r, th0);
+      return TWO * a * r / A(r);
     }
 
 
@@ -82,7 +82,7 @@ namespace metric {
       , psi { psi0 * (1 - math::cos(th0)) }
       , bt { -HALF * psi0 * a * math::sin(th0) * math::cos(th0) / Sigma(rh_) }
       , Omega { params.at("Omega") * a / (SQR(a) + SQR(rh_)) }
-      , dpsi_dth { -psi0 * math::sin(th0) }
+      , dpsi_dth { psi0 * math::sin(th0) }
       , dbt_dth { -HALF * psi0 * a * (SQR(a * math::cos(th0)) + SQR(rh_) * math::cos(TWO * th0)) / SQR(Sigma(rh_)) }
       , eta_min { r2eta(x1_min) }
       , eta_max { r2eta(x1_max) }
@@ -153,7 +153,7 @@ namespace metric {
 
     Inline auto f1(const coord_t<D>& xi) const -> real_t {
       const real_t r_  { eta2r(xi[0] * d_eta + eta_min) };
-      return d_eta * A(r_)* math::sin(th0) * bt * (Omega + beta3(xi)) / dpsi_dth;
+      return d_eta * A(r_) * bt * (Omega + beta3(xi)) / psi0;
     }
 
     Inline auto f0(const coord_t<D>& xi) const -> real_t {
