@@ -19,6 +19,8 @@
   #include <cuda_runtime.h>
 #endif
 
+#include <hip/hip_runtime.h>
+
 #if defined(OUTPUT_ENABLED)
   #include <H5public.h>
   #include <adios2.h>
@@ -172,7 +174,7 @@ namespace ntt {
 
 #if defined(CUDA_ENABLED)
         int cuda_v;
-        cudaRuntimeGetVersion(&cuda_v);
+        hipRuntimeGetVersion(&cuda_v);
         const auto major { cuda_v / 1000 };
         const auto minor { cuda_v % 1000 / 10 };
         const auto patch { cuda_v % 10 };
