@@ -5,7 +5,7 @@
 #include "utils/numeric.h"
 #include "utils/comparators.h"
 
-#include "metrics/flux_surface.h"
+#include "metrics/boyer_lindq_tp.h"
 
 #include "kernels/particle_pusher_1D_gr.hpp"
 
