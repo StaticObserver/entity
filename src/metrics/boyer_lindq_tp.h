@@ -76,6 +76,7 @@ namespace metric {
       , a { params.at("a") }
       , psi0 { params.at("psi0") }
       , th0 { params.at("theta0") }
+      , bt { params.at("BT") }
       , rg_ { ONE }
       , rh_ { ONE + math::sqrt(ONE - SQR(a)) }
       , rh_m { ONE - math::sqrt(ONE - SQR(a)) }
@@ -125,7 +126,7 @@ namespace metric {
      */
     Inline auto alpha(const coord_t<D>& xi) const -> real_t {
       const real_t r_  { eta2r(xi[0] * d_eta + eta_min) };
-      return math::sqrt(Sigma(r_) * Delta(r_) / A(r_));
+      return math::sqrt(Sigma(r) * Delta(r_) / A(r_));
     }
 
     /**
@@ -146,12 +147,14 @@ namespace metric {
      */
     Inline auto f2(const coord_t<D>& xi) const -> real_t {
       const real_t r_  { eta2r(xi[0] * d_eta + eta_min) };
-      return SQR(d_eta) * Sigma(r_) * (Delta(r_) + A(r_) * SQR(bt / dpsi_dth ));
+      return SQR(d_eta) * Sigma(r_) * (Delta(r_) + 
+             A(r_) * SQR(bt / dpsi_dth ) 
+	     );
     }
 
     Inline auto f1(const coord_t<D>& xi) const -> real_t {
       const real_t r_  { eta2r(xi[0] * d_eta + eta_min) };
-      return d_eta * A(r_) * bt * (Omega + beta3(xi)) / psi0;
+      return d_eta * A(r_)* math::sin(th0) * bt * (Omega + beta3(xi)) / dpsi_dth;
     }
 
     Inline auto f0(const coord_t<D>& xi) const -> real_t {
