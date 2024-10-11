@@ -220,7 +220,7 @@ namespace kernel::gr {
                dt * (ex +
                      HALF * compute_u0(pp_mid, xp) * 
                           (-DERIVATIVE(metric.alpha, xp[0]) +
-                           DERIVATIVE(metirc.f2, xp[0]) * SQR((pp_mid / compute_u0(pp_mid, xp) - metric.f1(xp)) / metric.f2(xp)) +
+                           DERIVATIVE(metric.f2, xp[0]) * SQR((pp_mid / compute_u0(pp_mid, xp) - metric.f1(xp)) / metric.f2(xp)) +
                            TWO * DERIVATIVE(metric.f1, xp[0]) * (pp_mid / compute_u0(pp_mid, xp) - metric.f1(xp)) / metric.f2(xp) + 
                            DERIVATIVE(metric.f0, xp[0])
                           )
