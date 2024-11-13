@@ -31,7 +31,7 @@
 #endif // MPI_ENABLED
 
 #include <algorithm>
-#include <filesystem>
+#include <experimental/filesystem>
 #include <iterator>
 #include <vector>
 
@@ -100,7 +100,7 @@ namespace ntt {
                           params.template get<long double>(
                             "output." + std::string(type) + ".interval_time"));
     }
-    if (is_resuming and std::filesystem::exists(g_writer.fname())) {
+    if (is_resuming and std::experimental::filesystem::exists(g_writer.fname())) {
       g_writer.setMode(adios2::Mode::Append);
     } else {
       g_writer.writeAttrs(params);

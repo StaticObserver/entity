@@ -13,7 +13,7 @@
 
 #include "framework/parameters.h"
 
-#include <filesystem>
+#include <experimental/filesystem>
 #include <string>
 
 namespace ntt {
@@ -54,11 +54,11 @@ namespace ntt {
     std::size_t checkpoint_step = 0;
     if (is_resuming) {
       logger::Checkpoint("Reading params from a checkpoint", HERE);
-      if (not std::filesystem::exists("checkpoints")) {
+      if (not std::experimental::filesystem::exists("checkpoints")) {
         raise::Fatal("No checkpoints found", HERE);
       }
       for (const auto& entry :
-           std::filesystem::directory_iterator("checkpoints")) {
+           std::experimental::filesystem::directory_iterator("checkpoints")) {
         const auto fname = entry.path().filename().string();
         if (fname.find("step-") == 0) {
           const std::size_t step = std::stoi(fname.substr(5, fname.size() - 5 - 3));
@@ -70,7 +70,7 @@ namespace ntt {
       std::string checkpoint_inputfname = fmt::format(
         "checkpoints/meta-%08lu.toml",
         checkpoint_step);
-      if (not std::filesystem::exists(checkpoint_inputfname)) {
+      if (not std::experimental::filesystem::exists(checkpoint_inputfname)) {
         raise::Fatal(
           fmt::format("metainformation for %lu not found", checkpoint_step),
           HERE);
