@@ -5,11 +5,11 @@
 
 #include "utils/comparators.h"
 #include "utils/error.h"
+#include "utils/toml.h"
 
 #include "framework/containers/species.h"
 
 #include <stdio.h>
-#include <toml.hpp>
 
 #include <iostream>
 #include <stdexcept>
@@ -73,13 +73,18 @@ const auto mink_1d = u8R"(
   mystr   = "hi"
 
 [output]
-  fields = ["Rho", "J", "B"]
-  particles = ["X", "U"]
   format = "hdf5"
-  mom_smooth = 2
-  fields_stride = 1
-  prtl_stride = 100
-  interval_time = 0.01
+
+  [output.fields]
+    quantities = ["Rho", "J", "B"]
+    mom_smooth = 2
+    downsampling = [4, 5]
+    interval = 100
+
+  [output.particles]
+    species = [1, 2]
+    stride = 100
+    interval_time = 0.01
 )"_toml;
 
 const auto sph_2d = u8R"(
@@ -242,7 +247,11 @@ auto main(int argc, char* argv[]) -> int {
     using namespace ntt;
 
     {
-      const auto params_mink_1d = SimulationParams(mink_1d);
+      auto params_mink_1d = SimulationParams();
+      params_mink_1d.setImmutableParams(mink_1d);
+      params_mink_1d.setMutableParams(mink_1d);
+      params_mink_1d.setSetupParams(mink_1d);
+      params_mink_1d.checkPromises();
 
       assert_equal<Metric>(params_mink_1d.get<Metric>("grid.metric.metric"),
                            Metric::Minkowski,
@@ -274,10 +283,6 @@ auto main(int argc, char* argv[]) -> int {
         params_mink_1d.get<boundaries_t<FldsBC>>("grid.boundaries.fields").size(),
         fbc.size(),
         "grid.boundaries.fields.size()");
-
-      assert_equal(params_mink_1d.get<std::size_t>("particles.nspec"),
-                   (std::size_t)2,
-                   "particles.nspec");
 
       const auto species = params_mink_1d.get<std::vector<ParticleSpecies>>(
         "particles.species");
@@ -315,10 +320,21 @@ auto main(int argc, char* argv[]) -> int {
       assert_equal<std::string>(params_mink_1d.get<std::string>("setup.mystr"),
                                 "hi",
                                 "setup.mystr");
+
+      const auto output_stride = params_mink_1d.get<std::vector<unsigned int>>(
+        "output.fields.downsampling");
+      assert_equal<std::size_t>(output_stride.size(),
+                                1,
+                                "output.fields.downsampling.size()");
+      assert_equal<unsigned int>(output_stride[0], 4, "output.fields.downsampling[0]");
     }
 
     {
-      const auto params_sph_2d = SimulationParams(sph_2d);
+      auto params_sph_2d = SimulationParams();
+      params_sph_2d.setImmutableParams(sph_2d);
+      params_sph_2d.setMutableParams(sph_2d);
+      params_sph_2d.setSetupParams(sph_2d);
+      params_sph_2d.checkPromises();
 
       assert_equal<Metric>(params_sph_2d.get<Metric>("grid.metric.metric"),
                            Metric::Spherical,
@@ -380,10 +396,6 @@ auto main(int argc, char* argv[]) -> int {
                    true,
                    "particles.use_weights");
 
-      assert_equal(params_sph_2d.get<std::size_t>("particles.nspec"),
-                   (std::size_t)3,
-                   "particles.nspec");
-
       assert_equal(params_sph_2d.get<real_t>("algorithms.gca.e_ovr_b_max"),
                    (real_t)0.95,
                    "algorithms.gca.e_ovr_b_max");
@@ -435,7 +447,11 @@ auto main(int argc, char* argv[]) -> int {
     }
 
     {
-      const auto params_qks_2d = SimulationParams(qks_2d);
+      auto params_qks_2d = SimulationParams();
+      params_qks_2d.setImmutableParams(qks_2d);
+      params_qks_2d.setMutableParams(qks_2d);
+      params_qks_2d.setSetupParams(qks_2d);
+      params_qks_2d.checkPromises();
 
       assert_equal<Metric>(params_qks_2d.get<Metric>("grid.metric.metric"),
                            Metric::QKerr_Schild,
@@ -460,7 +476,7 @@ auto main(int argc, char* argv[]) -> int {
                            (real_t)(0.99),
                            "grid.metric.ks_a");
       assert_equal<real_t>(params_qks_2d.get<real_t>("grid.metric.ks_rh"),
-                           (real_t)(1.1410673598),
+                           (real_t)((1.0 + std::sqrt(1 - 0.99 * 0.99))),
                            "grid.metric.ks_rh");
 
       const auto expect = std::map<std::string, real_t> {
@@ -531,10 +547,6 @@ auto main(int argc, char* argv[]) -> int {
         params_qks_2d.get<real_t>("grid.boundaries.absorb.coeff"),
         defaults::bc::absorb::coeff,
         "grid.boundaries.absorb.coeff");
-
-      assert_equal(params_qks_2d.get<std::size_t>("particles.nspec"),
-                   (std::size_t)2,
-                   "particles.nspec");
 
       const auto species = params_qks_2d.get<std::vector<ParticleSpecies>>(
         "particles.species");
