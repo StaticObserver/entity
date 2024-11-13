@@ -41,9 +41,9 @@ namespace checkpoint {
     m_io.DefineAttribute("NGhosts", ntt::N_GHOSTS);
 
     CallOnce([]() {
-      const std::filesystem::path save_path { "checkpoints" };
-      if (!std::filesystem::exists(save_path)) {
-        std::filesystem::create_directory(save_path);
+      const std::experimental::filesystem::path save_path { "checkpoints" };
+      if (!std::experimental::filesystem::exists(save_path)) {
+        std::experimental::filesystem::create_directory(save_path);
       }
     });
   }
@@ -173,10 +173,10 @@ namespace checkpoint {
     CallOnce([&]() {
       if (m_keep > 0 and m_written.size() > (std::size_t)m_keep) {
         const auto oldest = m_written.front();
-        if (std::filesystem::exists(oldest.first) and
-            std::filesystem::exists(oldest.second)) {
-          std::filesystem::remove_all(oldest.first);
-          std::filesystem::remove(oldest.second);
+        if (std::experimental::filesystem::exists(oldest.first) and
+            std::experimental::filesystem::exists(oldest.second)) {
+          std::experimental::filesystem::remove_all(oldest.first);
+          std::experimental::filesystem::remove(oldest.second);
           m_written.erase(m_written.begin());
         } else {
           raise::Warning("Checkpoint file does not exist for some reason", HERE);
