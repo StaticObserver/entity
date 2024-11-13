@@ -8,38 +8,11 @@ set(plog_REPOSITORY
 # set (adios2_REPOSITORY https://github.com/ornladios/ADIOS2.git CACHE STRING
 # "ADIOS2 repository")
 function(check_internet_connection)
-<<<<<<< HEAD
   # 强制进入离线模式
   set(FETCHCONTENT_FULLY_DISCONNECTED ON CACHE BOOL "Connection status")
   set(OFFLINE ON CACHE BOOL "ON")
 
   message(STATUS "${Blue}Forced offline mode.${ColorReset}")
-=======
-  if(OFFLINE STREQUAL "ON")
-    set(FETCHCONTENT_FULLY_DISCONNECTED
-        ON
-        CACHE BOOL "Connection status")
-    message(STATUS "${Blue}Offline mode.${ColorReset}")
-  else()
-    execute_process(
-      COMMAND ping 8.8.8.8 -c 2
-      RESULT_VARIABLE NO_CONNECTION
-      OUTPUT_QUIET)
-
-    if(NO_CONNECTION GREATER 0)
-      set(FETCHCONTENT_FULLY_DISCONNECTED
-          ON
-          CACHE BOOL "Connection status")
-      message(
-        STATUS "${Red}No internet connection. Fetching disabled.${ColorReset}")
-    else()
-      set(FETCHCONTENT_FULLY_DISCONNECTED
-          OFF
-          CACHE BOOL "Connection status")
-      message(STATUS "${Green}Internet connection established.${ColorReset}")
-    endif()
-  endif()
->>>>>>> 1.2.0rc
 endfunction()
 
 function(find_or_fetch_dependency package_name header_only)
