@@ -102,24 +102,17 @@ namespace user {
   }
 
   Inline auto bx2(const coord_t<D>& x_Ph) const {
-    if constexpr (D >= Dim::_2D) {
       return interpolate(bx2_data, x_Ph);
-    } else {
-      return 0.0;
-    }
   }
 
   Inline auto bx3(const coord_t<D>& x_Ph) const {
-    if constexpr (D == Dim::_3D) {
-      return interpolate(bx3_data, x_Ph);
-    } else {
-      return 0.0;
-    }
+    return b0;
   }
 
   // 构造函数声明
   InitFields(const std::vector<std::string>& files_bx,
-            const boundaries_t<real_t>& extent_x);
+            const boundaries_t<real_t>& extent_x,
+            const real_t& b0);
   
     // 通用的初始化磁场数据函数
   void initializeFieldData(const std::string& file_name, ndfield_t<D, 1>& field_data, size_t nx[]);
@@ -130,13 +123,16 @@ namespace user {
     ndfield_t<D, 1> bx3_data;
     size_t nx[D] = {0};
     array_t<real_t* [2]> extent_x_view;
+    const real_t b0;
   };
 
   // 类外定义构造函数
   template <Dimension D>
   InitFields<D>::InitFields(const std::vector<std::string>& files_bx,
-                            const boundaries_t<real_t>& extent_x)
-    : extent_x_view("extent_x_view", D) { // 初始化 Kokkos View
+                            const boundaries_t<real_t>& extent_x,
+                            const real_t& b0)
+    : extent_x_view("extent_x_view", D),
+      b0 { b0 } { // 初始化 Kokkos View
     // 将 extent_x 的数据复制到 Kokkos View
     auto temp_extent_x = Kokkos::create_mirror_view(extent_x_view);
     for (int d = 0; d < D; ++d) {
@@ -233,10 +229,11 @@ namespace user {
     inline PGen(const SimulationParams& params, const Metadomain<S, M>& global_domain)
       : arch::ProblemGenerator<S, M> { params },
         init_flds { { params.template get<std::string>("setup.file_bx1"),
-                      params.template get<std::string>("setup.file_bx2") },
+                      params.template get<std::string>("setup.file_bx2")},
                     { global_domain.mesh().extent(in::x1),
-                      global_domain.mesh().extent(in::x2) } },
-        temperature { params.template get<real_t>("setup.temperature", 1.0) } {}
+                      global_domain.mesh().extent(in::x2)},
+                       params.template get<real_t>("setup.b0", 1.0) },
+        temperature { params.template get<real_t>("setup.temperature", 0.1) }{}
 
 
     inline void InitPrtls(Domain<S, M>& local_domain) {
