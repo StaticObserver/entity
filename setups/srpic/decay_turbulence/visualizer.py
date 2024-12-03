@@ -1,12 +1,8 @@
-import nt2.read as nt2r
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
-import nt2.export as exp
 import xarray as xr
 from tqdm import tqdm
-from multiprocessing import Pool
-from functools import partial
 
 def compute_spectrum(field, dx, num_bins):
     Ny, Nx = field.shape
