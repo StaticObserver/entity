@@ -40,7 +40,7 @@ def parallel(func, steps, dataset, num_cpus=None):
             
     
 def compute_spectrum(field, dx, num_bins=200):
-    Ny, Nx = field
+    Ny, Nx = field.shape
     power_spectrum = np.abs(np.fft.fftshift(np.fft.fft2(field)))**2
     dkx = 2 * np.pi / (Nx * dx)
     dky = 2 * np.pi / (Ny * dx)
