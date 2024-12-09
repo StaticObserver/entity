@@ -2,9 +2,9 @@ import numpy as np
 import xarray as xr
 import nt2.read as nt2r
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 def parallel(func, steps, dataset, num_cpus=None):
-    from tqdm import tqdm
     import multiprocessing as mp
     import numpy as np  # 添加numpy导入
     
@@ -39,7 +39,7 @@ def parallel(func, steps, dataset, num_cpus=None):
     return np.array([value for t, value in sorted_results])
             
     
-def compute_spectrum(field, dx, num_bins=200):
+def compute_spectrum(field, dx, k_min=None, k_max=None, num_bins=200):
     Ny, Nx = field.shape
     power_spectrum = np.abs(np.fft.fftshift(np.fft.fft2(field)))**2
     dkx = 2 * np.pi / (Nx * dx)
@@ -50,10 +50,14 @@ def compute_spectrum(field, dx, num_bins=200):
     )
     k_mag = np.sqrt(kx**2 + ky**2).flatten()
     power_spectrum_flatten = power_spectrum.flatten()
-    k_bins = np.linspace(2 * np.pi / (Nx * dx), 2 * np.pi / dx, num=num_bins)
-    # k_bins = np.logspace(np.log10(2 * np.pi / (Nx * dx)), np.log10(2 * np.pi / dx), num=num_bins)
+    if k_max is None:
+        k_max = k_mag.max()
+    if k_min is None:
+        k_min = k_mag.min()
+    k_bins = np.linspace(k_min, k_max, num=num_bins)
     k_bin_centers = 0.5 * (k_bins[:-1] + k_bins[1:])
-    k_indices = np.digitize(k_mag, k_bins)
+    dk = k_bins[1] - k_bins[0]
+    k_indices = np.digitize(k_mag, k_bins, right=False)
     power_spectrum_binned = np.array([
         np.sum(power_spectrum_flatten[k_indices == i]) if np.any(k_indices == i) else 0 
         for i in range(1, len(k_bins))
@@ -61,8 +65,8 @@ def compute_spectrum(field, dx, num_bins=200):
     power_spectrum_binned /= (Nx * Ny)
     return k_bin_centers, power_spectrum_binned
 
-def compute_L(field, dx, num_bins=200):
-    k_bin_centers, power_spectrum_binned = compute_spectrum(field, dx, num_bins)
+def compute_L(field, dx, k_min=None, k_max=None, num_bins=200):
+    k_bin_centers, power_spectrum_binned = compute_spectrum(field, dx, k_min, k_max, num_bins)
     return np.dot(1.0 / k_bin_centers, power_spectrum_binned) / np.sum(power_spectrum_binned)
     
 class Visualizer(nt2r.Data):
@@ -110,16 +114,16 @@ class Visualizer(nt2r.Data):
                          field,
                          self.num_cpus)
     
-    def get_spectrum(self, name, t, num_bins=200):
+    def get_spectrum(self, name, t, k_min=0.0, k_max=None, num_bins=200):
         if name in self.field_map:
             field = self.field_map[name](self)
         elif hasattr(self, name):
             field = getattr(self, name)
         else:
             raise ValueError("Invalid type.")
-        return compute_spectrum(field.sel({'t': t}, method='nearest'), self.dx, num_bins)
+        return compute_spectrum(field.sel({'t': t}, method='nearest'), self.dx, k_min, k_max, num_bins)
     
-    def get_L(self, name, times=None, num_bins=200):
+    def get_L(self, name, times=None, k_min=None, k_max=None, num_bins=200):
         if times is None:
             times = self.times
         if name in self.field_map:
@@ -128,7 +132,7 @@ class Visualizer(nt2r.Data):
             field = getattr(self, name)
         else:
             raise ValueError("Invalid type.")
-        return parallel(lambda t, data: compute_L(data.sel({'t': t}, method='nearest'), self.dx, num_bins),
+        return parallel(lambda t, data: compute_L(data.sel({'t': t}, method='nearest'), self.dx, k_min, k_max, num_bins),
                         times,
                         field,
                         self.num_cpus)
@@ -138,16 +142,16 @@ class Visualizer(nt2r.Data):
             times = self.times
         ts = times[1:]
         Qs = self.get_means(name, ts)
-        rate = np.array([np.log(Qs[i-1] / Qs[i+1]) / np.log(ts[i+1] / ts[i-1]) for i in range(1, len(ts) - 1)])
+        rate = np.array([np.log(Qs[i-1] / Qs[i+1]) / np.log(ts[i+1] / ts[i-1]) for i in tqdm(range(1, len(ts) - 1))])
         plt.plot(ts[1:-1], rate, **kwargs)
         plt.savefig("decay_{}.png".format(name), dpi=300, bbox_inches="tight")
         np.savetxt("decay_{}.dat".format(name), np.column_stack((ts[1:-1], rate)))
         
-    def increase_rate_L(self, name, times=None, num_bins=200, **kwargs):
+    def increase_rate_L(self, name, times=None, k_min=None, k_max=None, num_bins=200, **kwargs):
         if times is None:
             times = self.times
         ts = times[1:]
-        Qs = self.get_L(name, ts, num_bins)
+        Qs = self.get_L(name, ts, k_min, k_max, num_bins)
         rate = np.array([np.log(Qs[i+1] / Qs[i-1]) / np.log(ts[i+1] / ts[i-1]) for i in range(1, len(ts) - 1)])
         plt.plot(ts[1:-1], rate, **kwargs)
         plt.savefig("L_{}.png".format(name), dpi=300, bbox_inches="tight")
@@ -179,6 +183,24 @@ class Visualizer(nt2r.Data):
         if y_min is None:
             y_min = y_max / 1e6
         ax.set_ylim(bottom=y_min, top=y_max)
+        
+    def field_line(self, name, t, density=2):
+        x = np.array(self.coords['x'].values)
+        y = np.array(self.coords['y'].values)
+        X, Y = np.meshgrid(x,y)
+        if name=='magnetic':
+            vx = self.Bx.sel({'t':t}, method='nearest')
+            vy = self.By.sel({'t':t}, method='nearest')
+        else:
+            raise ValueError("Invalid type.")
+        plt.figure(figsize=(8, 6))
+        plt.streamplot(X, Y, vx, vy, density=density)
+        plt.xlabel("x")
+        plt.ylabel("y")
+        plt.axis('equal')
+
+        
+        
 
 
 
