@@ -37,9 +37,8 @@
 
 namespace ntt {
 
-  template <SimEngine::type S, class M>
-  void Metadomain<S, M>::InitWriter(adios2::ADIOS*          ptr_adios,
-                                    const SimulationParams& params,
+template <SimEngine::type S, class M>
+  void Metadomain<S, M>::InitWriter(const SimulationParams& params,
                                     bool                    is_resuming) {
     raise::ErrorIf(
       l_subdomain_indices().size() != 1,
@@ -56,16 +55,19 @@ namespace ntt {
     auto off_ndomains           = local_domain->offset_ndomains();
     auto loc_shape_with_ghosts  = local_domain->mesh.n_active();
     if (incl_ghosts) {
-      for (auto d { 0 }; d <= M::Dim; ++d) {
+      for (auto d { 0u }; d < (unsigned)M::Dim; ++d) {
         glob_shape_with_ghosts[d] += 2 * N_GHOSTS * ndomains_per_dim()[d];
         off_ncells_with_ghosts[d] += 2 * N_GHOSTS * off_ndomains[d];
         loc_shape_with_ghosts[d]  += 2 * N_GHOSTS;
       }
     }
 
-    g_writer.init(ptr_adios,
-                  params.template get<std::string>("output.format"),
-                  params.template get<std::string>("simulation.name"));
+    // 使用HDF5版本的写出类进行初始化
+    g_writer.init(params.template get<std::string>("simulation.name"),
+                  params.template get<std::size_t>("output.fields.interval"),
+                  params.template get<long double>("output.fields.interval_time"),
+                  // keep参数可以根据实际需求给定
+                  params.template get<int>("output.keep"));
     g_writer.defineMeshLayout(glob_shape_with_ghosts,
                               off_ncells_with_ghosts,
                               loc_shape_with_ghosts,
@@ -73,6 +75,7 @@ namespace ntt {
                                 "output.fields.downsampling"),
                               incl_ghosts,
                               M::CoordType);
+
     const auto fields_to_write = params.template get<std::vector<std::string>>(
       "output.fields.quantities");
     const auto custom_fields_to_write = params.template get<std::vector<std::string>>(
@@ -85,14 +88,17 @@ namespace ntt {
                std::back_inserter(all_fields_to_write));
     const auto species_to_write = params.template get<std::vector<unsigned short>>(
       "output.particles.species");
+
     g_writer.defineFieldOutputs(S, all_fields_to_write);
     g_writer.defineParticleOutputs(M::PrtlDim, species_to_write);
-    // spectra write all particle species
+
+    // spectra写出所有粒子种类
     std::vector<unsigned short> spectra_species {};
     for (const auto& sp : species_params()) {
       spectra_species.push_back(sp.index());
     }
     g_writer.defineSpectraOutputs(spectra_species);
+
     for (const auto& type : { "fields", "particles", "spectra" }) {
       g_writer.addTracker(type,
                           params.template get<std::size_t>(
@@ -100,8 +106,10 @@ namespace ntt {
                           params.template get<long double>(
                             "output." + std::string(type) + ".interval_time"));
     }
-    if (is_resuming and std::filesystem::exists(g_writer.fname())) {
-      g_writer.setMode(adios2::Mode::Append);
+
+    // 如果是从已有数据继续运行且文件已存在，可以设置append模式
+    if (is_resuming && std::filesystem::exists(g_writer.fname())) {
+      g_writer.setMode(); // 需要在writerh5中实现相应的append模式，如可扩展数据集
     } else {
       g_writer.writeAttrs(params);
     }

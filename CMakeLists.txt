@@ -98,35 +98,35 @@ endif()
 
 # Output
 if(${output})
-  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/adios2Config.cmake)
-  find_or_fetch_dependency(adios2 FALSE)
-  if(NOT DEFINED ENV{HDF5_ROOT})
-    set(USE_CUSTOM_HDF5 OFF)
-    if(DEFINED ENV{CONDA_PREFIX})
-      execute_process(COMMAND bash -c "conda list | grep \"hdf5\" -q"
-                      RESULT_VARIABLE HDF5_INSTALLED)
-      if(HDF5_INSTALLED EQUAL 0)
-        set(HDF5_ROOT $ENV{CONDA_PREFIX})
-      else()
-        set(USE_CUSTOM_HDF5 ON)
-      endif()
+  # 移除 adios2 的查找和使用逻辑
+  # if(NOT DEFINED ENV{HDF5_ROOT})
+  set(USE_CUSTOM_HDF5 OFF)
+  if(DEFINED ENV{CONDA_PREFIX})
+    execute_process(COMMAND bash -c "conda list | grep \"hdf5\" -q"
+                    RESULT_VARIABLE HDF5_INSTALLED)
+    if(HDF5_INSTALLED EQUAL 0)
+      set(HDF5_ROOT $ENV{CONDA_PREFIX})
     else()
       set(USE_CUSTOM_HDF5 ON)
     endif()
-    if(USE_CUSTOM_HDF5)
-      message(
-        FATAL_ERROR
-          "HDF5_ROOT is not set. Please set it to the root of the HDF5 installation"
-      )
-    endif()
-  endif()
-  find_package(HDF5 REQUIRED)
-
-  if(${mpi})
-    set(DEPENDENCIES ${DEPENDENCIES} adios2::cxx11_mpi)
   else()
-    set(DEPENDENCIES ${DEPENDENCIES} adios2::cxx11)
+    # 如果没有设置HDF5_ROOT且没在Conda环境中找到hdf5，就启用USE_CUSTOM_HDF5
+    set(USE_CUSTOM_HDF5 ON)
   endif()
+  if(USE_CUSTOM_HDF5)
+    message(FATAL_ERROR
+      "HDF5_ROOT is not set and conda hdf5 not found. Please set it to the root of the HDF5 installation"
+    )
+  endif()
+
+  find_package(HDF5 REQUIRED)
+  
+  # 不再使用adios2相关依赖
+  # if(${mpi})
+  #   set(DEPENDENCIES ${DEPENDENCIES} adios2::cxx11_mpi)
+  # else()
+  #   set(DEPENDENCIES ${DEPENDENCIES} adios2::cxx11)
+  # endif()
 endif()
 
 link_libraries(${DEPENDENCIES})

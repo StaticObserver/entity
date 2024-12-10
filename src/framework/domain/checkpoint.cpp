@@ -12,8 +12,8 @@
 #include "metrics/qspherical.h"
 #include "metrics/spherical.h"
 
-#include "checkpoint/readerh5.h"
-#include "checkpoint/writerh5.h"
+#include "checkpoint/reader.h"
+#include "checkpoint/writer.h"
 #include "framework/domain/metadomain.h"
 #include "framework/parameters.h"
 

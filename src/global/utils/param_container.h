@@ -16,10 +16,11 @@
 #include "utils/formatting.h"
 #include "utils/log.h"
 
-#if defined(OUTPUT_ENABLED)
-  #include <adios2.h>
-  #include <adios2/cxx11/KokkosView.h>
-#endif
+// 移除 adios2 的包含
+// #if defined(OUTPUT_ENABLED)
+//   #include <adios2.h>
+//   #include <adios2/cxx11/KokkosView.h>
+// #endif
 
 #include <any>
 #include <ios>
@@ -29,6 +30,7 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+#include <algorithm>
 
 namespace prm {
 
@@ -76,18 +78,18 @@ namespace prm {
       } catch (const std::out_of_range&) {
         if (def.has_value()) {
           raise::Warning(
-            fmt::format("Key %s not found, falling back to default", key.c_str()),
+            fmt::format("Key {} not found, falling back to default", key),
             HERE);
           return def.value();
         }
-        raise::Error(fmt::format("Key %s not found", key.c_str()), HERE);
+        raise::Error(fmt::format("Key {} not found", key), HERE);
         throw;
       } catch (const std::bad_any_cast&) {
-        raise::Error(fmt::format("Bad any_cast for %s", key.c_str()), HERE);
+        raise::Error(fmt::format("Bad any_cast for {}", key), HERE);
         throw;
       } catch (const std::exception& e) {
         raise::Error(
-          fmt::format("Unknown error for %s : %s", key.c_str(), e.what()),
+          fmt::format("Unknown error for {} : {}", key, e.what()),
           HERE);
         throw;
       }
@@ -167,19 +169,21 @@ namespace prm {
           raise::Error("Unsupported type for stringize", HERE);
         }
       } catch (const std::out_of_range&) {
-        raise::Error(fmt::format("Key %s not found", key.c_str()), HERE);
+        raise::Error(fmt::format("Key {} not found", key), HERE);
       } catch (const std::bad_any_cast&) {
-        raise::Error(fmt::format("Bad any_cast for %s", key.c_str()), HERE);
+        raise::Error(fmt::format("Bad any_cast for {}", key), HERE);
       } catch (const std::exception& e) {
         raise::Error(
-          fmt::format("Unknown error for %s : %s", key.c_str(), e.what()),
+          fmt::format("Unknown error for {} : {}", key, e.what()),
           HERE);
       }
       return result.str();
     }
 
 #if defined(OUTPUT_ENABLED)
-    void write(adios2::IO& io) const;
+    // 将ADIOS2的IO写出逻辑转为HDF5写出逻辑
+    // 在实现时，需要在.cpp文件中包含H5Cpp.h和attr_writer.h，并调用out::writeAnyAttr
+    void write(H5::H5Object& obj) const;
 #endif
   };
 
