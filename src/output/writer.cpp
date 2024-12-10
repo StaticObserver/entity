@@ -1,66 +1,59 @@
-#include "output/writer.h"
-
+#include "writer.h"
 #include "global.h"
 
 #include "arch/kokkos_aliases.h"
 #include "utils/error.h"
 #include "utils/formatting.h"
-#include "utils/param_container.h"
+#include "utils/param_container_h5.h"
 #include "utils/tools.h"
 
 #include <Kokkos_Core.hpp>
-#include <adios2.h>
-#include <adios2/cxx11/KokkosView.h>
+#include <H5Cpp.h>
 
 #if defined(MPI_ENABLED)
-  #include "arch/mpi_aliases.h"
-
   #include <mpi.h>
+  #include "arch/mpi_aliases.h"
 #endif
 
 #include <string>
 #include <vector>
+#include <cstdio>  // for std::snprintf
+
 
 namespace out {
 
-  void Writer::init(adios2::ADIOS*     ptr_adios,
-                    const std::string& engine,
-                    const std::string& title) {
-    m_engine = engine;
-    p_adios  = ptr_adios;
+void Writer::init(const std::string& title) {
+    m_fname = title + ".h5";
+    m_file = new H5::H5File(m_fname, H5F_ACC_TRUNC);
+}
 
-    raise::ErrorIf(p_adios == nullptr, "ADIOS pointer is null", HERE);
-
-    m_io = p_adios->DeclareIO("Entity::Output");
-    m_io.SetEngine(engine);
-
-    m_io.DefineVariable<std::size_t>("Step");
-    m_io.DefineVariable<long double>("Time");
-    m_fname = title + (m_engine == "hdf5" ? ".h5" : ".bp");
-  }
-
-  void Writer::addTracker(const std::string& type,
-                          std::size_t        interval,
-                          long double        interval_time) {
+void Writer::addTracker(const std::string& type,
+                          std::size_t interval,
+                          long double interval_time) {
     m_trackers.insert({ type, tools::Tracker(type, interval, interval_time) });
-  }
+}
 
-  auto Writer::shouldWrite(const std::string& type,
-                           std::size_t        step,
-                           long double        time) -> bool {
+bool Writer::shouldWrite(const std::string& type,
+                           std::size_t step,
+                           long double time) {
     if (m_trackers.find(type) != m_trackers.end()) {
-      return m_trackers.at(type).shouldWrite(step, time);
+        return m_trackers.at(type).shouldWrite(step, time);
     } else {
-      raise::Error(fmt::format("Tracker type %s not found", type.c_str()), HERE);
-      return false;
+        raise::Error(fmt::format("Tracker type {} not found", type.c_str()), HERE);
+        return false;
     }
-  }
+}
 
-  void Writer::setMode(adios2::Mode mode) {
-    m_mode = mode;
-  }
+void Writer::setMode() {
+    // 在 HDF5 中模式由文件和数据集创建方式决定，此处无需实现
+}
 
-  void Writer::defineMeshLayout(const std::vector<std::size_t>&  glob_shape,
+void Writer::writeAttrs(const prm::Parameters& params) {
+    H5::Group root = m_file->openGroup("/");
+    params.write(root);  // 假设您实现了 params.writeHDF5 方法
+}
+
+void Writer::defineMeshLayout(const std::vector<std::size_t>&  glob_shape,
                                 const std::vector<std::size_t>&  loc_corner,
                                 const std::vector<std::size_t>&  loc_shape,
                                 const std::vector<unsigned int>& dwn,
@@ -73,440 +66,540 @@ namespace out {
     m_flds_l_corner = loc_corner;
     m_flds_l_shape  = loc_shape;
 
-    for (std::size_t i { 0 }; i < glob_shape.size(); ++i) {
-      raise::ErrorIf(dwn[i] != 1 && incl_ghosts,
-                     "Downsampling with ghosts not supported",
-                     HERE);
+    m_flds_g_shape_dwn.clear();
+    m_flds_l_corner_dwn.clear();
+    m_flds_l_first.clear();
+    m_flds_l_shape_dwn.clear();
 
-      const double g = glob_shape[i];
-      const double d = m_dwn[i];
-      const double l = loc_corner[i];
-      const double n = loc_shape[i];
-      const double f = math::ceil(l / d) * d - l;
-      m_flds_g_shape_dwn.push_back(static_cast<std::size_t>(math::ceil(g / d)));
-      m_flds_l_corner_dwn.push_back(static_cast<std::size_t>(math::ceil(l / d)));
-      m_flds_l_first.push_back(static_cast<std::size_t>(f));
-      m_flds_l_shape_dwn.push_back(
-        static_cast<std::size_t>(math::ceil((n - f) / d)));
+    for (std::size_t i = 0; i < glob_shape.size(); ++i) {
+        raise::ErrorIf(dwn[i] != 1 && incl_ghosts,
+                       "Downsampling with ghosts not supported",
+                       HERE);
+
+        const double g = static_cast<double>(glob_shape[i]);
+        const double dd = static_cast<double>(m_dwn[i]);
+        const double l = static_cast<double>(loc_corner[i]);
+        const double n = static_cast<double>(loc_shape[i]);
+        const double f = math::ceil(l / dd) * dd - l;  // 确保 math::ceil 在 tools.h 有定义
+
+        m_flds_g_shape_dwn.push_back(static_cast<std::size_t>(math::ceil(g / dd)));
+        m_flds_l_corner_dwn.push_back(static_cast<std::size_t>(math::ceil(l / dd)));
+        m_flds_l_first.push_back(static_cast<std::size_t>(f));
+        m_flds_l_shape_dwn.push_back(static_cast<std::size_t>(math::ceil((n - f) / dd)));
     }
 
-    m_io.DefineAttribute("NGhosts", incl_ghosts ? N_GHOSTS : 0);
-    m_io.DefineAttribute("Dimension", m_flds_g_shape.size());
-    m_io.DefineAttribute("Coordinates", std::string(coords.to_string()));
-
-    for (std::size_t i { 0 }; i < m_flds_g_shape.size(); ++i) {
-      // cell-centers
-      adios2::Dims g_shape  = { m_flds_g_shape_dwn[i] };
-      adios2::Dims l_corner = { m_flds_l_corner_dwn[i] };
-      adios2::Dims l_shape  = { m_flds_l_shape_dwn[i] };
-      m_io.DefineVariable<real_t>("X" + std::to_string(i + 1),
-                                  g_shape,
-                                  l_corner,
-                                  l_shape,
-                                  adios2::ConstantDims);
-      // cell-edges
-      const auto   is_last  = (m_flds_l_corner[i] + m_flds_l_shape[i] ==
-                            m_flds_g_shape[i]);
-      adios2::Dims g_shape1 = { m_flds_g_shape_dwn[i] + 1 };
-      adios2::Dims l_shape1 = { m_flds_l_shape_dwn[i] + (is_last ? 1 : 0) };
-      m_io.DefineVariable<real_t>("X" + std::to_string(i + 1) + "e",
-                                  g_shape1,
-                                  l_corner,
-                                  l_shape1,
-                                  adios2::ConstantDims);
+    H5::Group meshGroup;
+    try {
+        meshGroup = m_file->openGroup("/Mesh");
+    } catch (...) {
+        meshGroup = m_file->createGroup("/Mesh");
     }
 
+    {
+        H5::DataSpace scalar_space(H5S_SCALAR);
+
+        int nghosts = incl_ghosts ? N_GHOSTS : 0;
+        {
+            auto attr = meshGroup.createAttribute("NGhosts", H5::PredType::NATIVE_INT, scalar_space);
+            attr.write(H5::PredType::NATIVE_INT, &nghosts);
+        }
+
+        int dimension = static_cast<int>(m_flds_g_shape.size());
+        {
+            auto attr = meshGroup.createAttribute("Dimension", H5::PredType::NATIVE_INT, scalar_space);
+            attr.write(H5::PredType::NATIVE_INT, &dimension);
+        }
+
+        {
+            std::string coord_str = coords.to_string();
+            H5::StrType str_type(0, H5T_VARIABLE);
+            auto attr = meshGroup.createAttribute("Coordinates", str_type, scalar_space);
+            attr.write(str_type, coord_str);
+        }
+    }
+
+    int layoutRight = 0;
     if constexpr (std::is_same<typename ndfield_t<Dim::_3D, 6>::array_layout,
                                Kokkos::LayoutRight>::value) {
-      m_io.DefineAttribute("LayoutRight", 1);
+        layoutRight = 1;
     } else {
-      std::reverse(m_flds_g_shape_dwn.begin(), m_flds_g_shape_dwn.end());
-      std::reverse(m_flds_l_corner_dwn.begin(), m_flds_l_corner_dwn.end());
-      std::reverse(m_flds_l_shape_dwn.begin(), m_flds_l_shape_dwn.end());
-      m_io.DefineAttribute("LayoutRight", 0);
+        std::reverse(m_flds_g_shape_dwn.begin(), m_flds_g_shape_dwn.end());
+        std::reverse(m_flds_l_corner_dwn.begin(), m_flds_l_corner_dwn.end());
+        std::reverse(m_flds_l_shape_dwn.begin(), m_flds_l_shape_dwn.end());
     }
-  }
 
-  void Writer::defineFieldOutputs(const SimEngine&                S,
+    {
+        H5::DataSpace scalar_space(H5S_SCALAR);
+        auto attr = meshGroup.createAttribute("LayoutRight", H5::PredType::NATIVE_INT, scalar_space);
+        attr.write(H5::PredType::NATIVE_INT, &layoutRight);
+    }
+}
+
+void Writer::defineFieldOutputs(const SimEngine& S,
                                   const std::vector<std::string>& flds_out) {
     m_flds_writers.clear();
-    raise::ErrorIf((m_flds_g_shape_dwn.size() == 0) ||
-                     (m_flds_l_corner_dwn.size() == 0) ||
-                     (m_flds_l_shape_dwn.size() == 0),
-                   "Mesh layout must be defined before field output",
-                   HERE);
-    for (const auto& fld : flds_out) {
-      m_flds_writers.emplace_back(S, fld);
-    }
-    for (const auto& fld : m_flds_writers) {
-      if (fld.comp.size() == 0) {
-        // scalar
-        m_io.DefineVariable<real_t>(fld.name(),
-                                    m_flds_g_shape_dwn,
-                                    m_flds_l_corner_dwn,
-                                    m_flds_l_shape_dwn,
-                                    adios2::ConstantDims);
-      } else {
-        // vector or tensor
-        for (std::size_t i { 0 }; i < fld.comp.size(); ++i) {
-          m_io.DefineVariable<real_t>(fld.name(i),
-                                      m_flds_g_shape_dwn,
-                                      m_flds_l_corner_dwn,
-                                      m_flds_l_shape_dwn,
-                                      adios2::ConstantDims);
-        }
-      }
-    }
-  }
 
-  void Writer::defineParticleOutputs(Dimension                          dim,
+    raise::ErrorIf((m_flds_g_shape_dwn.empty()) ||
+                   (m_flds_l_corner_dwn.empty()) ||
+                   (m_flds_l_shape_dwn.empty()),
+                   "Mesh layout must be defined before field output", HERE);
+
+    for (const auto& fld : flds_out) {
+        m_flds_writers.emplace_back(S, fld);
+    }
+
+    H5::Group fieldsGroup;
+    try {
+        fieldsGroup = m_file->openGroup("/Fields");
+    } catch (...) {
+        fieldsGroup = m_file->createGroup("/Fields");
+    }
+
+    std::string all_fields;
+    for (size_t i = 0; i < m_flds_writers.size(); ++i) {
+        if (i > 0) all_fields += ",";
+        all_fields += m_flds_writers[i].name();
+    }
+
+    {
+        H5::DataSpace attr_space(H5S_SCALAR);
+        H5::StrType str_type(0, H5T_VARIABLE);
+        auto attr = fieldsGroup.createAttribute("FieldList", str_type, attr_space);
+        attr.write(str_type, all_fields);
+    }
+}
+
+void Writer::defineParticleOutputs(Dimension                          dim,
                                      const std::vector<unsigned short>& specs) {
     m_prtl_writers.clear();
-    for (const auto& s : specs) {
-      m_prtl_writers.emplace_back(s);
+    for (auto s : specs) {
+        m_prtl_writers.emplace_back(s);
     }
-    for (const auto& prtl : m_prtl_writers) {
-      for (auto d { 0u }; d < dim; ++d) {
-        m_io.DefineVariable<real_t>(prtl.name("X", d + 1),
-                                    { adios2::UnknownDim },
-                                    { adios2::UnknownDim },
-                                    { adios2::UnknownDim });
-      }
-      for (auto d { 0u }; d < Dim::_3D; ++d) {
-        m_io.DefineVariable<real_t>(prtl.name("U", d + 1),
-                                    { adios2::UnknownDim },
-                                    { adios2::UnknownDim },
-                                    { adios2::UnknownDim });
-      }
-      m_io.DefineVariable<real_t>(prtl.name("W", 0),
-                                  { adios2::UnknownDim },
-                                  { adios2::UnknownDim },
-                                  { adios2::UnknownDim });
-    }
-  }
 
-  void Writer::defineSpectraOutputs(const std::vector<unsigned short>& specs) {
+    H5::Group prtlGroup;
+    try {
+        prtlGroup = m_file->openGroup("/Particles");
+    } catch (...) {
+        prtlGroup = m_file->createGroup("/Particles");
+    }
+
+    {
+        H5::DataSpace scalar_space(H5S_SCALAR);
+        int dim_int = static_cast<int>(dim);
+        auto attr = prtlGroup.createAttribute("Dimension", H5::PredType::NATIVE_INT, scalar_space);
+        attr.write(H5::PredType::NATIVE_INT, &dim_int);
+    }
+
+    {
+        hsize_t dims[1] = { specs.size() };
+        H5::DataSpace space(1, dims);
+        auto attr = prtlGroup.createAttribute("SpeciesList", H5::PredType::NATIVE_USHORT, space);
+        attr.write(H5::PredType::NATIVE_USHORT, specs.data());
+    }
+}
+
+void Writer::defineSpectraOutputs(const std::vector<unsigned short>& specs) {
     m_spectra_writers.clear();
-    for (const auto& s : specs) {
-      m_spectra_writers.emplace_back(s);
+    for (auto s : specs) {
+        m_spectra_writers.emplace_back(s);
     }
-    m_io.DefineVariable<real_t>("sEbn", {}, {}, { adios2::UnknownDim });
-    for (const auto& sp : m_spectra_writers) {
-      m_io.DefineVariable<real_t>(sp.name(), {}, {}, { adios2::UnknownDim });
+
+    H5::Group specGroup;
+    try {
+        specGroup = m_file->openGroup("/Spectra");
+    } catch (...) {
+        specGroup = m_file->createGroup("/Spectra");
     }
-  }
 
-  void Writer::writeAttrs(const prm::Parameters& params) {
-    params.write(m_io);
-  }
-
-  template <Dimension D, int N>
-  void WriteField(adios2::IO&               io,
-                  adios2::Engine&           writer,
-                  const std::string&        varname,
-                  const ndfield_t<D, N>&    field,
-                  std::size_t               comp,
-                  std::vector<unsigned int> dwn,
-                  std::vector<std::size_t>  first_cell,
-                  bool                      ghosts) {
-    // when dwn != 1 in any direction, it is assumed that ghosts == false
-    auto         var      = io.InquireVariable<real_t>(varname);
-    const auto   gh_zones = ghosts ? 0 : N_GHOSTS;
-    ndarray_t<D> output_field {};
-
-    if constexpr (D == Dim::_1D) {
-      if (ghosts || dwn[0] == 1) {
-        auto slice_i1 = range_tuple_t(gh_zones, field.extent(0) - gh_zones);
-        auto slice    = Kokkos::subview(field, slice_i1, comp);
-        output_field  = array_t<real_t*> { "output_field", slice.extent(0) };
-        Kokkos::deep_copy(output_field, slice);
-      } else {
-
-        const auto   dwn1          = dwn[0];
-        const double first_cell1_d = first_cell[0];
-        const double nx1_full      = field.extent(0) - 2 * N_GHOSTS;
-        const auto   first_cell1   = first_cell[0];
-
-        const auto nx1_dwn = static_cast<std::size_t>(
-          math::ceil((nx1_full - first_cell1_d) / dwn1));
-
-        output_field = array_t<real_t*> { "output_field", nx1_dwn };
-        Kokkos::parallel_for(
-          "outputField",
-          nx1_dwn,
-          Lambda(index_t i1) {
-            output_field(i1) = field(first_cell1 + i1 * dwn1 + N_GHOSTS, comp);
-          });
-      }
-    } else if constexpr (D == Dim::_2D) {
-      if (ghosts || (dwn[0] == 1 && dwn[1] == 1)) {
-        auto slice_i1 = range_tuple_t(gh_zones, field.extent(0) - gh_zones);
-        auto slice_i2 = range_tuple_t(gh_zones, field.extent(1) - gh_zones);
-        auto slice    = Kokkos::subview(field, slice_i1, slice_i2, comp);
-        output_field  = array_t<real_t**> { "output_field",
-                                            slice.extent(0),
-                                            slice.extent(1) };
-        Kokkos::deep_copy(output_field, slice);
-      } else {
-        const auto   dwn1          = dwn[0];
-        const auto   dwn2          = dwn[1];
-        const double first_cell1_d = first_cell[0];
-        const double first_cell2_d = first_cell[1];
-        const double nx1_full      = field.extent(0) - 2 * N_GHOSTS;
-        const double nx2_full      = field.extent(1) - 2 * N_GHOSTS;
-        const auto   first_cell1   = first_cell[0];
-        const auto   first_cell2   = first_cell[1];
-
-        const auto nx1_dwn = static_cast<std::size_t>(
-          math::ceil((nx1_full - first_cell1_d) / dwn1));
-        const auto nx2_dwn = static_cast<std::size_t>(
-          math::ceil((nx2_full - first_cell2_d) / dwn2));
-        output_field = array_t<real_t**> { "output_field", nx1_dwn, nx2_dwn };
-        Kokkos::parallel_for(
-          "outputField",
-          CreateRangePolicy<Dim::_2D>({ 0, 0 }, { nx1_dwn, nx2_dwn }),
-          Lambda(index_t i1, index_t i2) {
-            output_field(i1, i2) = field(first_cell1 + i1 * dwn1 + N_GHOSTS,
-                                         first_cell2 + i2 * dwn2 + N_GHOSTS,
-                                         comp);
-          });
-      }
-    } else if constexpr (D == Dim::_3D) {
-      if (ghosts || (dwn[0] == 1 && dwn[1] == 1 && dwn[2] == 1)) {
-        auto slice_i1 = range_tuple_t(gh_zones, field.extent(0) - gh_zones);
-        auto slice_i2 = range_tuple_t(gh_zones, field.extent(1) - gh_zones);
-        auto slice_i3 = range_tuple_t(gh_zones, field.extent(2) - gh_zones);
-        auto slice = Kokkos::subview(field, slice_i1, slice_i2, slice_i3, comp);
-        output_field = array_t<real_t***> { "output_field",
-                                            slice.extent(0),
-                                            slice.extent(1),
-                                            slice.extent(2) };
-        Kokkos::deep_copy(output_field, slice);
-      } else {
-        const auto   dwn1          = dwn[0];
-        const auto   dwn2          = dwn[1];
-        const auto   dwn3          = dwn[2];
-        const double first_cell1_d = first_cell[0];
-        const double first_cell2_d = first_cell[1];
-        const double first_cell3_d = first_cell[2];
-        const double nx1_full      = field.extent(0) - 2 * N_GHOSTS;
-        const double nx2_full      = field.extent(1) - 2 * N_GHOSTS;
-        const double nx3_full      = field.extent(2) - 2 * N_GHOSTS;
-        const auto   first_cell1   = first_cell[0];
-        const auto   first_cell2   = first_cell[1];
-        const auto   first_cell3   = first_cell[2];
-
-        const auto nx1_dwn = static_cast<std::size_t>(
-          math::ceil((nx1_full - first_cell1_d) / dwn1));
-        const auto nx2_dwn = static_cast<std::size_t>(
-          math::ceil((nx2_full - first_cell2_d) / dwn2));
-        const auto nx3_dwn = static_cast<std::size_t>(
-          math::ceil((nx3_full - first_cell3_d) / dwn3));
-
-        output_field = array_t<real_t***> { "output_field", nx1_dwn, nx2_dwn, nx3_dwn };
-        Kokkos::parallel_for(
-          "outputField",
-          CreateRangePolicy<Dim::_3D>({ 0, 0, 0 }, { nx1_dwn, nx2_dwn, nx3_dwn }),
-          Lambda(index_t i1, index_t i2, index_t i3) {
-            output_field(i1, i2, i3) = field(first_cell1 + i1 * dwn1 + N_GHOSTS,
-                                             first_cell2 + i2 * dwn2 + N_GHOSTS,
-                                             first_cell3 + i3 * dwn3 + N_GHOSTS,
-                                             comp);
-          });
-      }
+    {
+        hsize_t dims[1] = { specs.size() };
+        H5::DataSpace space(1, dims);
+        auto attr = specGroup.createAttribute("SpeciesList", H5::PredType::NATIVE_USHORT, space);
+        attr.write(H5::PredType::NATIVE_USHORT, specs.data());
     }
-    auto output_field_h = Kokkos::create_mirror_view(output_field);
-    Kokkos::deep_copy(output_field_h, output_field);
-    writer.Put(var, output_field_h);
-  }
+}
 
-  template <Dimension D, int N>
-  void Writer::writeField(const std::vector<std::string>& names,
+void Writer::writeMesh(unsigned short dim,
+                         const array_t<real_t*>& xc,
+                         const array_t<real_t*>& xe) {
+    H5::Group meshGroup;
+    try {
+        meshGroup = m_file->openGroup("/Mesh");
+    } catch (...) {
+        meshGroup = m_file->createGroup("/Mesh");
+    }
+
+    std::string varc_name = "X" + std::to_string(dim + 1);
+    std::string vare_name = "X" + std::to_string(dim + 1) + "e";
+
+    auto xc_h = Kokkos::create_mirror_view(xc);
+    auto xe_h = Kokkos::create_mirror_view(xe);
+    Kokkos::deep_copy(xc_h, xc);
+    Kokkos::deep_copy(xe_h, xe);
+
+    hsize_t size_c = static_cast<hsize_t>(xc.extent(0));
+    hsize_t size_e = static_cast<hsize_t>(xe.extent(0));
+    H5::DataSpace dsp_c(1, &size_c);
+    H5::DataSpace dsp_e(1, &size_e);
+
+    H5::DataSet ds_c;
+    H5::DataSet ds_e;
+    bool c_exists = false, e_exists = false;
+    try {
+        ds_c = meshGroup.openDataSet(varc_name);
+        c_exists = true;
+    } catch (...) {}
+
+    if (!c_exists) {
+        ds_c = meshGroup.createDataSet(varc_name, H5::PredType::NATIVE_DOUBLE, dsp_c);
+    }
+
+    try {
+        ds_e = meshGroup.openDataSet(vare_name);
+        e_exists = true;
+    } catch (...) {}
+
+    if (!e_exists) {
+        ds_e = meshGroup.createDataSet(vare_name, H5::PredType::NATIVE_DOUBLE, dsp_e);
+    }
+
+    ds_c.write(xc_h.data(), H5::PredType::NATIVE_DOUBLE);
+    ds_e.write(xe_h.data(), H5::PredType::NATIVE_DOUBLE);
+}
+
+
+template <Dimension D, int N>
+void Writer::writeField(const std::vector<std::string>& names,
                           const ndfield_t<D, N>&          fld,
                           const std::vector<std::size_t>& addresses) {
-    raise::ErrorIf(addresses.size() > N,
-                   "addresses vector size must be less than N",
+    raise::ErrorIf(addresses.size() > static_cast<std::size_t>(N),
+                   "addresses vector size must be less or equal to N",
                    HERE);
     raise::ErrorIf(names.size() != addresses.size(),
                    "# of names != # of addresses ",
                    HERE);
-    for (std::size_t i { 0 }; i < addresses.size(); ++i) {
-      WriteField<D, N>(m_io,
-                       m_writer,
-                       names[i],
-                       fld,
-                       addresses[i],
-                       m_dwn,
-                       m_flds_l_first,
-                       m_flds_ghosts);
-    }
-  }
 
-  void Writer::writeParticleQuantity(const array_t<real_t*>& array,
+    H5::Group fieldsGroup;
+    try {
+        fieldsGroup = m_file->openGroup("/Fields");
+    } catch (...) {
+        fieldsGroup = m_file->createGroup("/Fields");
+    }
+
+    auto get_dwn = [&](size_t i) { return m_dwn[i]; };
+    auto get_first = [&](size_t i) { return m_flds_l_first[i]; };
+
+    std::vector<hsize_t> dims;
+    if constexpr (D == Dim::_1D) {
+        double nx1_full = static_cast<double>(fld.extent(0)-2*N_GHOSTS);
+        double dwn1 = static_cast<double>(get_dwn(0));
+        double f1 = static_cast<double>(get_first(0));
+        hsize_t nx1_dwn = static_cast<hsize_t>(std::ceil((nx1_full - f1) / dwn1));
+        dims = {nx1_dwn};
+    } else if constexpr (D == Dim::_2D) {
+        double nx1_full = static_cast<double>(fld.extent(0)-2*N_GHOSTS);
+        double nx2_full = static_cast<double>(fld.extent(1)-2*N_GHOSTS);
+        double dwn1 = static_cast<double>(get_dwn(0));
+        double dwn2 = static_cast<double>(get_dwn(1));
+        double f1 = static_cast<double>(get_first(0));
+        double f2 = static_cast<double>(get_first(1));
+        hsize_t nx1_dwn = static_cast<hsize_t>(std::ceil((nx1_full - f1) / dwn1));
+        hsize_t nx2_dwn = static_cast<hsize_t>(std::ceil((nx2_full - f2) / dwn2));
+        dims = {nx1_dwn, nx2_dwn};
+    } else if constexpr (D == Dim::_3D) {
+        double nx1_full = static_cast<double>(fld.extent(0)-2*N_GHOSTS);
+        double nx2_full = static_cast<double>(fld.extent(1)-2*N_GHOSTS);
+        double nx3_full = static_cast<double>(fld.extent(2)-2*N_GHOSTS);
+        double dwn1 = static_cast<double>(get_dwn(0));
+        double dwn2 = static_cast<double>(get_dwn(1));
+        double dwn3 = static_cast<double>(get_dwn(2));
+        double f1 = static_cast<double>(get_first(0));
+        double f2 = static_cast<double>(get_first(1));
+        double f3 = static_cast<double>(get_first(2));
+        hsize_t nx1_dwn = static_cast<hsize_t>(std::ceil((nx1_full - f1) / dwn1));
+        hsize_t nx2_dwn = static_cast<hsize_t>(std::ceil((nx2_full - f2) / dwn2));
+        hsize_t nx3_dwn = static_cast<hsize_t>(std::ceil((nx3_full - f3) / dwn3));
+        dims = {nx1_dwn, nx2_dwn, nx3_dwn};
+    }
+
+    for (std::size_t i = 0; i < addresses.size(); ++i) {
+        const auto& varname = names[i];
+        std::size_t comp = addresses[i];
+
+        size_t total_size = 1;
+        for (auto d : dims) total_size *= d;
+
+        std::vector<real_t> buffer(total_size);
+
+        if constexpr (D == Dim::_1D) {
+            hsize_t nx = dims[0];
+            double dwn1 = static_cast<double>(get_dwn(0));
+            double f1 = static_cast<double>(get_first(0));
+            for (hsize_t ix = 0; ix < nx; ix++) {
+                size_t src_i = static_cast<size_t>(f1 + ix * dwn1 + N_GHOSTS);
+                buffer[ix] = fld(src_i, comp);
+            }
+        } else if constexpr (D == Dim::_2D) {
+            hsize_t nx1 = dims[0];
+            hsize_t nx2 = dims[1];
+            double dwn1 = static_cast<double>(get_dwn(0));
+            double dwn2 = static_cast<double>(get_dwn(1));
+            double f1 = static_cast<double>(get_first(0));
+            double f2 = static_cast<double>(get_first(1));
+            for (hsize_t i1 = 0; i1 < nx1; i1++) {
+                for (hsize_t i2 = 0; i2 < nx2; i2++) {
+                    size_t src_i1 = static_cast<size_t>(f1 + i1 * dwn1 + N_GHOSTS);
+                    size_t src_i2 = static_cast<size_t>(f2 + i2 * dwn2 + N_GHOSTS);
+                    buffer[i1*nx2 + i2] = fld(src_i1, src_i2, comp);
+                }
+            }
+        } else if constexpr (D == Dim::_3D) {
+            hsize_t nx1 = dims[0];
+            hsize_t nx2 = dims[1];
+            hsize_t nx3 = dims[2];
+            double dwn1 = static_cast<double>(get_dwn(0));
+            double dwn2 = static_cast<double>(get_dwn(1));
+            double dwn3 = static_cast<double>(get_dwn(2));
+            double f1 = static_cast<double>(get_first(0));
+            double f2 = static_cast<double>(get_first(1));
+            double f3 = static_cast<double>(get_first(2));
+            for (hsize_t i1 = 0; i1 < nx1; i1++) {
+                for (hsize_t i2 = 0; i2 < nx2; i2++) {
+                    for (hsize_t i3 = 0; i3 < nx3; i3++) {
+                        size_t src_i1 = static_cast<size_t>(f1 + i1 * dwn1 + N_GHOSTS);
+                        size_t src_i2 = static_cast<size_t>(f2 + i2 * dwn2 + N_GHOSTS);
+                        size_t src_i3 = static_cast<size_t>(f3 + i3 * dwn3 + N_GHOSTS);
+                        buffer[(i1*nx2 + i2)*nx3 + i3] = fld(src_i1, src_i2, src_i3, comp);
+                    }
+                }
+            }
+        }
+
+        H5::DataSpace dataspace(dims.size(), dims.data());
+        H5::DataSet dataset;
+        bool exists = false;
+        try {
+            dataset = fieldsGroup.openDataSet(varname);
+            exists = true;
+        } catch (...) {}
+
+        if (!exists) {
+            dataset = fieldsGroup.createDataSet(varname, H5::PredType::NATIVE_DOUBLE, dataspace);
+        }
+
+        dataset.write(buffer.data(), H5::PredType::NATIVE_DOUBLE);
+    }
+}
+
+template void Writer::writeField<Dim::_1D, 3>(const std::vector<std::string>&,
+                                                const ndfield_t<Dim::_1D, 3>&,
+                                                const std::vector<std::size_t>&);
+template void Writer::writeField<Dim::_1D, 6>(const std::vector<std::string>&,
+                                                const ndfield_t<Dim::_1D, 6>&,
+                                                const std::vector<std::size_t>&);
+template void Writer::writeField<Dim::_2D, 3>(const std::vector<std::string>&,
+                                                const ndfield_t<Dim::_2D, 3>&,
+                                                const std::vector<std::size_t>&);
+template void Writer::writeField<Dim::_2D, 6>(const std::vector<std::string>&,
+                                                const ndfield_t<Dim::_2D, 6>&,
+                                                const std::vector<std::size_t>&);
+template void Writer::writeField<Dim::_3D, 3>(const std::vector<std::string>&,
+                                                const ndfield_t<Dim::_3D, 3>&,
+                                                const std::vector<std::size_t>&);
+template void Writer::writeField<Dim::_3D, 6>(const std::vector<std::string>&,
+                                                const ndfield_t<Dim::_3D, 6>&,
+                                                const std::vector<std::size_t>&);
+
+void Writer::writeParticleQuantity(const array_t<real_t*>& array,
                                      std::size_t             glob_total,
                                      std::size_t             loc_offset,
                                      const std::string&      varname) {
-    auto var = m_io.InquireVariable<real_t>(varname);
-    var.SetShape({ glob_total });
-    var.SetSelection(
-      adios2::Box<adios2::Dims>({ loc_offset }, { array.extent(0) }));
+    H5::Group prtlGroup;
+    try {
+        prtlGroup = m_file->openGroup("/Particles");
+    } catch (...) {
+        prtlGroup = m_file->createGroup("/Particles");
+    }
+
     auto array_h = Kokkos::create_mirror_view(array);
     Kokkos::deep_copy(array_h, array);
-    m_writer.Put<real_t>(var, array_h);
-  }
 
-  void Writer::writeSpectrum(const array_t<real_t*>& counts,
+    hsize_t global_size = static_cast<hsize_t>(glob_total);
+    hsize_t local_size = static_cast<hsize_t>(array.extent(0));
+
+    H5::DataSet dataset;
+    bool exists = false;
+    try {
+        dataset = prtlGroup.openDataSet(varname);
+        exists = true;
+    } catch (...) {}
+
+    if (!exists) {
+        H5::DataSpace fspace(1, &global_size);
+        dataset = prtlGroup.createDataSet(varname, H5::PredType::NATIVE_DOUBLE, fspace);
+    }
+
+    H5::DataSpace fspace = dataset.getSpace();
+
+    hsize_t start[1] = { loc_offset };
+    hsize_t count[1] = { local_size };
+    fspace.selectHyperslab(H5S_SELECT_SET, count, start);
+
+    H5::DataSpace mspace(1, &local_size);
+    dataset.write(array_h.data(), H5::PredType::NATIVE_DOUBLE, mspace, fspace);
+}
+
+void Writer::writeSpectrum(const array_t<real_t*>& counts,
                              const std::string&      varname) {
+#if defined(MPI_ENABLED)
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
     auto counts_h = Kokkos::create_mirror_view(counts);
     Kokkos::deep_copy(counts_h, counts);
-#if defined(MPI_ENABLED)
-    array_t<real_t*> counts_all { "counts_all", counts.extent(0) };
-    auto             counts_h_all = Kokkos::create_mirror_view(counts_all);
-    int              rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    std::vector<real_t> counts_all(counts.extent(0), 0.0);
     MPI_Reduce(counts_h.data(),
-               counts_h_all.data(),
-               counts_h.extent(0),
+               counts_all.data(),
+               static_cast<int>(counts_h.extent(0)),
                mpi::get_type<real_t>(),
                MPI_SUM,
                MPI_ROOT_RANK,
                MPI_COMM_WORLD);
-    if (rank == MPI_ROOT_RANK) {
-      auto var = m_io.InquireVariable<real_t>(varname);
-      var.SetSelection(adios2::Box<adios2::Dims>({}, { counts.extent(0) }));
-      m_writer.Put<real_t>(var, counts_h_all);
-    }
-#else
-    auto var = m_io.InquireVariable<real_t>(varname);
-    var.SetSelection(adios2::Box<adios2::Dims>({}, { counts.extent(0) }));
-    m_writer.Put<real_t>(var, counts_h);
-#endif
-  }
 
-  void Writer::writeSpectrumBins(const array_t<real_t*>& e_bins,
+    if (rank == MPI_ROOT_RANK) {
+        H5::Group specGroup;
+        try {
+            specGroup = m_file->openGroup("/Spectra");
+        } catch (...) {
+            specGroup = m_file->createGroup("/Spectra");
+        }
+
+        hsize_t size = static_cast<hsize_t>(counts_all.size());
+        H5::DataSpace dsp(1, &size);
+
+        H5::DataSet dataset;
+        bool exists = false;
+        try {
+            dataset = specGroup.openDataSet(varname);
+            exists = true;
+        } catch (...) {}
+
+        if (!exists) {
+            dataset = specGroup.createDataSet(varname, H5::PredType::NATIVE_DOUBLE, dsp);
+        }
+
+        dataset.write(counts_all.data(), H5::PredType::NATIVE_DOUBLE);
+    }
+
+#else
+    auto counts_h = Kokkos::create_mirror_view(counts);
+    Kokkos::deep_copy(counts_h, counts);
+
+    H5::Group specGroup;
+    try {
+        specGroup = m_file->openGroup("/Spectra");
+    } catch (...) {
+        specGroup = m_file->createGroup("/Spectra");
+    }
+
+    hsize_t size = static_cast<hsize_t>(counts_h.extent(0));
+    H5::DataSpace dsp(1, &size);
+
+    H5::DataSet dataset;
+    bool exists = false;
+    try {
+        dataset = specGroup.openDataSet(varname);
+        exists = true;
+    } catch (...) {}
+
+    if (!exists) {
+        dataset = specGroup.createDataSet(varname, H5::PredType::NATIVE_DOUBLE, dsp);
+    }
+
+    dataset.write(counts_h.data(), H5::PredType::NATIVE_DOUBLE);
+
+#endif
+}
+
+void Writer::writeSpectrumBins(const array_t<real_t*>& e_bins,
                                  const std::string&      varname) {
 #if defined(MPI_ENABLED)
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if (rank != MPI_ROOT_RANK) {
-      return;
+        return;
     }
 #endif
-    auto var = m_io.InquireVariable<real_t>(varname);
-    var.SetSelection(adios2::Box<adios2::Dims>({}, { e_bins.extent(0) }));
+
     auto e_bins_h = Kokkos::create_mirror_view(e_bins);
     Kokkos::deep_copy(e_bins_h, e_bins);
-    m_writer.Put<real_t>(var, e_bins_h);
-  }
 
-  void Writer::writeMesh(unsigned short          dim,
-                         const array_t<real_t*>& xc,
-                         const array_t<real_t*>& xe) {
-    auto varc = m_io.InquireVariable<real_t>("X" + std::to_string(dim + 1));
-    auto vare = m_io.InquireVariable<real_t>("X" + std::to_string(dim + 1) + "e");
-    auto xc_h = Kokkos::create_mirror_view(xc);
-    auto xe_h = Kokkos::create_mirror_view(xe);
-    Kokkos::deep_copy(xc_h, xc);
-    Kokkos::deep_copy(xe_h, xe);
-    m_writer.Put(varc, xc_h);
-    m_writer.Put(vare, xe_h);
-  }
+    H5::Group specGroup;
+    try {
+        specGroup = m_file->openGroup("/Spectra");
+    } catch (...) {
+        specGroup = m_file->createGroup("/Spectra");
+    }
 
-  void Writer::beginWriting(std::size_t tstep, long double time) {
-    raise::ErrorIf(p_adios == nullptr, "ADIOS pointer is null", HERE);
-    p_adios->ExitComputationBlock();
+    hsize_t size = static_cast<hsize_t>(e_bins.extent(0));
+    H5::DataSpace dsp(1, &size);
+
+    H5::DataSet dataset;
+    bool exists = false;
+    try {
+        dataset = specGroup.openDataSet(varname);
+        exists = true;
+    } catch (...) {}
+
+    if (!exists) {
+        dataset = specGroup.createDataSet(varname, H5::PredType::NATIVE_DOUBLE, dsp);
+    }
+
+    dataset.write(e_bins_h.data(), H5::PredType::NATIVE_DOUBLE);
+}
+
+void Writer::beginWriting(std::size_t tstep, long double time) {
     if (m_writing_mode) {
-      raise::Fatal("Already writing", HERE);
+        raise::Fatal("Already writing", HERE);
     }
     m_writing_mode = true;
+
+    char stepname[64];
+    std::snprintf(stepname, sizeof(stepname), "/Step%08zu", tstep);
+    H5::Group stepGroup;
     try {
-      m_writer = m_io.Open(m_fname, m_mode);
-    } catch (std::exception& e) {
-      raise::Fatal(e.what(), HERE);
+        stepGroup = m_file->openGroup(stepname);
+    } catch (...) {
+        stepGroup = m_file->createGroup(stepname);
     }
-    m_mode = adios2::Mode::Append;
-    m_writer.BeginStep();
-    m_writer.Put(m_io.InquireVariable<std::size_t>("Step"), &tstep);
-    m_writer.Put(m_io.InquireVariable<long double>("Time"), &time);
-  }
 
-  void Writer::endWriting() {
-    raise::ErrorIf(p_adios == nullptr, "ADIOS pointer is null", HERE);
+    {
+        H5::DataSpace scalar_space(H5S_SCALAR);
+
+        {
+            auto attr = stepGroup.createAttribute("Step", H5::PredType::NATIVE_ULLONG, scalar_space);
+            unsigned long long step_ull = static_cast<unsigned long long>(tstep);
+            attr.write(H5::PredType::NATIVE_ULLONG, &step_ull);
+        }
+
+        {
+            auto attr = stepGroup.createAttribute("Time", H5::PredType::NATIVE_LDOUBLE, scalar_space);
+            attr.write(H5::PredType::NATIVE_LDOUBLE, &time);
+        }
+    }
+}
+
+void Writer::endWriting() {
     if (!m_writing_mode) {
-      raise::Fatal("Not writing", HERE);
+        raise::Fatal("Not writing", HERE);
     }
+
     m_writing_mode = false;
-    m_writer.EndStep();
-    m_writer.Close();
-    p_adios->EnterComputationBlock();
-  }
 
-  template void Writer::writeField<Dim::_1D, 3>(const std::vector<std::string>&,
-                                                const ndfield_t<Dim::_1D, 3>&,
-                                                const std::vector<std::size_t>&);
-  template void Writer::writeField<Dim::_1D, 6>(const std::vector<std::string>&,
-                                                const ndfield_t<Dim::_1D, 6>&,
-                                                const std::vector<std::size_t>&);
-  template void Writer::writeField<Dim::_2D, 3>(const std::vector<std::string>&,
-                                                const ndfield_t<Dim::_2D, 3>&,
-                                                const std::vector<std::size_t>&);
-  template void Writer::writeField<Dim::_2D, 6>(const std::vector<std::string>&,
-                                                const ndfield_t<Dim::_2D, 6>&,
-                                                const std::vector<std::size_t>&);
-  template void Writer::writeField<Dim::_3D, 3>(const std::vector<std::string>&,
-                                                const ndfield_t<Dim::_3D, 3>&,
-                                                const std::vector<std::size_t>&);
-  template void Writer::writeField<Dim::_3D, 6>(const std::vector<std::string>&,
-                                                const ndfield_t<Dim::_3D, 6>&,
-                                                const std::vector<std::size_t>&);
+    m_file->flush(H5F_SCOPE_GLOBAL);
+}
 
-  template void WriteField<Dim::_1D, 3>(adios2::IO&,
-                                        adios2::Engine&,
-                                        const std::string&,
-                                        const ndfield_t<Dim::_1D, 3>&,
-                                        std::size_t,
-                                        std::vector<unsigned int>,
-                                        std::vector<std::size_t>,
-                                        bool);
-  template void WriteField<Dim::_1D, 6>(adios2::IO&,
-                                        adios2::Engine&,
-                                        const std::string&,
-                                        const ndfield_t<Dim::_1D, 6>&,
-                                        std::size_t,
-                                        std::vector<unsigned int>,
-                                        std::vector<std::size_t>,
-                                        bool);
-  template void WriteField<Dim::_2D, 3>(adios2::IO&,
-                                        adios2::Engine&,
-                                        const std::string&,
-                                        const ndfield_t<Dim::_2D, 3>&,
-                                        std::size_t,
-                                        std::vector<unsigned int>,
-                                        std::vector<std::size_t>,
-                                        bool);
-  template void WriteField<Dim::_2D, 6>(adios2::IO&,
-                                        adios2::Engine&,
-                                        const std::string&,
-                                        const ndfield_t<Dim::_2D, 6>&,
-                                        std::size_t,
-                                        std::vector<unsigned int>,
-                                        std::vector<std::size_t>,
-                                        bool);
-  template void WriteField<Dim::_3D, 3>(adios2::IO&,
-                                        adios2::Engine&,
-                                        const std::string&,
-                                        const ndfield_t<Dim::_3D, 3>&,
-                                        std::size_t,
-                                        std::vector<unsigned int>,
-                                        std::vector<std::size_t>,
-                                        bool);
-  template void WriteField<Dim::_3D, 6>(adios2::IO&,
-                                        adios2::Engine&,
-                                        const std::string&,
-                                        const ndfield_t<Dim::_3D, 6>&,
-                                        std::size_t,
-                                        std::vector<unsigned int>,
-                                        std::vector<std::size_t>,
-                                        bool);
-
+// 确保命名空间结束
 } // namespace out
+
