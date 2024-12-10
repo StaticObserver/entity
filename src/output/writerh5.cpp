@@ -4,7 +4,7 @@
 #include "arch/kokkos_aliases.h"
 #include "utils/error.h"
 #include "utils/formatting.h"
-#include "utils/param_container.h"
+#include "utils/param_container_h5.h"
 #include "utils/tools.h"
 
 #include <Kokkos_Core.hpp>
