@@ -194,10 +194,24 @@ class Visualizer(nt2r.Data):
         else:
             raise ValueError("Invalid type.")
         plt.figure(figsize=(8, 6))
-        plt.streamplot(X, Y, vx, vy, density=density)
+        plt.streamplot(X, Y, vx, vy, density=density, linewidth=0.5, arrowsize=0, arrowstyle='-')
         plt.xlabel("x")
         plt.ylabel("y")
         plt.axis('equal')
+        
+    def prtl_spectra(self, t, xlim=None, ylim=None):
+        sp = self.spectra.sel({'t':t}, method='nearest')
+        
+        plt.plot(sp.e, sp.n_1+sp.n_2)
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.xlabel(r"$\gamma - 1$")
+        if xlim is not None:
+            plt.xlim(xlim)
+        if ylim is not None:   
+            plt.ylim(ylim)
+        plt.title(f"t = {t}")
+        
 
         
         
