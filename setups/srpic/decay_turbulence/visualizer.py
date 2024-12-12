@@ -51,9 +51,9 @@ def compute_spectrum(field, dx, k_min=None, k_max=None, num_bins=200):
     k_mag = np.sqrt(kx**2 + ky**2).flatten()
     power_spectrum_flatten = power_spectrum.flatten()
     if k_max is None:
-        k_max = k_mag.max()
+        k_max = np.max(k_mag)
     if k_min is None:
-        k_min = k_mag.min()
+        k_min = np.min(k_mag[k_mag > 0])
     k_bins = np.linspace(k_min, k_max, num=num_bins)
     k_bin_centers = 0.5 * (k_bins[:-1] + k_bins[1:])
     dk = k_bins[1] - k_bins[0]
@@ -62,7 +62,8 @@ def compute_spectrum(field, dx, k_min=None, k_max=None, num_bins=200):
         np.sum(power_spectrum_flatten[k_indices == i]) if np.any(k_indices == i) else 0 
         for i in range(1, len(k_bins))
     ])
-    power_spectrum_binned /= (Nx * Ny)
+    power_spectrum_binned /= (Nx * Ny )
+    print(power_spectrum_binned)
     return k_bin_centers, power_spectrum_binned
 
 def compute_L(field, dx, k_min=None, k_max=None, num_bins=200):
@@ -114,14 +115,17 @@ class Visualizer(nt2r.Data):
                          field,
                          self.num_cpus)
     
-    def get_spectrum(self, name, t, k_min=0.0, k_max=None, num_bins=200):
+    def get_spectrum(self, name, t, k_min=None, k_max=None, num_bins=200):
         if name in self.field_map:
             field = self.field_map[name](self)
         elif hasattr(self, name):
             field = getattr(self, name)
         else:
             raise ValueError("Invalid type.")
-        return compute_spectrum(field.sel({'t': t}, method='nearest'), self.dx, k_min, k_max, num_bins)
+        field = field.sel({'t': t}, method='nearest').values
+        print(field)
+        k_bins, powers = compute_spectrum(field, self.dx, k_min, k_max, num_bins)
+        return k_bins, powers
     
     def get_L(self, name, times=None, k_min=None, k_max=None, num_bins=200):
         if times is None:
@@ -171,18 +175,16 @@ class Visualizer(nt2r.Data):
         np.savetxt("mean_{}.dat".format(name), np.column_stack((times, means)))
     
     def plot_spectrum(self, name, t, num_bins=200, y_min=None, y_max=None, **kwargs):
-        k_bins, powers = self.get_spectrum(name, t, num_bins)
-        fig, ax = plt.subplots()
-        ax.plot(k_bins, powers, '-', **kwargs)
-        ax.set_xlabel(r'$|k|$')
-        ax.set_ylabel('Energy Spectrum Density')
-        ax.set_title('t = {:.2f}'.format(t))
-        ax.grid(True)
+        k_bins, powers = self.get_spectrum(name, t, num_bins=num_bins)
+        print(powers)
+        plt.plot(k_bins, powers, **kwargs)
         if y_max is None:
             y_max = np.max(powers)
         if y_min is None:
             y_min = y_max / 1e6
-        ax.set_ylim(bottom=y_min, top=y_max)
+        plt.ylim([y_min, y_max])
+        plt.xscale('log')
+        plt.yscale('log')
         
     def field_line(self, name, t, density=2):
         x = np.array(self.coords['x'].values)
