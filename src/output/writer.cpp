@@ -50,7 +50,7 @@ void Writer::setMode() {
 
 void Writer::writeAttrs(const prm::Parameters& params) {
     H5::Group root = m_file->openGroup("/");
-    params.write(root);  // 假设您实现了 params.writeHDF5 方法
+    params.write(root);  // 假设您实现了 params.write方法
 }
 
 void Writer::defineMeshLayout(const std::vector<std::size_t>&  glob_shape,

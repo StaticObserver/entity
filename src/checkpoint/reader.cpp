@@ -26,13 +26,13 @@ void ReadFields(H5::H5File&                    file,
                 const std::vector<hsize_t>&    start,
                 const std::vector<hsize_t>&    count,
                 ndfield_t<D, N>&               array) {
-  logger::Checkpoint(fmt::format("Reading field: {}", field), HERE);
+  logger::Checkpoint(fmt::format("Reading field: %s", field.c_str()), HERE);
 
   H5::DataSet dataset;
   try {
     dataset = file.openDataSet(field);
   } catch (H5::Exception& e) {
-    raise::Error(fmt::format("Field variable: {} not found", field.c_str()), HERE);
+    raise::Error(fmt::format("Field variable: %s not found", field.c_str()), HERE);
   }
 
   H5::DataSpace fspace = dataset.getSpace();
@@ -187,17 +187,17 @@ void ReadParticleData(H5::H5File&    file,
   // 假设T为可直接对应的原生类型之一，如double, int等
   // 如果是非原生类型或需要to_string转换，需要额外处理
   // 简化：使用NATIVE_DOUBLE作为范例，对于int/float/short需要对应修改
-  H5::PredType dtype;
-  if constexpr (std::is_same_v<T, double>) dtype = H5::PredType::NATIVE_DOUBLE;
-  else if constexpr (std::is_same_v<T, float>) dtype = H5::PredType::NATIVE_FLOAT;
-  else if constexpr (std::is_same_v<T, int>) dtype = H5::PredType::NATIVE_INT;
-  else if constexpr (std::is_same_v<T, short>) dtype = H5::PredType::NATIVE_SHORT;
-  else {
-    // 若还有其他类型需要支持，请继续添加
+  if constexpr (std::is_same_v<T, double>) {
+    dataset.read(buffer.data(), H5::PredType::NATIVE_DOUBLE, mspace, fspace);
+  } else if constexpr (std::is_same_v<T, float>) {
+    dataset.read(buffer.data(), H5::PredType::NATIVE_FLOAT, mspace, fspace);
+  } else if constexpr (std::is_same_v<T, int>) {
+    dataset.read(buffer.data(), H5::PredType::NATIVE_INT, mspace, fspace);
+  } else if constexpr (std::is_same_v<T, short>) {
+    dataset.read(buffer.data(), H5::PredType::NATIVE_SHORT, mspace, fspace);
+  } else {
     static_assert(!sizeof(T*), "Unsupported particle data type");
   }
-
-  dataset.read(buffer.data(), dtype, mspace, fspace);
 
   auto array_h = Kokkos::create_mirror_view(array);
   for (size_t i = 0; i < count; i++) {

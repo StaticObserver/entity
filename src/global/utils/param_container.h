@@ -183,6 +183,7 @@ namespace prm {
 #if defined(OUTPUT_ENABLED)
     // 将ADIOS2的IO写出逻辑转为HDF5写出逻辑
     // 在实现时，需要在.cpp文件中包含H5Cpp.h和attr_writer.h，并调用out::writeAnyAttr
+    #include <H5Cpp.h>
     void write(H5::H5Object& obj) const;
 #endif
   };

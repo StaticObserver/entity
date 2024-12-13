@@ -31,15 +31,25 @@ namespace prm {
     H5::DataSpace scalar_space(H5S_SCALAR);
     // 对bool特殊处理，使用unsigned char表示
     if constexpr (std::is_same_v<T, bool>) {
-      unsigned char val = value ? 1 : 0;
-      auto attr = obj.createAttribute(name, H5::PredType::NATIVE_UCHAR, scalar_space);
-      attr.write(H5::PredType::NATIVE_UCHAR, &val);
+        unsigned char val = value ? 1 : 0;
+        auto attr = obj.createAttribute(name, H5::PredType::NATIVE_UCHAR, scalar_space);
+        attr.write(H5::PredType::NATIVE_UCHAR, &val);
     } else if constexpr (std::is_same_v<T, Dimension>) {
-      // 将Dimension转为unsigned short存储
-      unsigned short val = static_cast<unsigned short>(value);
-      auto attr = obj.createAttribute(name, H5::PredType::NATIVE_USHORT, scalar_space);
-      attr.write(H5::PredType::NATIVE_USHORT, &val);
-    } else {
+        // 将Dimension转为unsigned short存储
+        unsigned short val = static_cast<unsigned short>(value);
+        auto attr = obj.createAttribute(name, H5::PredType::NATIVE_USHORT, scalar_space);
+        attr.write(H5::PredType::NATIVE_USHORT, &val);
+    }else if constexpr (has_to_string<T>::value) {
+        // 有to_string的方法则转为string存储
+        std::string str_val = value.to_string();
+        H5::StrType str_type(0, H5T_VARIABLE);
+        auto attr = obj.createAttribute(name, str_type, scalar_space);
+        attr.write(str_type, str_val);
+    } else if constexpr (std::is_same_v<T, std::string>) {
+        H5::StrType str_type(0, H5T_VARIABLE);
+        auto attr = obj.createAttribute(name, str_type, scalar_space);
+        attr.write(str_type, value);
+    }else {
       // 其他类型根据类型选择HDF5原生类型
       // 简单起见，以double,int,unsigned int等类型为例，需要一个type selector
       // 在此简化处理，如下定义
@@ -55,24 +65,9 @@ namespace prm {
         else if constexpr (std::is_same_v<T, long double>) return H5::PredType::NATIVE_LDOUBLE;
         else if constexpr (std::is_same_v<T, unsigned long int>) return H5::PredType::NATIVE_ULONG;
         else {
-          // 对有to_string的类型存为string
-          if constexpr (has_to_string<T>::value) {
-            // 有to_string的方法则转为string存储
-            // 转为string:
-            std::string str_val = value.to_string();
-            H5::StrType str_type(0, H5T_VARIABLE);
-            auto attr = obj.createAttribute(name, str_type, scalar_space);
-            attr.write(str_type, str_val);
-            return H5::PredType(); // 返回空，因为已处理
-          } else if constexpr (std::is_same_v<T, std::string>) {
-            H5::StrType str_type(0, H5T_VARIABLE);
-            auto attr = obj.createAttribute(name, str_type, scalar_space);
-            attr.write(str_type, value);
-            return H5::PredType();
-          } else {
             static_assert(!sizeof(T*), "Unsupported scalar type");
           }
-        }
+        
       };
 
       if constexpr (!has_to_string<T>::value && !std::is_same_v<T, std::string>) {

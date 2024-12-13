@@ -9,6 +9,10 @@
 #include "utils/param_container.h"
 #include "utils/tools.h"
 
+#include "output/fields.h"
+#include "output/particles.h"
+#include "output/spectra.h"
+
 // HDF5 C++接口
 #include <H5Cpp.h>
 
@@ -33,6 +37,11 @@ namespace out {
     std::vector<unsigned int> m_dwn;
     // starting cell in each dimension (not including ghosts)
     std::vector<std::size_t>  m_flds_l_first;
+
+    // same but downsampled
+    std::vector<std::size_t> m_flds_g_shape_dwn;
+    std::vector<std::size_t> m_flds_l_corner_dwn;
+    std::vector<std::size_t> m_flds_l_shape_dwn;
 
     bool m_flds_ghosts { false };
 
@@ -97,7 +106,7 @@ namespace out {
     auto fname() const -> const std::string& {
       return m_fname;
     }
-    auto fieldWriters() const -> const std::string& {
+    auto fieldWriters() const -> const std::vector<OutputField>& {
       return m_flds_writers;
     }
     auto speciesWriters() const -> const std::vector<OutputSpecies>& {
