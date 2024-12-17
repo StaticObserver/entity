@@ -22,8 +22,8 @@ namespace ntt {
   void Engine<S, M>::init() {
     if constexpr (pgen_is_ok) {
 #if defined(OUTPUT_ENABLED)
-      m_metadomain.InitWriter(&m_adios, m_params, is_resuming);
-      m_metadomain.InitCheckpointWriter(&m_adios, m_params);
+      m_metadomain.InitWriter(m_params, is_resuming);
+      m_metadomain.InitCheckpointWriter(m_params);
 #endif
       logger::Checkpoint("Initializing Engine", HERE);
       if (not is_resuming) {

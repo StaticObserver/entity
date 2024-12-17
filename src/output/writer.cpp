@@ -1,10 +1,10 @@
-#include "writer.h"
+#include "output/writer.h"
 #include "global.h"
 
 #include "arch/kokkos_aliases.h"
 #include "utils/error.h"
 #include "utils/formatting.h"
-#include "utils/param_container_h5.h"
+#include "utils/param_container.h"
 #include "utils/tools.h"
 
 #include <Kokkos_Core.hpp>
@@ -17,7 +17,6 @@
 
 #include <string>
 #include <vector>
-#include <cstdio>  // for std::snprintf
 
 
 namespace out {
@@ -33,19 +32,15 @@ void Writer::addTracker(const std::string& type,
     m_trackers.insert({ type, tools::Tracker(type, interval, interval_time) });
 }
 
-bool Writer::shouldWrite(const std::string& type,
+auto Writer::shouldWrite(const std::string& type,
                            std::size_t step,
-                           long double time) {
+                           long double time) -> bool {
     if (m_trackers.find(type) != m_trackers.end()) {
         return m_trackers.at(type).shouldWrite(step, time);
     } else {
-        raise::Error(fmt::format("Tracker type {} not found", type.c_str()), HERE);
+        raise::Error(fmt::format("Tracker type %s not found", type.c_str()), HERE);
         return false;
     }
-}
-
-void Writer::setMode() {
-    // 在 HDF5 中模式由文件和数据集创建方式决定，此处无需实现
 }
 
 void Writer::writeAttrs(const prm::Parameters& params) {
@@ -66,26 +61,21 @@ void Writer::defineMeshLayout(const std::vector<std::size_t>&  glob_shape,
     m_flds_l_corner = loc_corner;
     m_flds_l_shape  = loc_shape;
 
-    m_flds_g_shape_dwn.clear();
-    m_flds_l_corner_dwn.clear();
-    m_flds_l_first.clear();
-    m_flds_l_shape_dwn.clear();
-
     for (std::size_t i = 0; i < glob_shape.size(); ++i) {
         raise::ErrorIf(dwn[i] != 1 && incl_ghosts,
                        "Downsampling with ghosts not supported",
                        HERE);
 
         const double g = static_cast<double>(glob_shape[i]);
-        const double dd = static_cast<double>(m_dwn[i]);
+        const double d = static_cast<double>(m_dwn[i]);
         const double l = static_cast<double>(loc_corner[i]);
         const double n = static_cast<double>(loc_shape[i]);
-        const double f = math::ceil(l / dd) * dd - l;  // 确保 math::ceil 在 tools.h 有定义
+        const double f = math::ceil(l / d) * d- l;  
 
-        m_flds_g_shape_dwn.push_back(static_cast<std::size_t>(math::ceil(g / dd)));
-        m_flds_l_corner_dwn.push_back(static_cast<std::size_t>(math::ceil(l / dd)));
+        m_flds_g_shape_dwn.push_back(static_cast<std::size_t>(math::ceil(g / d)));
+        m_flds_l_corner_dwn.push_back(static_cast<std::size_t>(math::ceil(l / d)));
         m_flds_l_first.push_back(static_cast<std::size_t>(f));
-        m_flds_l_shape_dwn.push_back(static_cast<std::size_t>(math::ceil((n - f) / dd)));
+        m_flds_l_shape_dwn.push_back(static_cast<std::size_t>(math::ceil((n - f) / d)));
     }
 
     H5::Group meshGroup;

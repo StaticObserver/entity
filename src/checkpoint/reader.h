@@ -52,7 +52,6 @@ namespace checkpoint {
    * @return A pair {global_particle_count, local_offset}.
    */
   std::pair<std::size_t, std::size_t> ReadParticleCount(H5::H5File& file,
-                                                        const std::string& dataset_name,
                                                         unsigned short some_param1,
                                                         std::size_t some_param2,
                                                         std::size_t some_param3);
@@ -62,7 +61,6 @@ namespace checkpoint {
    *
    * @tparam T Data type of the particle attribute to read.
    * @param file Reference to an opened H5::H5File object.
-   * @param dataset_name The name of the dataset from which particles are read.
    * @param species_id A parameter (previously used in ADIOS2 code), usage depends on original logic.
    * @param array The Kokkos array_t where data will be stored.
    * @param offset The starting offset in the dataset to read from.

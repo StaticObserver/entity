@@ -20,6 +20,25 @@
 
 namespace checkpoint {
 
+// 定义 detail::H5PredTypeSelector 用于类型映射
+namespace detail {
+  template<typename T>
+  struct H5PredTypeSelector {
+    static H5::PredType type() {
+      if constexpr (std::is_same_v<T,int>) return H5::PredType::NATIVE_INT;
+      else if constexpr (std::is_same_v<T,unsigned int>) return H5::PredType::NATIVE_UINT;
+      else if constexpr (std::is_same_v<T,std::size_t>) return H5::PredType::NATIVE_ULLONG;
+      else if constexpr (std::is_same_v<T,float>) return H5::PredType::NATIVE_FLOAT;
+      else if constexpr (std::is_same_v<T,double>) return H5::PredType::NATIVE_DOUBLE;
+      else if constexpr (std::is_same_v<T,short>) return H5::PredType::NATIVE_SHORT;
+      else {
+        static_assert(!sizeof(T*), "Unsupported type for H5PredTypeSelector");
+      }
+    }
+  };
+} // namespace detail
+
+
 void Writer::init(const std::string& filename,
                   std::size_t        interval,
                   long double        interval_time,
@@ -256,23 +275,6 @@ void Writer::saveParticleQuantity(const std::string& quantity,
 }
 
 
-// 定义 detail::H5PredTypeSelector 用于类型映射
-namespace detail {
-  template<typename T>
-  struct H5PredTypeSelector {
-    static H5::PredType type() {
-      if constexpr (std::is_same_v<T,int>) return H5::PredType::NATIVE_INT;
-      else if constexpr (std::is_same_v<T,unsigned int>) return H5::PredType::NATIVE_UINT;
-      else if constexpr (std::is_same_v<T,std::size_t>) return H5::PredType::NATIVE_ULLONG;
-      else if constexpr (std::is_same_v<T,float>) return H5::PredType::NATIVE_FLOAT;
-      else if constexpr (std::is_same_v<T,double>) return H5::PredType::NATIVE_DOUBLE;
-      else if constexpr (std::is_same_v<T,short>) return H5::PredType::NATIVE_SHORT;
-      else {
-        static_assert(!sizeof(T*), "Unsupported type for H5PredTypeSelector");
-      }
-    }
-  };
-} // namespace detail
 
 // 模板实例化
 template void Writer::savePerDomainVariable<int>(const std::string&, std::size_t, std::size_t, int);

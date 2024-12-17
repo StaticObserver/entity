@@ -68,8 +68,6 @@ namespace out {
     void init(const std::string& title); 
     // 不需要 adios2::ADIOS* 和 engine 参数了
 
-    void setMode(); // 不需要 adios2::Mode 参数，可根据需要自定义写模式
-
     void addTracker(const std::string&, std::size_t, long double);
     auto shouldWrite(const std::string&, std::size_t, long double) -> bool;
 
