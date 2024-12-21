@@ -31,9 +31,11 @@
 #endif // MPI_ENABLED
 
 #if defined(OUTPUT_ENABLED)
-  // 移除adios2相关包含，使用HDF5版本的writer
   #include "checkpoint/writer.h"
   #include "output/writer.h"
+
+  #include <adios2.h>
+  #include <adios2/cxx11/KokkosView.h>
 #endif // OUTPUT_ENABLED
 
 #include <functional>
@@ -41,7 +43,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include <numeric> // for std::accumulate
 
 namespace ntt {
 
@@ -55,8 +56,20 @@ namespace ntt {
     void finalValidityCheck() const;
     void metricCompatibilityCheck() const;
 
+    /**
+     * @brief Populates the g_subdomains vector with ...
+     * ... domains of proper shape, extent, index, and offset
+     */
     void createEmptyDomains();
+
+    /**
+     * @brief Populates the neighbor-pointers of each domain in g_subdomains
+     */
     void redefineNeighbors();
+
+    /**
+     * @brief Populates the boundary-conditions of each domain in g_subdomains
+     */
     void redefineBoundaries();
 
     template <typename Func, typename... Args>
@@ -77,6 +90,16 @@ namespace ntt {
     void SynchronizeFields(Domain<S, M>&, CommTags, const range_tuple_t& = { 0, 0 });
     void CommunicateParticles(Domain<S, M>&, timer::Timers*);
 
+    /**
+     * @param global_ndomains total number of domains
+     * @param global_decomposition decomposition of the global domain
+     * @param global_ncells number of cells in each dimension
+     * @param global_extent physical extent of the global domain
+     * @param global_flds_bc boundary conditions for fields
+     * @param global_prtl_bc boundary conditions for particles
+     * @param metric_params parameters for the metric
+     * @param species_params parameters for the particle species
+     */
     Metadomain(unsigned int,
                const std::vector<int>&,
                const std::vector<std::size_t>&,
@@ -92,23 +115,7 @@ namespace ntt {
     ~Metadomain() = default;
 
 #if defined(OUTPUT_ENABLED)
-    /**
-     * @brief 初始化用于输出场数据的writer (HDF5版本)
-     * @param params 仿真参数
-     * @param is_resuming 若为true表示从已有数据继续运行
-     */
-    void InitWriter(const SimulationParams&, bool is_resuming);
-
-    /**
-     * @brief 将场数据和粒子数据写出到HDF5文件中
-     * @param params 仿真参数
-     * @param current_step 当前步骤数
-     * @param finished_step 已完成步骤数
-     * @param current_time 当前时间
-     * @param finished_time 已完成时间
-     * @param extra_save_func 可选的额外输出回调函数
-     * @return 是否写出了数据
-     */
+    void InitWriter(adios2::ADIOS*, const SimulationParams&, bool is_resuming);
     auto Write(const SimulationParams&,
                std::size_t,
                std::size_t,
@@ -118,26 +125,17 @@ namespace ntt {
                                   ndfield_t<M::Dim, 6>&,
                                   std::size_t,
                                   const Domain<S, M>&)> = {}) -> bool;
-
-    /**
-     * @brief 初始化检查点写入器 (HDF5版本)
-     */
-    void InitCheckpointWriter(const SimulationParams&);
-
-    /**
-     * @brief 写出检查点数据 (HDF5版本)
-     */
+    void InitCheckpointWriter(adios2::ADIOS*, const SimulationParams&);
     auto WriteCheckpoint(const SimulationParams&,
                          std::size_t,
                          std::size_t,
                          long double,
                          long double) -> bool;
 
-    /**
-     * @brief 从检查点数据继续仿真 (HDF5版本)
-     */
-    void ContinueFromCheckpoint(const SimulationParams&);
+    void ContinueFromCheckpoint(adios2::ADIOS*, const SimulationParams&);
 #endif
+
+    /* setters -------------------------------------------------------------- */
 
     /* getters -------------------------------------------------------------- */
     [[nodiscard]]
@@ -202,7 +200,7 @@ namespace ntt {
     [[nodiscard]]
     auto l_npart() const -> std::size_t {
       const auto npart = l_npart_perspec();
-      return std::accumulate(npart.begin(), npart.end(), 0ull);
+      return std::accumulate(npart.begin(), npart.end(), 0);
     }
 
     [[nodiscard]]
@@ -244,9 +242,8 @@ namespace ntt {
     const std::vector<ParticleSpecies>  g_species_params;
 
 #if defined(OUTPUT_ENABLED)
-    // 使用HDF5版本的writer
-    out::Writer        g_writer;           // 对应重构后的 output/writerh5.h
-    checkpoint::Writer g_checkpoint_writer; // 对应重构后的 checkpoint/writerh5.h
+    out::Writer        g_writer;
+    checkpoint::Writer g_checkpoint_writer;
 #endif
 
 #if defined(MPI_ENABLED)
@@ -257,5 +254,3 @@ namespace ntt {
 } // namespace ntt
 
 #endif // FRAMEWORK_DOMAIN_METADOMAIN_H
-
-

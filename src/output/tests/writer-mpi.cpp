@@ -10,13 +10,13 @@
 #include <adios2/cxx11/KokkosView.h>
 #include <mpi.h>
 
-#include <filesystem>
+#include <experimental/filesystem>
 #include <iostream>
 #include <string>
 #include <vector>
 
 void cleanup() {
-  namespace fs = std::filesystem;
+  namespace fs = std::experimental::filesystem;
   fs::path tempfile_path { "test.h5" };
   fs::remove(tempfile_path);
 }
@@ -30,7 +30,6 @@ auto main(int argc, char* argv[]) -> int {
   int mpi_rank, mpi_size;
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
-
   try {
     using namespace ntt;
     constexpr auto nx1    = 10;
@@ -56,10 +55,11 @@ auto main(int argc, char* argv[]) -> int {
     }
 
     adios2::ADIOS adios { MPI_COMM_WORLD };
-
+    
     {
       // write
       auto writer = out::Writer();
+      //printf("rank: %d", mpi_rank);
       writer.init(&adios, "hdf5", "test");
       writer.defineMeshLayout({ static_cast<unsigned long>(mpi_size) * nx1 },
                               { static_cast<unsigned long>(mpi_rank) * nx1 },
@@ -77,15 +77,14 @@ auto main(int argc, char* argv[]) -> int {
       writer.beginWriting(0, 0.0);
       writer.writeField<Dim::_1D, 3>(field_names, field, addresses);
       writer.endWriting();
-
       writer.beginWriting(1, 0.1);
       writer.writeField<Dim::_1D, 3>(field_names, field, addresses);
       writer.endWriting();
       adios.ExitComputationBlock();
     }
-
-    adios.FlushAll();
-
+    //adios.FlushAll();
+    printf("finish writing\n");
+    fflush(stdout);
     {
       // read
       adios2::IO io = adios.DeclareIO("read-test");
@@ -173,6 +172,8 @@ auto main(int argc, char* argv[]) -> int {
           ++cntr;
         }
       }
+      printf("finish reading\n");
+      fflush(stdout);
       reader.Close();
     }
 
@@ -190,5 +191,4 @@ auto main(int argc, char* argv[]) -> int {
   Kokkos::finalize();
   return 0;
 }
-
 #undef CEILDIV

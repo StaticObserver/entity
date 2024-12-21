@@ -1,32 +1,46 @@
-#ifndef OUTPUT_WRITERH5_H
-#define OUTPUT_WRITERH5_H
+/**
+ * @file output/writer.h
+ * @brief Writer class which takes care of data output
+ */
 
-#include <string>
-#include <vector>
-#include <map>
+#ifndef OUTPUT_WRITER_H
+#define OUTPUT_WRITER_H
 
 #include "enums.h"
+#include "global.h"
+
+#include "arch/kokkos_aliases.h"
 #include "utils/param_container.h"
 #include "utils/tools.h"
 
-// HDF5 C++接口
-#include <H5Cpp.h>
+#include "output/fields.h"
+#include "output/particles.h"
+#include "output/spectra.h"
+
+#include <adios2.h>
+#include <adios2/cxx11/KokkosView.h>
+
+#if defined(MPI_ENABLED)
+  #include <mpi.h>
+#endif
+
+#include <string>
+#include <vector>
 
 namespace out {
 
   class Writer {
-    H5::H5File* m_file { nullptr };
+    adios2::ADIOS* p_adios { nullptr };
 
-    std::string m_fname;
-    std::string m_engine;  // 可能不再需要，但保留以兼容已有逻辑
-
-    bool m_writing_mode { false };
+    adios2::IO     m_io;
+    adios2::Engine m_writer;
+    adios2::Mode   m_mode { adios2::Mode::Write };
 
     // global shape of the fields array to output
     std::vector<std::size_t> m_flds_g_shape;
     // local corner of the fields array to output
     std::vector<std::size_t> m_flds_l_corner;
-     // local shape of the fields array to output
+    // local shape of the fields array to output
     std::vector<std::size_t> m_flds_l_shape;
 
     // downsampling factors for each dimension
@@ -34,7 +48,14 @@ namespace out {
     // starting cell in each dimension (not including ghosts)
     std::vector<std::size_t>  m_flds_l_first;
 
-    bool m_flds_ghosts { false };
+    // same but downsampled
+    adios2::Dims m_flds_g_shape_dwn;
+    adios2::Dims m_flds_l_corner_dwn;
+    adios2::Dims m_flds_l_shape_dwn;
+
+    bool        m_flds_ghosts;
+    std::string m_engine;
+    std::string m_fname;
 
     std::map<std::string, tools::Tracker> m_trackers;
 
@@ -42,24 +63,18 @@ namespace out {
     std::vector<OutputSpecies> m_prtl_writers;
     std::vector<OutputSpectra> m_spectra_writers;
 
-    // 这里需要存储 DataSet 的信息（如 step, time, 等）
-    // 可在 init 时创建基础数据集或在 beginWriting 时动态创建
+    bool m_writing_mode { false };
 
   public:
     Writer() {}
-    ~Writer() {
-      if (m_file) {
-        delete m_file;
-        m_file = nullptr;
-      }
-    }
+
+    ~Writer() = default;
 
     Writer(Writer&&) = default;
 
-    void init(const std::string& title); 
-    // 不需要 adios2::ADIOS* 和 engine 参数了
+    void init(adios2::ADIOS*, const std::string&, const std::string&);
 
-    void setMode(); // 不需要 adios2::Mode 参数，可根据需要自定义写模式
+    void setMode(adios2::Mode);
 
     void addTracker(const std::string&, std::size_t, long double);
     auto shouldWrite(const std::string&, std::size_t, long double) -> bool;
@@ -94,15 +109,19 @@ namespace out {
     void beginWriting(std::size_t, long double);
     void endWriting();
 
+    /* getters -------------------------------------------------------------- */
     auto fname() const -> const std::string& {
       return m_fname;
     }
-    auto fieldWriters() const -> const std::string& {
+
+    auto fieldWriters() const -> const std::vector<OutputField>& {
       return m_flds_writers;
     }
+
     auto speciesWriters() const -> const std::vector<OutputSpecies>& {
       return m_prtl_writers;
     }
+
     auto spectraWriters() const -> const std::vector<OutputSpectra>& {
       return m_spectra_writers;
     }
@@ -110,4 +129,4 @@ namespace out {
 
 } // namespace out
 
-#endif // OUTPUT_WRITERH5_H
+#endif // OUTPUT_WRITER_H

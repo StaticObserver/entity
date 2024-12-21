@@ -125,11 +125,11 @@ namespace ntt {
           timers.stop("CurrentFiltering");
         }
 
-        timers.start("Communications");
-        if ((sort_interval > 0) and (step % sort_interval == 0)) {
-          m_metadomain.CommunicateParticles(dom, &timers);
-        }
-        timers.stop("Communications");
+        //timers.start("Communications");
+        //if ((sort_interval > 0) and (step % sort_interval == 0)) {
+        //  m_metadomain.CommunicateParticles(dom, &timers);
+        //}
+        //timers.stop("Communications");
       }
 
       if (fieldsolver_enabled) {

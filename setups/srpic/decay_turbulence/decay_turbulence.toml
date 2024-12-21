@@ -40,8 +40,10 @@
   maxnpart = 1e8
 
 [setup]
-file_bx1 = "bx1.dat"
-file_bx2 = "bx2.dat"
+mode1 = 1
+mode2 = 8
+b_rms = 1.0
+bz = 1.0
 temperature = 1.0
   
 [output]

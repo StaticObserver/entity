@@ -26,189 +26,78 @@ namespace user {
   class InitFields {
   public:
 
-  // 修改 interpolate 函数，支持任意维度
-  Inline real_t interpolate(const ndfield_t<D, 1>& data, const coord_t<D>& x_Ph) const {
-    // 获取插值点的坐标
-    real_t xi[D];
-    real_t t[D];
-    size_t idx[D];
+  InitFields(const unsigned int mode1,
+             const unsigned int mode2,
+             const real_t lx_,
+             const real_t b_rms_,
+             const real_t bz_)
+             : n1 { mode1 }, 
+               n2 { mode2 },
+               lx { lx_ } ,
+               b_rms { b_rms_ } ,
+               bz { bz_ },
+               phases { "Phases", n2 - n1 + 1, n2 - n1 + 1 } {
+                raise::FatalIf(n2 <= n1, "Mode n2 must be greater than n1.", HERE);
+                Kokkos::Random_XorShift1024_Pool<HostExeSpace> pool { constant::RandomSeed };
+                Kokkos::Random_XorShift1024_Pool<HostExeSpace>::generator_type  rand_gen = pool.get_state();
+                auto phases_h = Kokkos::create_mirror_view(phases);
+                for (size_t i = 0; i < n2 - n1 + 1; ++i) {
+                  for (size_t j = 0; j < n2 - n1 + 1; ++j) {
+                    phases_h(i, j, 0) = rand_gen.drand() * constant::TWO_PI;
+                    phases_h(i, j, 1) = rand_gen.drand() * constant::TWO_PI;
+                  }
+                }
+                Kokkos::deep_copy(phases, phases_h);
+                pool.free_state(rand_gen);
+               }
+  ~InitFields() = default;
 
-    // 计算每个维度的网格间距和索引
-    for (int d = 0; d < D; ++d) {
-      real_t dx = (extent_x_view(d, 1) - extent_x_view(d, 0)) / (nx[d] - 1);
-      xi[d] = (x_Ph[d] - extent_x_view(d, 0)) / dx;
-      idx[d] = static_cast<size_t>(xi[d]);
-      if (idx[d] >= nx[d] - 1) idx[d] = nx[d] - 2;
-      t[d] = xi[d] - idx[d];
-    }
-
-    // 进行多维线性插值
-    return multidimensionalInterpolation(data, idx, t);
-  }
-
-  // 通用的多维线性插值函数
-  Inline real_t multidimensionalInterpolation(const ndfield_t<D, 1>& data, const size_t idx[], const real_t t[]) const {
-    if constexpr (D == Dim::_1D) {
-      // 一维插值
-      real_t f0 = data(idx[0], 0);
-      real_t f1 = data(idx[0] + 1, 0);
-      return (1 - t[0]) * f0 + t[0] * f1;
-    } else if constexpr (D == Dim::_2D) {
-      // 二维插值
-      return bilinearInterpolation(data, idx, t);
-    } else if constexpr (D == Dim::_3D) {
-      // 三维插值
-      return trilinearInterpolation(data, idx, t);
-    } else {
-      throw std::runtime_error("不支持的维度");
-    }
-  }
-
-  // 二维线性插值
-  Inline real_t bilinearInterpolation(const ndfield_t<D, 1>& data, const size_t idx[], const real_t t[]) const {
-    real_t f00 = data(idx[0], idx[1], 0);
-    real_t f10 = data(idx[0] + 1, idx[1], 0);
-    real_t f01 = data(idx[0], idx[1] + 1, 0);
-    real_t f11 = data(idx[0] + 1, idx[1] + 1, 0);
-    return (1 - t[0]) * (1 - t[1]) * f00
-        + t[0] * (1 - t[1]) * f10
-        + (1 - t[0]) * t[1] * f01
-        + t[0] * t[1] * f11;
-  }
-
-  // 三维线性插值
-  Inline real_t trilinearInterpolation(const ndfield_t<D, 1>& data, const size_t idx[], const real_t t[]) const {
-    real_t f000 = data(idx[0], idx[1], idx[2], 0);
-    real_t f100 = data(idx[0] + 1, idx[1], idx[2], 0);
-    real_t f010 = data(idx[0], idx[1] + 1, idx[2], 0);
-    real_t f110 = data(idx[0] + 1, idx[1] + 1, idx[2], 0);
-    real_t f001 = data(idx[0], idx[1], idx[2] + 1, 0);
-    real_t f101 = data(idx[0] + 1, idx[1], idx[2] + 1, 0);
-    real_t f011 = data(idx[0], idx[1] + 1, idx[2] + 1, 0);
-    real_t f111 = data(idx[0] + 1, idx[1] + 1, idx[2] + 1, 0);
-    return ((1 - t[0]) * (1 - t[1]) * (1 - t[2]) * f000
-          + t[0] * (1 - t[1]) * (1 - t[2]) * f100
-          + (1 - t[0]) * t[1] * (1 - t[2]) * f010
-          + t[0] * t[1] * (1 - t[2]) * f110
-          + (1 - t[0]) * (1 - t[1]) * t[2] * f001
-          + t[0] * (1 - t[1]) * t[2] * f101
-          + (1 - t[0]) * t[1] * t[2] * f011
-          + t[0] * t[1] * t[2] * f111);
-  }
-
-  // 根据维度定义磁场分量函数
   Inline auto bx1(const coord_t<D>& x_Ph) const {
-    return interpolate(bx1_data, x_Ph);
+    if(D != Dim::_2D) {
+      return ZERO;
+    }else{
+      real_t value { ZERO };
+      for (size_t i = 0; i < n2 - n1 + 1; ++i) {
+        for (size_t j = 0; j < n2 - n1 + 1; ++j) {
+          value += 2.0 * b_rms * (n1 + i) / (n2 - n1) / math::sqrt(SQR(n1 + i) + SQR(n1 + j))
+                  * math::sin(constant::TWO_PI * (n1 + j) * x_Ph[0] / lx + phases(i, j, 0))
+                  * math::cos(constant::TWO_PI * (n1 + i) * x_Ph[1] / lx + phases(i, j, 1));
+        }
+      }
+      return value;
+    }
   }
 
   Inline auto bx2(const coord_t<D>& x_Ph) const {
-      return interpolate(bx2_data, x_Ph);
+    if(D != Dim::_2D) {
+      return ZERO;
+    }else{
+      real_t value { ZERO };
+      for (size_t i = 0; i < n2 - n1 + 1; ++i) {
+        for (size_t j = 0; j < n2 - n1 + 1; ++j) {
+          value += - 2.0 * b_rms * (n1 + j) / (n2 - n1) / math::sqrt(SQR(n1 + i) + SQR(n1 + j))
+                  * math::cos(constant::TWO_PI * (n1 + j) * x_Ph[0] / lx + phases(i, j, 0))
+                  * math::sin(constant::TWO_PI * (n1 + i) * x_Ph[1] / lx + phases(i, j, 1));
+        }
+      }
+      return value;
+    }
   }
 
   Inline auto bx3(const coord_t<D>& x_Ph) const {
-    return b0;
+    return bz;
   }
-
-  // 构造函数声明
-  InitFields(const std::vector<std::string>& files_bx,
-            const boundaries_t<real_t>& extent_x,
-            const real_t& b0);
-  
-    // 通用的初始化磁场数据函数
-  void initializeFieldData(const std::string& file_name, ndfield_t<D, 1>& field_data, size_t nx[]);
 
   private:
-    ndfield_t<D, 1> bx1_data;
-    ndfield_t<D, 1> bx2_data;
-    ndfield_t<D, 1> bx3_data;
-    size_t nx[D] = {0};
-    array_t<real_t* [2]> extent_x_view;
-    const real_t b0;
+    const unsigned int n1;
+    const unsigned int n2;
+    const real_t lx;
+    const real_t b_rms;
+    const real_t bz;
+    array_t<real_t **[2]> phases;
+
   };
 
-  // 类外定义构造函数
-  template <Dimension D>
-  InitFields<D>::InitFields(const std::vector<std::string>& files_bx,
-                            const boundaries_t<real_t>& extent_x,
-                            const real_t& b0)
-    : extent_x_view("extent_x_view", D),
-      b0 { b0 } { // 初始化 Kokkos View
-    // 将 extent_x 的数据复制到 Kokkos View
-    auto temp_extent_x = Kokkos::create_mirror_view(extent_x_view);
-    for (int d = 0; d < D; ++d) {
-      temp_extent_x(d, 0) = extent_x[d].first;
-      temp_extent_x(d, 1) = extent_x[d].second;
-    }
-    Kokkos::deep_copy(extent_x_view, temp_extent_x);
-
-    // 读取和初始化磁场分量数据
-    initializeFieldData(files_bx[0], bx1_data, nx);
-    if constexpr (D >= Dim::_2D) {
-      initializeFieldData(files_bx[1], bx2_data, nx);
-    }
-    if constexpr (D == Dim::_3D) {
-      initializeFieldData(files_bx[2], bx3_data, nx);
-    }
-  }
-
-  // 通用的初始化磁场数据函数
-  template <Dimension D>
-  void InitFields<D>::initializeFieldData(const std::string& file_name, ndfield_t<D, 1>& field_data, size_t nx[]){
-    std::ifstream input_file(file_name);
-    if (!input_file.is_open()) {
-      throw std::runtime_error("无法打开文件：" + file_name);
-    }
-
-    std::vector<real_t> temp_data;
-    std::string line;
-
-    while (std::getline(input_file, line)) {
-      std::istringstream iss(line);
-      real_t value;
-      while (iss >> value) {
-        temp_data.push_back(value);
-      }
-    }
-    input_file.close();
-
-    // 设置 nx 的值
-    if constexpr (D == Dim::_1D) {
-      nx[0] = temp_data.size();
-      field_data = ndfield_t<D, 1>("field_data", nx[0]);
-    } else if constexpr (D == Dim::_2D) {
-      nx[0] = static_cast<size_t>(std::sqrt(temp_data.size()));
-      nx[1] = nx[0];
-      field_data = ndfield_t<D, 1>("field_data", nx[0], nx[1]);
-    } else if constexpr (D == Dim::_3D) {
-      nx[0] = static_cast<size_t>(std::cbrt(temp_data.size()));
-      nx[1] = nx[0];
-      nx[2] = nx[0];
-      field_data = ndfield_t<D, 1>("field_data", nx[0], nx[1], nx[2]);
-    }
-
-    // 创建镜像视图并填充数据
-    auto field_data_mirror = Kokkos::create_mirror_view(field_data);
-    if constexpr (D == Dim::_1D) {
-      for (size_t i = 0; i < nx[0]; ++i) {
-        field_data_mirror(i, 0) = temp_data[i];
-      }
-    } else if constexpr (D == Dim::_2D) {
-      for (size_t i = 0; i < nx[0]; ++i) {
-        for (size_t j = 0; j < nx[1]; ++j) {
-          field_data_mirror(i, j, 0) = temp_data[i * nx[1] + j];
-        }
-      }
-    } else if constexpr (D == Dim::_3D) {
-      for (size_t i = 0; i < nx[0]; ++i) {
-        for (size_t j = 0; j < nx[1]; ++j) {
-          for (size_t k = 0; k < nx[2]; ++k) {
-            field_data_mirror(i, j, k, 0) = temp_data[i * nx[1] * nx[2] + j * nx[2] + k];
-          }
-        }
-      }
-    }
-    Kokkos::deep_copy(field_data, field_data_mirror);
-  }
 
   template <SimEngine::type S, class M>
   struct PGen : public arch::ProblemGenerator<S, M> {
@@ -228,11 +117,12 @@ namespace user {
 
     inline PGen(const SimulationParams& params, const Metadomain<S, M>& global_domain)
       : arch::ProblemGenerator<S, M> { params },
-        init_flds { { params.template get<std::string>("setup.file_bx1"),
-                      params.template get<std::string>("setup.file_bx2")},
-                    { global_domain.mesh().extent(in::x1),
-                      global_domain.mesh().extent(in::x2)},
-                       params.template get<real_t>("setup.b0", 1.0) },
+        init_flds { static_cast<unsigned int>(params.template get<int>("setup.mode1")),
+                    static_cast<unsigned int>(params.template get<int>("setup.mode2")),
+                    global_domain.mesh().extent(in::x1).second - 
+                    global_domain.mesh().extent(in::x1).first,
+                    params.template get<real_t>("setup.b_rms", 1.0),
+                    params.template get<real_t>("setup.bz", 1.0) },
         temperature { params.template get<real_t>("setup.temperature", 0.1) }{}
 
 

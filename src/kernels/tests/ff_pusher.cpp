@@ -104,7 +104,7 @@ void testFFPusher(const std::vector<std::size_t>&      res,
   array_t<real_t*>   px1 { "px1", 30 };
   array_t<short*>    tag { "tag", 30 };
   
-  const auto sep = { static_cast<real_t>(0.1 * res[0]) };
+  const auto sep { static_cast<real_t>(0.1 * res[0]) };
   real_t x1i { ZERO };
   int ii { 0 };
   prtldx_t dx1i { ZERO };
