@@ -4,7 +4,7 @@
  * @implements
  *   - ntt::GRPICEngine<> : ntt::Engine<>
  * @cpp:
- *   - srpic.cpp
+ *   - grpic.cpp
  * @namespaces:
  *   - ntt::
  */
@@ -18,7 +18,6 @@
 #include "utils/toml.h"
 
 #include "framework/domain/domain.h"
-#include "framework/parameters.h"
 
 #include "engines/engine.hpp"
 
