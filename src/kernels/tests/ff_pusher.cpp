@@ -104,7 +104,7 @@ void testFFPusher(const std::vector<std::size_t>&      res,
   array_t<real_t*>   px1 { "px1", 30 };
   array_t<short*>    tag { "tag", 30 };
   
-  const auto sep = { static_cast<real_t>(0.1 * res[0]) };
+  const auto sep { static_cast<real_t>(0.1 * res[0]) };
   real_t x1i { ZERO };
   int ii { 0 };
   prtldx_t dx1i { ZERO };
@@ -130,7 +130,7 @@ void testFFPusher(const std::vector<std::size_t>&      res,
     from_Xi_to_i_di(x1i, ii, dx1i)
     put_value<int>(i1, ii, n);
     put_value<prtldx_t>(dx1, dx1i, n);
-    put_value<real_t>(px1, ZERO, n);
+    put_value<real_t>(px1, ONE, n);
     put_value<short>(tag, ParticleTag::alive, n);
   }
   
@@ -259,7 +259,7 @@ auto main(int argc, char* argv[]) -> int {
     testFFPusher<SimEngine::GRPIC, BoyerLindqTP<Dim::_1D>>(
       { 128 },
       { { 2.0, 20.0 } },
-        5,
+        100,
       { { "a", (real_t)0.95 } , 
         { "psi0", (real_t)1.0 } , 
         { "theta0", (real_t)1.0 } , 
