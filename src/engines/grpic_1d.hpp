@@ -133,11 +133,6 @@ namespace ntt {
 
         }
 
-        {
-          timers.start("Injector");
-          DischargeInjector(dom);
-          timers.stop("Injector");
-        }
     }
 
     void ParticlePush(domain_t& domain) {
