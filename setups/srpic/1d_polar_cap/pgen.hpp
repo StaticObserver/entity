@@ -38,11 +38,11 @@ namespace user {
     MFields(real_t b0, real_t angle) : b0 { b0 }, angle { angle } {}
 
     Inline auto bx1(const coord_t<D>& x_Ph) const -> real_t {
-      return b0 * math::cos(angle);
+      return -b0 * math::cos(angle);
     }
 
     Inline auto bx2(const coord_t<D>& x_Ph) const -> real_t {
-      return b0 * math::sin(angle);
+      return -b0 * math::sin(angle);
     }
 
   private:
