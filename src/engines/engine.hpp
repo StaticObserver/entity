@@ -56,10 +56,11 @@ namespace ntt {
 
   protected:
 #if defined(OUTPUT_ENABLED)
-#if MPI_ENABLED
+  #if defined(MPI_ENABLED)
     adios2::ADIOS m_adios { MPI_COMM_WORLD };
-#else
+  #else
     adios2::ADIOS m_adios;
+  #endif
 #endif
 #endif // OUTPUT_ENABLED
 
