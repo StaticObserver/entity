@@ -81,6 +81,8 @@ namespace ntt {
         "algorithms.toggles.deposit");
       const auto clear_interval = m_params.template get<std::size_t>(
         "particles.clear_interval");
+      const auto force_free = m_params.template get<bool>(
+        "setup.force_free");
 
       if (step == 0) {
         // communicate fields and apply BCs on the first timestep
@@ -113,6 +115,20 @@ namespace ntt {
           timers.start("CurrentDeposit");
           Kokkos::deep_copy(dom.fields.cur, ZERO);
           CurrentsDeposit(dom);
+          if constexpr (force_free) {
+            auto jff = m_params.template get<real_t>("setup.jff");
+            auto skin0 = m_params.template get<real_t>("scales.skin0");
+            auto larmor0 = m_params.template get<real_t>("scales.larmor0");
+            auto B0 = m_params.template get<real_t>("setup.B0");
+            auto Omega = static_cast<real_t>(constant::TWO_PI) / m_params.template get<real_t>("setup.period", ONE) 
+            jff *= TWO * B0 * Omega * SQR(skin0) / larmor0;
+            Kokkos::parallel_for("FFCurrentCorrection",
+                                  dom.mesh.ExtentToRange(dom.mesh.extent(in::x1), {false, true}),
+                                  [](const size_t i){
+                                    dom.fields.cur.access(i, cur::jx1) -= jff;
+                                  }
+                                  )
+          }
           timers.stop("CurrentDeposit");
 
           timers.start("Communications");
