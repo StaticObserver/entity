@@ -60,7 +60,7 @@
 [setup]
   B0  = 1.0
   period = 1.0
-  R = 1.0
+  R = 10.0
   jff = 1.0
   angle = 0.0
   theta = 0.0

@@ -18,11 +18,11 @@ namespace user {
     InitFields(real_t b0, real_t angle) : b0 { b0 }, angle { angle } {}
 
     Inline auto bx1(const coord_t<D>& x_Ph) const -> real_t {
-      return b0 * math::cos(angle);
+      return -b0 * math::cos(angle);
     }
 
     Inline auto bx2(const coord_t<D>& x_Ph) const -> real_t {
-      return ZERO;
+      return -b0 * math::sin(angle);
     }
 
     Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
@@ -44,6 +44,7 @@ namespace user {
     Inline auto bx2(const coord_t<D>& x_Ph) const -> real_t {
       return -b0 * math::sin(angle);
     }
+
 
   private:
     const real_t b0, angle;
@@ -95,7 +96,7 @@ namespace user {
     using arch::ProblemGenerator<S, M>::C;
     using arch::ProblemGenerator<S, M>::params;
 
-    const real_t  B0, angle, R, Omega, theta, skin0, larmor0;
+    const real_t  B0, angle, R, Omega, theta;
     InitFields<D> init_flds;
 
     inline PGen(const SimulationParams& p, const Metadomain<S, M>& m)
@@ -106,8 +107,6 @@ namespace user {
                 p.template get<real_t>("setup.period", ONE) }
       , angle { p.template get<real_t>("setup.angle", ZERO) }
       , theta { p.template get<real_t>("setup.theta", ZERO) }
-      , skin0 { p.template get<real_t>("scales.skindepth0") }
-      , larmor0 { p.template get<real_t>("scales.larmor0") }
       , init_flds { B0, angle} {}
 
     inline PGen() {}

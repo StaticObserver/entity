@@ -111,11 +111,11 @@ namespace kernel::mink {
 
     Inline void operator()(index_t i1) const {
       if constexpr (D == Dim::_1D) {
-        J(i1, cur::jx1) *= inv_n0 - J0;
+        J(i1, cur::jx1) *= inv_n0;
         J(i1, cur::jx2) *= inv_n0;
         J(i1, cur::jx3) *= inv_n0;
 
-        E(i1, em::ex1) += J(i1, cur::jx1) * coeff;
+        E(i1, em::ex1) += (J(i1, cur::jx1) - J0)* coeff;
         E(i1, em::ex2) += J(i1, cur::jx2) * coeff;
         E(i1, em::ex3) += J(i1, cur::jx3) * coeff;
       } else {
