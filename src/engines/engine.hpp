@@ -61,7 +61,6 @@ namespace ntt {
   #else
     adios2::ADIOS m_adios;
   #endif
-#endif
 #endif // OUTPUT_ENABLED
 
     SimulationParams m_params;

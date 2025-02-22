@@ -39,7 +39,7 @@ namespace out {
 
     m_io.DefineVariable<std::size_t>("Step");
     m_io.DefineVariable<long double>("Time");
-    m_fname = title;
+    m_fname = title + + (m_engine == "hdf5" ? ".h5" : ".bp");
   }
 
   void Writer::addTracker(const std::string& type,

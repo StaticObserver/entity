@@ -81,8 +81,6 @@ namespace ntt {
         "algorithms.toggles.deposit");
       const auto clear_interval = m_params.template get<std::size_t>(
         "particles.clear_interval");
-      const auto force_free = m_params.template get<bool>(
-        "setup.force_free");
 
       if (step == 0) {
         // communicate fields and apply BCs on the first timestep
@@ -115,20 +113,22 @@ namespace ntt {
           timers.start("CurrentDeposit");
           Kokkos::deep_copy(dom.fields.cur, ZERO);
           CurrentsDeposit(dom);
-          if constexpr (force_free) {
-            auto jff = m_params.template get<real_t>("setup.jff");
-            auto skin0 = m_params.template get<real_t>("scales.skin0");
-            auto larmor0 = m_params.template get<real_t>("scales.larmor0");
-            auto B0 = m_params.template get<real_t>("setup.B0");
-            auto Omega = static_cast<real_t>(constant::TWO_PI) / m_params.template get<real_t>("setup.period", ONE) 
-            jff *= TWO * B0 * Omega * SQR(skin0) / larmor0;
-            Kokkos::parallel_for("FFCurrentCorrection",
-                                  dom.mesh.ExtentToRange(dom.mesh.extent(in::x1), {false, true}),
-                                  [](const size_t i){
-                                    dom.fields.cur.access(i, cur::jx1) -= jff;
-                                  }
-                                  )
-          }
+          // {
+          //   auto jff = m_params.template get<real_t>("setup.jff");
+          //   auto skin0 = m_params.template get<real_t>("scales.skin0");
+          //   auto larmor0 = m_params.template get<real_t>("scales.larmor0");
+          //   auto B0 = m_params.template get<real_t>("setup.B0");
+          //   auto Omega = static_cast<real_t>(constant::TWO_PI) / m_params.template get<real_t>("setup.period", ONE);
+          //   auto j = Kokkos::Experimental::create_scatter_view(dom.fields.cur);
+          //   Kokkos::deep_copy(j, dom.fields.cur);
+          //   Kokkos::parallel_for("FFCurrentCorrection",
+          //                         dom.mesh.rangeActiveCells(),
+          //                         [&j, jff](const size_t i){
+          //                           j.access(i, cur::jx1) -= jff;
+          //                         }
+          //                         );
+          //   Kokkos::deep_copy(dom.fields.cur, j);
+          // }
           timers.stop("CurrentDeposit");
 
           timers.start("Communications");
@@ -545,6 +545,7 @@ namespace ntt {
       if constexpr (M::CoordType == Coord::Cart) {
         // minkowski case
         const auto V0 = m_params.template get<real_t>("scales.V0");
+        const auto jff = m_params.template get<real_t>("setup.jff");
 
         Kokkos::parallel_for(
           "Ampere",
@@ -552,7 +553,8 @@ namespace ntt {
           kernel::mink::CurrentsAmpere_kernel<M::Dim>(domain.fields.em,
                                                       domain.fields.cur,
                                                       coeff / V0,
-                                                      ONE / n0));
+                                                      ONE / n0,
+                                                      jff));
       } else {
         auto       range = range_with_axis_BCs(domain);
         const auto ni2   = domain.mesh.n_active(in::x2);
