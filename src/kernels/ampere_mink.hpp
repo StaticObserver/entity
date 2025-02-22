@@ -95,20 +95,23 @@ namespace kernel::mink {
     // coeff = -dt * q0 * n0 / (B0 * V0)
     const real_t    coeff;
     const real_t    inv_n0;
+    const real_t    J0;
 
   public:
     CurrentsAmpere_kernel(const ndfield_t<D, 6>& E,
                           const ndfield_t<D, 3>  J,
                           real_t                 coeff,
-                          real_t                 inv_n0)
+                          real_t                 inv_n0,
+                          real_t                 J0)
       : E { E }
       , J { J }
       , coeff { coeff }
-      , inv_n0 { inv_n0 } {}
+      , inv_n0 { inv_n0 }
+      , J0 { J0 } {}
 
     Inline void operator()(index_t i1) const {
       if constexpr (D == Dim::_1D) {
-        J(i1, cur::jx1) *= inv_n0;
+        J(i1, cur::jx1) *= inv_n0 - J0;
         J(i1, cur::jx2) *= inv_n0;
         J(i1, cur::jx3) *= inv_n0;
 
