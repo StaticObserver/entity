@@ -113,22 +113,6 @@ namespace ntt {
           timers.start("CurrentDeposit");
           Kokkos::deep_copy(dom.fields.cur, ZERO);
           CurrentsDeposit(dom);
-          // {
-          //   auto jff = m_params.template get<real_t>("setup.jff");
-          //   auto skin0 = m_params.template get<real_t>("scales.skin0");
-          //   auto larmor0 = m_params.template get<real_t>("scales.larmor0");
-          //   auto B0 = m_params.template get<real_t>("setup.B0");
-          //   auto Omega = static_cast<real_t>(constant::TWO_PI) / m_params.template get<real_t>("setup.period", ONE);
-          //   auto j = Kokkos::Experimental::create_scatter_view(dom.fields.cur);
-          //   Kokkos::deep_copy(j, dom.fields.cur);
-          //   Kokkos::parallel_for("FFCurrentCorrection",
-          //                         dom.mesh.rangeActiveCells(),
-          //                         [&j, jff](const size_t i){
-          //                           j.access(i, cur::jx1) -= jff;
-          //                         }
-          //                         );
-          //   Kokkos::deep_copy(dom.fields.cur, j);
-          // }
           timers.stop("CurrentDeposit");
 
           timers.start("Communications");

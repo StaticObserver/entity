@@ -15,22 +15,27 @@ namespace user {
 
   template <Dimension D>
   struct InitFields {
-    InitFields(real_t b0, real_t angle) : b0 { b0 }, angle { angle } {}
+    InitFields(real_t b0, real_t angle, real_t Omega, real_t d0, real_t rho0) 
+          : b0 { b0 }
+          , angle { angle }
+          , Omega { Omega }
+          , skindepth0 { d0 }
+          , larmor0 { rho0 } {}
 
     Inline auto bx1(const coord_t<D>& x_Ph) const -> real_t {
-      return -b0 * math::cos(angle);
+      return b0 * math::cos(angle);
     }
 
     Inline auto bx2(const coord_t<D>& x_Ph) const -> real_t {
-      return -b0 * math::sin(angle);
+      return b0 * math::sin(angle);
     }
 
     Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
-      return x_Ph[0];
+      return Omega * b0 * (math::sin(angle) * R + TWO * SQR(skindepth0) * x_Ph[0] / larmor0);
     }
 
   private:
-    const real_t b0, angle;
+    const real_t b0, angle, R, Omega, skindepth0, larmor0;
   };
 
   template <Dimension D>
@@ -38,11 +43,11 @@ namespace user {
     MFields(real_t b0, real_t angle) : b0 { b0 }, angle { angle } {}
 
     Inline auto bx1(const coord_t<D>& x_Ph) const -> real_t {
-      return -b0 * math::cos(angle);
+      return b0 * math::cos(angle);
     }
 
     Inline auto bx2(const coord_t<D>& x_Ph) const -> real_t {
-      return -b0 * math::sin(angle);
+      return b0 * math::sin(angle);
     }
 
 
@@ -52,12 +57,11 @@ namespace user {
 
   template <Dimension D>
   struct DriveFields : public InitFields<D> {
-    DriveFields(real_t time, real_t b0, real_t angle, real_t omega, real_t r, real_t theta)
+    DriveFields(real_t time, real_t b0, real_t angle, real_t omega, real_t r)
       : InitFields<D> { b0, angle}
       , time { time }
       , Omega { omega }
-      , R { r }
-      , theta { theta } {}
+      , R { r }{}
 
     using InitFields<D>::bx1;
     using InitFields<D>::bx2;
@@ -67,11 +71,11 @@ namespace user {
     }
 
     Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
-      return Omega * bx2(x_Ph) * R * math::sin(theta);
+      return Omega * bx2(x_Ph) * R;
     }
 
     Inline auto ex2(const coord_t<D>& x_Ph) const -> real_t {
-      return -Omega * bx1(x_Ph) * R * math::sin(theta);
+      return -Omega * bx1(x_Ph) * R;
     }
 
     Inline auto ex3(const coord_t<D>&) const -> real_t {
@@ -79,7 +83,7 @@ namespace user {
     }
 
   private:
-    const real_t time, Omega, R, theta;
+    const real_t time, Omega, R;
   };
 
   template <SimEngine::type S, class M>
@@ -96,7 +100,7 @@ namespace user {
     using arch::ProblemGenerator<S, M>::C;
     using arch::ProblemGenerator<S, M>::params;
 
-    const real_t  B0, angle, R, Omega, theta;
+    const real_t  B0, angle, R, Omega, skindepth0, larmor0;
     InitFields<D> init_flds;
 
     inline PGen(const SimulationParams& p, const Metadomain<S, M>& m)
@@ -106,13 +110,14 @@ namespace user {
       , Omega { static_cast<real_t>(constant::TWO_PI) /
                 p.template get<real_t>("setup.period", ONE) }
       , angle { p.template get<real_t>("setup.angle", ZERO) }
-      , theta { p.template get<real_t>("setup.theta", ZERO) }
+      , skindepth0 { p.template get<real_t>("scales.skindepth0") }
+      , larmor0 { p.template get<real_t>("scales.larmor0") }
       , init_flds { B0, angle} {}
 
     inline PGen() {}
 
     auto AtmFields(real_t time) const -> DriveFields<D> {
-      return DriveFields<D> { time, B0, angle, Omega, R, theta };
+      return DriveFields<D> { time, B0, angle, Omega, R, skindepth0, larmor0 };
     }
 
     auto MatchFields(real_t) const -> MFields<D> {
