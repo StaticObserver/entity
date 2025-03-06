@@ -126,13 +126,7 @@ namespace ntt {
         }
 
         timers.start("Communications");
-<<<<<<< HEAD
-        if ((sort_interval > 0) and (step % sort_interval == 0)) {
-         m_metadomain.CommunicateParticles(dom, &timers);
-        }
-=======
         m_metadomain.CommunicateParticles(dom);
->>>>>>> dev/cpu_mpi
         timers.stop("Communications");
       }
 

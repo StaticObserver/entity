@@ -74,24 +74,6 @@ namespace ntt {
   auto Particles<D, C>::NpartsPerTagAndOffsets() const
     -> std::pair<std::vector<std::size_t>, array_t<std::size_t*>> {
     auto                  this_tag = tag;
-<<<<<<< HEAD
-    std::vector<std::size_t> npart_tag_vec;
-
-    for (std::size_t t { 0 }; t < ntags(); ++t) {
-      std::size_t npart_tag = 0;
-      Kokkos::parallel_reduce(
-        "NpartPerTag",
-        npart(),
-        Lambda(index_t p, std::size_t& loc_npart_tag) {
-          if (this_tag(p) == t) {
-            loc_npart_tag++;
-          }
-        }, npart_tag);
-      npart_tag_vec.push_back(npart_tag);
-    }
-    
-    return npart_tag_vec;
-=======
     const auto            num_tags = ntags();
     array_t<std::size_t*> npptag { "nparts_per_tag", ntags() };
 
@@ -160,7 +142,6 @@ namespace ntt {
                       std::make_pair(static_cast<std::size_t>(0), n_alive),
                       Kokkos::ALL),
       buffer);
->>>>>>> dev/cpu_mpi
   }
 
   template <Dimension D, Coord::type C>
