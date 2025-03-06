@@ -143,12 +143,12 @@ namespace comm {
       }
       if (send_rank >= 0) {
         if constexpr (D == Dim::_1D) {
-          send_fld = ndarray_t<2>("send_fld",
+          auto host_send_fld = ndarray_mirror_t<2>("send_fld",
                                   send_slice[0].second - send_slice[0].first,
                                   comps.second - comps.first);
           Kokkos::deep_copy(send_fld, Kokkos::subview(fld, send_slice[0], comps));
         } else if constexpr (D == Dim::_2D) {
-          send_fld = ndarray_t<3>("send_fld",
+          auto host_send_fld = ndarray_mirror_t<3>("send_fld",
                                   send_slice[0].second - send_slice[0].first,
                                   send_slice[1].second - send_slice[1].first,
                                   comps.second - comps.first);
@@ -156,7 +156,7 @@ namespace comm {
             send_fld,
             Kokkos::subview(fld, send_slice[0], send_slice[1], comps));
         } else if constexpr (D == Dim::_3D) {
-          send_fld = ndarray_t<4>("send_fld",
+          auto host_send_fld = ndarray_mirror_t<4>("send_fld",
                                   send_slice[0].second - send_slice[0].first,
                                   send_slice[1].second - send_slice[1].first,
                                   send_slice[2].second - send_slice[2].first,
@@ -168,16 +168,16 @@ namespace comm {
       }
       if (recv_rank >= 0) {
         if constexpr (D == Dim::_1D) {
-          recv_fld = ndarray_t<2>("recv_fld",
+          host_recv_fld = ndarray_mirror_t<2>("recv_fld",
                                   recv_slice[0].second - recv_slice[0].first,
                                   comps.second - comps.first);
         } else if constexpr (D == Dim::_2D) {
-          recv_fld = ndarray_t<3>("recv_fld",
+          host_recv_fld = ndarray_mirror_t<3>("recv_fld",
                                   recv_slice[0].second - recv_slice[0].first,
                                   recv_slice[1].second - recv_slice[1].first,
                                   comps.second - comps.first);
         } else if constexpr (D == Dim::_3D) {
-          recv_fld = ndarray_t<4>("recv_fld",
+          host_recv_fld = ndarray_mirror_t<4>("recv_fld",
                                   recv_slice[0].second - recv_slice[0].first,
                                   recv_slice[1].second - recv_slice[1].first,
                                   recv_slice[2].second - recv_slice[2].first,
@@ -186,12 +186,12 @@ namespace comm {
       }
 
       if (send_rank >= 0 && recv_rank >= 0) {
-        MPI_Sendrecv(send_fld.data(),
+        MPI_Sendrecv(host_send_fld.data(),
                      nsend,
                      mpi::get_type<real_t>(),
                      send_rank,
                      0,
-                     recv_fld.data(),
+                     host_recv_fld.data(),
                      nrecv,
                      mpi::get_type<real_t>(),
                      recv_rank,
@@ -199,7 +199,7 @@ namespace comm {
                      MPI_COMM_WORLD,
                      MPI_STATUS_IGNORE);
       } else if (send_rank >= 0) {
-        MPI_Send(send_fld.data(),
+        MPI_Send(host_send_fld.data(),
                  nsend,
                  mpi::get_type<real_t>(),
                  send_rank,
@@ -207,7 +207,7 @@ namespace comm {
                  MPI_COMM_WORLD);
 
       } else if (recv_rank >= 0) {
-        MPI_Recv(recv_fld.data(),
+        MPI_Recv(host_recv_fld.data(),
                  nrecv,
                  mpi::get_type<real_t>(),
                  recv_rank,
@@ -223,17 +223,17 @@ namespace comm {
         // !TODO: perhaps directly recv to the fld?
         if (not additive) {
           if constexpr (D == Dim::_1D) {
-            Kokkos::deep_copy(Kokkos::subview(fld, recv_slice[0], comps), recv_fld);
+            Kokkos::deep_copy(Kokkos::subview(fld, recv_slice[0], comps), host_recv_fld);
           } else if constexpr (D == Dim::_2D) {
             Kokkos::deep_copy(
-              Kokkos::subview(fld, recv_slice[0], recv_slice[1], comps),
-              recv_fld);
+              Kokkos::subview(fld, recv_slice[0], recv_slice[1], comps), host_recv_fld);
           } else if constexpr (D == Dim::_3D) {
             Kokkos::deep_copy(
-              Kokkos::subview(fld, recv_slice[0], recv_slice[1], recv_slice[2], comps),
-              recv_fld);
+              Kokkos::subview(fld, recv_slice[0], recv_slice[1], recv_slice[2], comps), host_recv_fld);
           }
         } else {
+          auto recv_fld = Kokkos::create_mirror_view(host_recv_fld);
+          Kokkos::deep_copy(recv_fld, host_recv_fld);
           if constexpr (D == Dim::_1D) {
             const auto offset_x1 = recv_slice[0].first;
             const auto offset_c  = comps.first;
@@ -407,77 +407,112 @@ namespace comm {
                          recv_buff_int.extent(0),
                        "incorrect # of recv particles",
                        HERE);
-        MPI_Sendrecv(send_buff_int.data(),
+        auto host_send_buff_int = Kokkos::create_mirror_view(send_buff_int);
+        auto host_send_buff_real = Kokkos::create_mirror_view(send_buff_real);
+        auto host_send_buff_prtldx = Kokkos::create_mirror_view(send_buff_prtldx);
+        auto host_recv_buff_int = Kokkos::create_mirror_view(recv_buff_int);
+        auto host_recv_buff_real = Kokkos::create_mirror_view(recv_buff_real);
+        auto host_recv_buff_prtldx = Kokkos::create_mirror_view(recv_buff_prtldx);
+        
+        Kokkos::deep_copy(host_send_buff_int, send_buff_int);
+        Kokkos::deep_copy(host_send_buff_real, send_buff_real);
+        Kokkos::deep_copy(host_send_buff_prtldx, send_buff_prtldx);
+
+        MPI_Sendrecv(host_send_buff_int.data(),
                      npart_send_in * NINTS,
                      mpi::get_type<int>(),
                      send_rank,
                      0,
-                     recv_buff_int.data() + recv_offset_int,
+                     host_recv_buff_int.data() + recv_offset_int,
                      npart_recv_in * NINTS,
                      mpi::get_type<int>(),
                      recv_rank,
                      0,
                      MPI_COMM_WORLD,
                      MPI_STATUS_IGNORE);
-        MPI_Sendrecv(send_buff_real.data(),
+        MPI_Sendrecv(host_send_buff_real.data(),
                      npart_send_in * NREALS,
                      mpi::get_type<real_t>(),
                      send_rank,
                      0,
-                     recv_buff_real.data() + recv_offset_real,
+                     host_recv_buff_real.data() + recv_offset_real,
                      npart_recv_in * NREALS,
                      mpi::get_type<real_t>(),
                      recv_rank,
                      0,
                      MPI_COMM_WORLD,
                      MPI_STATUS_IGNORE);
-        MPI_Sendrecv(send_buff_prtldx.data(),
+        MPI_Sendrecv(host_send_buff_prtldx.data(),
                      npart_send_in * NPRTLDX,
                      mpi::get_type<prtldx_t>(),
                      send_rank,
                      0,
-                     recv_buff_prtldx.data() + recv_offset_prtldx,
+                     host_recv_buff_prtldx.data() + recv_offset_prtldx,
                      npart_recv_in * NPRTLDX,
                      mpi::get_type<prtldx_t>(),
                      recv_rank,
                      0,
                      MPI_COMM_WORLD,
                      MPI_STATUS_IGNORE);
+        
+        Kokkos::deep_copy(recv_buff_int, host_recv_buff_int);
+        Kokkos::deep_copy(recv_buff_real, host_recv_buff_real);
+        Kokkos::deep_copy(recv_buff_prtldx, host_recv_buff_prtldx);
+
         if (NPLDS > 0) {
-          MPI_Sendrecv(send_buff_pld.data(),
+          auto host_send_buff_pld = Kokkos::create_mirror_view(send_buff_pld);
+          auto host_recv_buff_pld = Kokkos::create_mirror_view(recv_buff_pld);
+          
+          Kokkos::deep_copy(host_send_buff_pld, send_buff_pld);
+
+          MPI_Sendrecv(host_send_buff_pld.data(),
                        npart_send_in * NPLDS,
                        mpi::get_type<real_t>(),
                        send_rank,
                        0,
-                       recv_buff_pld.data() + recv_offset_pld,
+                       host_recv_buff_pld.data() + recv_offset_pld,
                        npart_recv_in * NPLDS,
                        mpi::get_type<real_t>(),
                        recv_rank,
                        0,
                        MPI_COMM_WORLD,
                        MPI_STATUS_IGNORE);
+          
+          Kokkos::deep_copy(recv_buff_pld, host_recv_buff_pld);
         }
       } else if ((send_rank >= 0) and (npart_send_in > 0)) {
-        MPI_Send(send_buff_int.data(),
+        auto host_send_buff_int = Kokkos::create_mirror_view(send_buff_int);
+        auto host_send_buff_real = Kokkos::create_mirror_view(send_buff_real);
+        auto host_send_buff_prtldx = Kokkos::create_mirror_view(send_buff_prtldx);
+        
+        Kokkos::deep_copy(host_send_buff_int, send_buff_int);
+        Kokkos::deep_copy(host_send_buff_real, send_buff_real);
+        Kokkos::deep_copy(host_send_buff_prtldx, send_buff_prtldx);
+        
+
+        MPI_Send(host_send_buff_int.data(),
                  npart_send_in * NINTS,
                  mpi::get_type<int>(),
                  send_rank,
                  0,
                  MPI_COMM_WORLD);
-        MPI_Send(send_buff_real.data(),
+        MPI_Send(host_send_buff_real.data(),
                  npart_send_in * NREALS,
                  mpi::get_type<real_t>(),
                  send_rank,
                  0,
                  MPI_COMM_WORLD);
-        MPI_Send(send_buff_prtldx.data(),
+        MPI_Send(host_send_buff_prtldx.data(),
                  npart_send_in * NPRTLDX,
                  mpi::get_type<prtldx_t>(),
                  send_rank,
                  0,
                  MPI_COMM_WORLD);
         if (NPLDS > 0) {
-          MPI_Send(send_buff_pld.data(),
+          auto host_send_buff_pld = Kokkos::create_mirror_view(send_buff_pld);
+          Kokkos::deep_copy(host_send_buff_pld, send_buff_pld);
+
+          MPI_Send(host_send_buff_pld.data(),
                    npart_send_in * NPLDS,
                    mpi::get_type<real_t>(),
                    send_rank,
@@ -489,35 +524,48 @@ namespace comm {
                          recv_buff_int.extent(0),
                        "incorrect # of recv particles",
                        HERE);
-        MPI_Recv(recv_buff_int.data() + recv_offset_int,
+        auto host_recv_buff_int = Kokkos::create_mirror_view(recv_buff_int);
+        auto host_recv_buff_real = Kokkos::create_mirror_view(recv_buff_real);
+        auto host_recv_buff_prtldx = Kokkos::create_mirror_view(recv_buff_prtldx);
+        
+        MPI_Recv(host_recv_buff_int.data() + recv_offset_int,
                  npart_recv_in * NINTS,
                  mpi::get_type<int>(),
                  recv_rank,
                  0,
                  MPI_COMM_WORLD,
                  MPI_STATUS_IGNORE);
-        MPI_Recv(recv_buff_real.data() + recv_offset_real,
+        MPI_Recv(host_recv_buff_real.data() + recv_offset_real,
                  npart_recv_in * NREALS,
                  mpi::get_type<real_t>(),
                  recv_rank,
                  0,
                  MPI_COMM_WORLD,
                  MPI_STATUS_IGNORE);
-        MPI_Recv(recv_buff_prtldx.data() + recv_offset_prtldx,
+        MPI_Recv(host_recv_buff_prtldx.data() + recv_offset_prtldx,
                  npart_recv_in * NPRTLDX,
                  mpi::get_type<prtldx_t>(),
                  recv_rank,
                  0,
                  MPI_COMM_WORLD,
                  MPI_STATUS_IGNORE);
+         
+        Kokkos::deep_copy(recv_buff_int, host_recv_buff_int);
+        Kokkos::deep_copy(recv_buff_real, host_recv_buff_real);
+        Kokkos::deep_copy(recv_buff_prtldx, host_recv_buff_prtldx);
+
         if (NPLDS > 0) {
-          MPI_Recv(recv_buff_pld.data() + recv_offset_pld,
+          auto host_recv_buff_pld = Kokkos::create_mirror_view(recv_buff_pld);
+
+          MPI_Recv(host_recv_buff_pld.data() + recv_offset_pld,
                    npart_recv_in * NPLDS,
                    mpi::get_type<real_t>(),
                    recv_rank,
                    0,
                    MPI_COMM_WORLD,
                    MPI_STATUS_IGNORE);
+
+          Kokkos::deep_copy(recv_buff_pld, host_recv_buff_pld);
         }
       }
       current_received += npart_recv_in;
