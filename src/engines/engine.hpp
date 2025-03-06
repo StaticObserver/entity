@@ -62,6 +62,7 @@ namespace ntt {
     adios2::ADIOS m_adios;
   #endif
 #endif
+#endif // OUTPUT_ENABLED
 
     SimulationParams m_params;
     Metadomain<S, M> m_metadomain;
