@@ -31,4 +31,8 @@ gen_test(fields_to_phys)
 gen_test(prtls_to_phys)
 gen_test(gca_pusher)
 gen_test(prtl_bc)
+<<<<<<< HEAD
 gen_test(ff_pusher)
+=======
+gen_test(flds_bc)
+>>>>>>> dev/cpu_mpi

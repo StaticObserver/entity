@@ -76,6 +76,9 @@ namespace kokkos_aliases_hidden {
 template <unsigned short D>
 using ndarray_t = typename kokkos_aliases_hidden::ndarray_impl<D>::type;
 
+template <unsigned short D>
+using ndarray_mirror_t = typename ndarray_t<D>::HostMirror;
+
 namespace kokkos_aliases_hidden {
   // c++ magic
   template <Dimension D, unsigned short N>
