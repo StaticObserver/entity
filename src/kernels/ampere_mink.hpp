@@ -92,25 +92,24 @@ namespace kernel::mink {
   class CurrentsAmpere_kernel {
     ndfield_t<D, 6> E;
     ndfield_t<D, 3> J;
-    // coeff = -dt * q0 * n0 / (B0 * V0)
+    // coeff = -dt * q0 * n0 / B0
     const real_t    coeff;
-    const real_t    inv_n0;
 
   public:
     CurrentsAmpere_kernel(const ndfield_t<D, 6>& E,
                           const ndfield_t<D, 3>  J,
                           real_t                 coeff,
-                          real_t                 inv_n0)
+                          real_t                 inv_ppc0)
       : E { E }
       , J { J }
       , coeff { coeff }
-      , inv_n0 { inv_n0 } {}
+      , inv_ppc0 { inv_ppc0 } {}
 
     Inline void operator()(index_t i1) const {
       if constexpr (D == Dim::_1D) {
-        J(i1, cur::jx1) *= inv_n0;
-        J(i1, cur::jx2) *= inv_n0;
-        J(i1, cur::jx3) *= inv_n0;
+        J(i1, cur::jx1) *= inv_ppc0;
+        J(i1, cur::jx2) *= inv_ppc0;
+        J(i1, cur::jx3) *= inv_ppc0;
 
         E(i1, em::ex1) += J(i1, cur::jx1) * coeff;
         E(i1, em::ex2) += J(i1, cur::jx2) * coeff;
@@ -124,9 +123,9 @@ namespace kernel::mink {
 
     Inline void operator()(index_t i1, index_t i2) const {
       if constexpr (D == Dim::_2D) {
-        J(i1, i2, cur::jx1) *= inv_n0;
-        J(i1, i2, cur::jx2) *= inv_n0;
-        J(i1, i2, cur::jx3) *= inv_n0;
+        J(i1, i2, cur::jx1) *= inv_ppc0;
+        J(i1, i2, cur::jx2) *= inv_ppc0;
+        J(i1, i2, cur::jx3) *= inv_ppc0;
 
         E(i1, i2, em::ex1) += J(i1, i2, cur::jx1) * coeff;
         E(i1, i2, em::ex2) += J(i1, i2, cur::jx2) * coeff;
@@ -141,9 +140,9 @@ namespace kernel::mink {
 
     Inline void operator()(index_t i1, index_t i2, index_t i3) const {
       if constexpr (D == Dim::_3D) {
-        J(i1, i2, i3, cur::jx1) *= inv_n0;
-        J(i1, i2, i3, cur::jx2) *= inv_n0;
-        J(i1, i2, i3, cur::jx3) *= inv_n0;
+        J(i1, i2, i3, cur::jx1) *= inv_ppc0;
+        J(i1, i2, i3, cur::jx2) *= inv_ppc0;
+        J(i1, i2, i3, cur::jx3) *= inv_ppc0;
 
         E(i1, i2, i3, em::ex1) += J(i1, i2, i3, cur::jx1) * coeff;
         E(i1, i2, i3, em::ex2) += J(i1, i2, i3, cur::jx2) * coeff;
