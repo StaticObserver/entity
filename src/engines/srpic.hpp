@@ -89,20 +89,20 @@ namespace ntt {
         ParticleInjector(dom);
       }
 
-      if (fieldsolver_enabled) {
-        timers.start("FieldSolver");
-        Faraday(dom, HALF);
-        timers.stop("FieldSolver");
+      // if (fieldsolver_enabled) {
+      //   timers.start("FieldSolver");
+      //   Faraday(dom, HALF);
+      //   timers.stop("FieldSolver");
 
-        timers.start("Communications");
-        m_metadomain.CommunicateFields(dom, Comm::B);
-        timers.stop("Communications");
+      //   timers.start("Communications");
+      //   m_metadomain.CommunicateFields(dom, Comm::B);
+      //   timers.stop("Communications");
 
-        timers.start("FieldBoundaries");
-        FieldBoundaries(dom, BC::B);
-        timers.stop("FieldBoundaries");
-        Kokkos::fence();
-      }
+      //   timers.start("FieldBoundaries");
+      //   FieldBoundaries(dom, BC::B);
+      //   timers.stop("FieldBoundaries");
+      //   Kokkos::fence();
+      // }
 
       {
         timers.start("ParticlePusher");
@@ -131,27 +131,39 @@ namespace ntt {
       }
 
       if (fieldsolver_enabled) {
-        timers.start("FieldSolver");
-        Faraday(dom, HALF);
-        timers.stop("FieldSolver");
+        // timers.start("FieldSolver");
+        // Faraday(dom, HALF);
+        // timers.stop("FieldSolver");
 
-        timers.start("Communications");
-        m_metadomain.CommunicateFields(dom, Comm::B);
-        timers.stop("Communications");
+        // timers.start("Communications");
+        // m_metadomain.CommunicateFields(dom, Comm::B);
+        // timers.stop("Communications");
 
-        timers.start("FieldBoundaries");
-        FieldBoundaries(dom, BC::B);
-        timers.stop("FieldBoundaries");
+        // timers.start("FieldBoundaries");
+        // FieldBoundaries(dom, BC::B);
+        // timers.stop("FieldBoundaries");
 
-        timers.start("FieldSolver");
-        Ampere(dom, ONE);
-        timers.stop("FieldSolver");
+        // timers.start("FieldSolver");
+        // Ampere(dom, ONE);
+        // timers.stop("FieldSolver");
 
         if (deposit_enabled) {
           timers.start("FieldSolver");
           CurrentsAmpere(dom);
           timers.stop("FieldSolver");
         }
+
+        auto& cur_view = dom.fields.cur; // Reference to the view
+        real_t j_mean = 0.0;
+        Kokkos::parallel_reduce(
+          "MeanJ",
+          dom.mesh.rangeActiveCells(),
+          KOKKOS_LAMBDA(const std::size_t i, real_t& j_mean_local) {
+            j_mean_local += cur_view(i, cur::jx1); // Use the captured view
+          },
+          j_mean);
+
+        std::cout << "Mean Jx1: " << j_mean / dom.mesh.n_active(in::x1) << std::endl;
 
         timers.start("Communications");
         m_metadomain.CommunicateFields(dom, Comm::E | Comm::J);
@@ -525,20 +537,25 @@ namespace ntt {
       const auto q0    = m_params.template get<real_t>("scales.q0");
       const auto n0    = m_params.template get<real_t>("scales.n0");
       const auto B0    = m_params.template get<real_t>("scales.B0");
+      const auto skin0    = m_params.template get<real_t>("scales.skindepth0");
+      const auto larmor0  = m_params.template get<real_t>("scales.larmor0");
+      const auto b0    = m_params.template get<real_t>("setup.B0");
+      const auto omega = constant::TWO_PI / m_params.template get<real_t>("setup.period");
+      const auto rho_ff = -TWO * b0 * omega * SQR(skin0) / larmor0;
       const auto coeff = -dt * q0 * n0 / B0;
       if constexpr (M::CoordType == Coord::Cart) {
         // minkowski case
         const auto V0 = m_params.template get<real_t>("scales.V0");
-        const auto jff = m_params.template get<real_t>("setup.jff");
-
-        Kokkos::parallel_for(
+        auto j0 = TWO * constant::TWO_PI * rho_ff * m_params.template get<real_t>("setup.j0");
+        j0 /= domain.mesh.metric.dxMin();
+         Kokkos::parallel_for(
           "Ampere",
           domain.mesh.rangeActiveCells(),
           kernel::mink::CurrentsAmpere_kernel<M::Dim>(domain.fields.em,
                                                       domain.fields.cur,
-                                                      coeff / V0,
-                                                      ONE / n0,
-                                                      jff));
+                                                      coeff ,
+                                                      ONE / (n0 * V0),
+                                                      j0));
       } else {
         auto       range = range_with_axis_BCs(domain);
         const auto ni2   = domain.mesh.n_active(in::x2);

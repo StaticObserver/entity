@@ -1051,7 +1051,7 @@ namespace kernel::sr {
     Inline void boundaryConditions(index_t& p, coord_t<M::PrtlDim>& xp) const {
       if constexpr (D == Dim::_1D || D == Dim::_2D || D == Dim::_3D) {
         auto invert_vel = false;
-        if (i1(p) < 0) {
+        if (i1(p) < -1) {
           if (is_periodic_i1min) {
             i1(p)      += ni1;
             i1_prev(p) += ni1;
@@ -1062,7 +1062,7 @@ namespace kernel::sr {
             dx1(p)     = ONE - dx1(p);
             invert_vel = true;
           }
-        } else if (i1(p) >= ni1) {
+        } else if (i1(p) >= ni1 + 1) {
           if (is_periodic_i1max) {
             i1(p)      -= ni1;
             i1_prev(p) -= ni1;
