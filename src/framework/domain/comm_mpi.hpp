@@ -143,12 +143,12 @@ namespace comm {
       }
       if (send_rank >= 0) {
         if constexpr (D == Dim::_1D) {
-          auto host_send_fld = ndarray_mirror_t<2>("send_fld",
+          send_fld = ndarray_t<2>("send_fld",
                                   send_slice[0].second - send_slice[0].first,
                                   comps.second - comps.first);
           Kokkos::deep_copy(send_fld, Kokkos::subview(fld, send_slice[0], comps));
         } else if constexpr (D == Dim::_2D) {
-          auto host_send_fld = ndarray_mirror_t<3>("send_fld",
+          send_fld = ndarray_t<3>("send_fld",
                                   send_slice[0].second - send_slice[0].first,
                                   send_slice[1].second - send_slice[1].first,
                                   comps.second - comps.first);
@@ -156,7 +156,7 @@ namespace comm {
             send_fld,
             Kokkos::subview(fld, send_slice[0], send_slice[1], comps));
         } else if constexpr (D == Dim::_3D) {
-          auto host_send_fld = ndarray_mirror_t<4>("send_fld",
+          send_fld = ndarray_t<4>("send_fld",
                                   send_slice[0].second - send_slice[0].first,
                                   send_slice[1].second - send_slice[1].first,
                                   send_slice[2].second - send_slice[2].first,
@@ -168,22 +168,26 @@ namespace comm {
       }
       if (recv_rank >= 0) {
         if constexpr (D == Dim::_1D) {
-          host_recv_fld = ndarray_mirror_t<2>("recv_fld",
+          recv_fld = ndarray_t<2>("recv_fld",
                                   recv_slice[0].second - recv_slice[0].first,
                                   comps.second - comps.first);
         } else if constexpr (D == Dim::_2D) {
-          host_recv_fld = ndarray_mirror_t<3>("recv_fld",
+          recv_fld = ndarray_t<3>("recv_fld",
                                   recv_slice[0].second - recv_slice[0].first,
                                   recv_slice[1].second - recv_slice[1].first,
                                   comps.second - comps.first);
         } else if constexpr (D == Dim::_3D) {
-          host_recv_fld = ndarray_mirror_t<4>("recv_fld",
+          recv_fld = ndarray_t<4>("recv_fld",
                                   recv_slice[0].second - recv_slice[0].first,
                                   recv_slice[1].second - recv_slice[1].first,
                                   recv_slice[2].second - recv_slice[2].first,
                                   comps.second - comps.first);
         }
       }
+      auto host_send_fld = Kokkos::create_mirror_view(send_fld);
+      auto host_recv_fld = Kokkos::create_mirror_view(recv_fld);
+       
+      Kokkos::deep_copy(host_send_fld, send_fld);
 
       if (send_rank >= 0 && recv_rank >= 0) {
         MPI_Sendrecv(host_send_fld.data(),
@@ -198,6 +202,8 @@ namespace comm {
                      0,
                      MPI_COMM_WORLD,
                      MPI_STATUS_IGNORE);
+        
+        Kokkos::deep_copy(recv_fld, host_recv_fld);
       } else if (send_rank >= 0) {
         MPI_Send(host_send_fld.data(),
                  nsend,
@@ -214,6 +220,8 @@ namespace comm {
                  0,
                  MPI_COMM_WORLD,
                  MPI_STATUS_IGNORE);
+
+        Kokkos::deep_copy(recv_fld, host_recv_fld);
       } else {
         raise::Error("CommunicateField called with negative ranks", HERE);
       }
@@ -223,16 +231,15 @@ namespace comm {
         // !TODO: perhaps directly recv to the fld?
         if (not additive) {
           if constexpr (D == Dim::_1D) {
-            Kokkos::deep_copy(Kokkos::subview(fld, recv_slice[0], comps), host_recv_fld);
+            Kokkos::deep_copy(Kokkos::subview(fld, recv_slice[0], comps), recv_fld);
           } else if constexpr (D == Dim::_2D) {
             Kokkos::deep_copy(
-              Kokkos::subview(fld, recv_slice[0], recv_slice[1], comps), host_recv_fld);
+              Kokkos::subview(fld, recv_slice[0], recv_slice[1], comps), recv_fld);
           } else if constexpr (D == Dim::_3D) {
             Kokkos::deep_copy(
-              Kokkos::subview(fld, recv_slice[0], recv_slice[1], recv_slice[2], comps), host_recv_fld);
+              Kokkos::subview(fld, recv_slice[0], recv_slice[1], recv_slice[2], comps), recv_fld);
           }
         } else {
-          auto recv_fld = Kokkos::create_mirror_view(host_recv_fld);
           Kokkos::deep_copy(recv_fld, host_recv_fld);
           if constexpr (D == Dim::_1D) {
             const auto offset_x1 = recv_slice[0].first;
