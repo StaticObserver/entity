@@ -525,7 +525,7 @@ namespace ntt {
       const auto q0    = m_params.template get<real_t>("scales.q0");
       const auto n0    = m_params.template get<real_t>("scales.n0");
       const auto B0    = m_params.template get<real_t>("scales.B0");
-      const auto ppc0  = m_params.template get<real_t>("scales.ppc0");
+      const auto ppc0  = m_params.template get<real_t>("particles.ppc0");
       const auto coeff = -dt * q0 * n0 / B0;
       if constexpr (M::CoordType == Coord::Cart) {
         // minkowski case
