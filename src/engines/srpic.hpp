@@ -546,7 +546,7 @@ namespace ntt {
       if constexpr (M::CoordType == Coord::Cart) {
         // minkowski case
         const auto V0 = m_params.template get<real_t>("scales.V0");
-        auto j0 = TWO * constant::TWO_PI * rho_ff * m_params.template get<real_t>("setup.j0");
+        auto j0 = rho_ff * m_params.template get<real_t>("setup.j0");
         j0 /= domain.mesh.metric.dxMin();
          Kokkos::parallel_for(
           "Ampere",
