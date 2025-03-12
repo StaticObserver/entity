@@ -43,14 +43,11 @@ namespace kernel::QED{
             ~CurvatureEmission_kernel() = default;
 
             Inline auto CDF(real_t zeta_) const -> real_t{
-                if (zeta_ < 0.01){
-                    return ONE + 0.346 * zeta_ - (1.232 + 0.033 * SQR(zeta_)) * math::pow(zeta_, ONE / THREE);
-                }else if (zeta_ < 10.0){
-                    auto i = static_cast<int>((zeta_ - 0.01) / d_zeta);
-                    return cdf_table(i) + (zeta_ - (0.01 + i * d_zeta)) * (cdf_table(i + 1) - cdf_table(i)) / d_zeta;
-                }else{
-                    return math:exp(-zeta_) * (1.25 + (-0.625 + 0.9375 / zeta_) / zeta_) / math::sqrt(zeta_);
-                }
+                return ONE - math::exp(-zeta_); 
+           }
+
+            Inline auto inverseCDF(real_t u) const -> real_t{
+                return -math::log(ONE - u);
             }
 
             Inline auto rand_uniform(short mean) const -> short{
@@ -82,14 +79,10 @@ namespace kernel::QED{
                 }
                 const real_t zeta = e_min * rho * CUBE(gamma_emit / pp);
                 auto N_ph = static_cast<short>(coeff_cdf * CDF(zeta) / SQR(pp));
-                //if N_ph is less than Nmax_ph, generate ramdon N_ph from uniform distribution
-                if (N_ph < Nmax_ph){
-                    N_ph = rand_uniform(N_ph);
-                }else{
-                //if N_ph is greater than Nmax_ph, N_ph is set to Nbin
-                    N_ph = Nbin;
+                //if N_ph is less than 1, no emission.
+                if (N_ph < 1){
+                    return;
                 }
-                //inject photons
                 sample_photon(N_ph, zeta, ux1_ph, ux2_ph, ux3_ph, i1_ph, dx1_ph, weight_ph, tag_ph);
             }
     };
