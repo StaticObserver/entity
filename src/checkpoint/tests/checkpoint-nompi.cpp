@@ -10,7 +10,7 @@
 #include <adios2.h>
 #include <adios2/cxx11/KokkosView.h>
 
-#include <filesystem>
+#include <experimental/filesystem>
 #include <iostream>
 #include <stdexcept>
 
@@ -18,7 +18,7 @@ using namespace ntt;
 using namespace checkpoint;
 
 void cleanup() {
-  namespace fs = std::filesystem;
+  namespace fs = std::experimental::filesystem;
   fs::path temp_path { "checkpoints" };
   fs::remove_all(temp_path);
 }

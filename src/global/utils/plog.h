@@ -19,7 +19,7 @@
 #include <plog/Init.h>
 #include <plog/Log.h>
 
-#include <filesystem>
+#include <experimental/filesystem>
 #include <iomanip>
 #include <string>
 
@@ -63,7 +63,7 @@ namespace logger {
     const auto infofile_name = fname + ".info";
     const auto errfile_name  = fname + ".err";
 
-    namespace fs = std::filesystem;
+    namespace fs = std::experimental::filesystem;
     fs::path logfile_path { logfile_name };
     fs::path infofile_path { infofile_name };
     fs::path errfile_path { errfile_name };
