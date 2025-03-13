@@ -60,8 +60,8 @@ namespace kernel::QED{
             }
 
             void operator()(index_t p) const{
-                if(tag(p) != ParticleTag::alive){
-                    if(tag(p) != ParticleTag::dead){
+                if(sepc.tag(p) != ParticleTag::alive){
+                    if(spec.tag(p) != ParticleTag::dead){
                         raise::KernelError(HERE, "Invalid particle tag in pusher");
                     }
                     return;
@@ -79,7 +79,7 @@ namespace kernel::QED{
                     auto rand_gen = random_pool.get_state();
 
                     spec_ph.ux1(n_ph + i) = SIGN(spec.ux1(p)) * ONE;
-                    spec_ph.pld(n_ph + i) = inverseCDF(CDF(zeta) * Random<real_t>(rand_gen))
+                    spec_ph.pld(n_ph + i, 0) = inverseCDF(CDF(zeta) * Random<real_t>(rand_gen))
                                              * CUBE(pp / gamma_emit) / rho;
                     spec_ph.i1(n_ph + i) = spec.i1(p);
                     spec_ph.dx1(n_ph + i) = spec.dx1(p);
