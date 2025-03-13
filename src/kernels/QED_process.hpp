@@ -59,8 +59,8 @@ namespace kernel::QED{
                 return -math::log(u);
             }
 
-            void operator()(index_t p) const{
-                if(sepc.tag(p) != ParticleTag::alive){
+            Inline void operator()(index_t p) const{
+                if(spec.tag(p) != ParticleTag::alive){
                     if(spec.tag(p) != ParticleTag::dead){
                         raise::KernelError(HERE, "Invalid particle tag in pusher");
                     }

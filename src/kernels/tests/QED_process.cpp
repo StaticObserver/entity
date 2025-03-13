@@ -16,13 +16,21 @@
 
 using namespace ntt;
 
-class init_particles {
-  public:
+struct init_particles {
+    
+    array_t<real_t*> ux1, ux2, ux3, weight;
+    array_t<prtldx_t*> dx1;
+    array_t<int*> i1;
+    array_t<short*> tag;
+    const real_t gamma;
+
+    
     init_particles(Particles<Dim::_1D, Coord::Cart>& spec_, const real_t gamma_)
       : spec(spec_), gamma(gamma_) {}
     
-    const real_t u0 = math::sqrt(SQR(gamma) - ONE);
-    void operator()(index_t p) const {
+    
+    Inline void operator()(index_t p) const {
+      const real_t u0 = math::sqrt(SQR(gamma) - ONE);
       spec.ux1(p) = u0;
       spec.ux2(p) = 0.0;
       spec.ux3(p) = 0.0;
@@ -32,9 +40,44 @@ class init_particles {
       spec.tag(p) = ParticleTag::alive;
     }
 
-  private:
-    Particles<Dim::_1D, Coord::Cart>& spec;
-    const real_t gamma;
+};
+
+struct generate_bins{
+    Particles<Dim::_1D, Coord::Cart> spec_ph;
+    const real_t e_ph;
+    const real_t min;
+    const real_t max;
+    const real_t dx;
+    const size_t num_bins;
+    array_t<int*> energy_bins;
+
+    generate_bins(Particles<Dim::_1D, Coord::Cart>& spec_ph_,
+                  const real_t e_ph_,
+                  const real_t min_,
+                  const real_t max_,
+                  const real_t dx_,
+                  const size_t num_bins_,
+                  array_t<int*>& energy_bins_)
+        : spec_ph(spec_ph_),
+          e_ph(e_ph_),
+          min(min_),
+          max(max_),
+          dx(dx_),
+          num_bins(num_bins_),
+          energy_bins(energy_bins_){}
+
+    Inline void operator()(index_t i) const{
+        if (spec_ph.tag(i) != ParticleTag::alive){
+            return;
+        }
+        const real_t en = math::log10(spec_ph.pld(i, 0) / e_ph);
+        const index_t bin = (en - min) / dx;
+        if (bin < 0 || bin >= num_bins){
+            printf("bin %lu out of range\n", bin);
+            return;
+        }
+        energy_bins(bin) += 1;
+    }
 };
 
 
@@ -42,8 +85,8 @@ auto main(int argc, char* argv[]) -> int {
   Kokkos::initialize(argc, argv);
 
   try {
-    Particles<Dim::_1D, Coord::Cart> electron(1, "e-", 1.0, -1.0, 100, PrtlPusher::Boris, false, Cooling::None, 0);
-    Particles<Dim::_1D, Coord::Cart> photon(2, "photon", 0.0, 0.0, 1e8, PrtlPusher::Boris, false, Cooling::None, 1);
+    Particles<Dim::_1D, Coord::Cart> electron(1, "e-", 1.0, -1.0, 100, PrtlPusher::BORIS, false, Cooling::NONE, 0);
+    Particles<Dim::_1D, Coord::Cart> photon(2, "photon", 0.0, 0.0, 1e8, PrtlPusher::PHOTON, false, Cooling::NONE, 1);
     using namespace kernel::QED;
     const real_t e_min { 2.0 };
     const real_t gamma_emit { 1e4 };
@@ -70,19 +113,8 @@ auto main(int argc, char* argv[]) -> int {
     const real_t max = 1.0;
     const real_t dx = (max - min) / num_bins;
 
-
-    Kokkos::parallel_for("GenerateEnergyBins", photon.npart(), KOKKOS_LAMBDA(index_t i) {
-        if (photon.tag(i) != ParticleTag::alive) {
-          return;
-        }
-        const real_t en = math::log10(spec.pld(i, 0) / e_ph);
-        const index_t bin = (en - min) / dx;
-        if (bin < 0 || bin >= num_bins) {
-          printf("bin %d out of range\n", bin);
-          return;
-        }
-        energy_bins(bin) += 1;
-    });
+    generate_bins gen_bins(photon, e_ph, min, max, dx, num_bins, energy_bins);
+    Kokkos::parallel_for("GenerateBins", photon.npart(), gen_bins);
 
     auto energy_bins_h = Kokkos::create_mirror_view(energy_bins);
     Kokkos::deep_copy(energy_bins_h, energy_bins);
