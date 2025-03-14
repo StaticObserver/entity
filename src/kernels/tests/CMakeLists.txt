@@ -15,7 +15,7 @@ function(gen_test title)
   set(src ${title}.cpp)
   add_executable(${exec} ${src})
 
-  set(libs ntt_kernels ntt_metrics)
+  set(libs ntt_kernels ntt_metrics ntt_framework)
   add_dependencies(${exec} ${libs})
   target_link_libraries(${exec} PRIVATE ${libs})
 
