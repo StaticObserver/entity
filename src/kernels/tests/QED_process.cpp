@@ -22,8 +22,8 @@ auto main(int argc, char* argv[]) -> int {
   Kokkos::initialize(argc, argv);
 
   try {
-    size_t N_e = 1e4;
-    size_t N_ph = 1e8;
+    size_t N_e = 1e3;
+    size_t N_ph = 1e6;
     Particles<Dim::_1D, Coord::Cart> electron(1, "e-", 1.0, -1.0, N_e, PrtlPusher::BORIS, false, Cooling::NONE, 0);
     Particles<Dim::_1D, Coord::Cart> photon(2, "photon", 0.0, 0.0, N_ph, PrtlPusher::PHOTON, false, Cooling::NONE, 1);
     
@@ -37,7 +37,9 @@ auto main(int argc, char* argv[]) -> int {
     auto& i1 = electron.i1;
     auto& dx1 = electron.dx1;
 
-    Kokkos::parallel_for("Init", N_e, KOKKOS_LAMBDA(index_t p) {
+    electron.set_npart(N_e);
+
+    Kokkos::parallel_for("Init", electron.rangeActiveParticles(), KOKKOS_LAMBDA(index_t p) {
       ux1(p) = math::sqrt(SQR(gamma) - ONE);
       ux2(p) = 0.0;
       ux3(p) = 0.0;
@@ -55,15 +57,16 @@ auto main(int argc, char* argv[]) -> int {
                          * math::sqrt(gamma_pc) * SQR(SQR(gamma_emit / gamma_rad) * gamma_emit) };
     const real_t rho { 1.0 };
     
-    random_number_pool_t random_pool;
+    random_number_pool_t random_pool(12345);
 
     const real_t e_ph { CUBE(gamma / gamma_emit) / rho };
     
     array_t<size_t*> N_phs("N_phs", electron.npart());
 
+    // std::cout << "Begin curvature emission number." << std::endl;
     Curvature_Emission_Number<Dim::_1D, Coord::Cart> curvature_number(electron, 
                                                                       e_min, 
-                                                                      coeff, 
+                                                                      coeff * 1e9, 
                                                                       gamma_emit, 
                                                                       rho, 
                                                                       N_phs);
@@ -71,31 +74,56 @@ auto main(int argc, char* argv[]) -> int {
 
     Kokkos::parallel_for("CurvatureEmissionNumber", electron.rangeActiveParticles(), curvature_number);
 
+    // Kokkos::fence();
+    // std::cout << "End curvature emission number." << std::endl;
+
     array_t<int*> offsets("offsets", electron.npart());
-    Kokkos::deep_copy(offsets, -1);
+    Kokkos::deep_copy(offsets, 0);
 
+    int n_injected { 0 };
+    // std::cout << "Begin scan." << std::endl;
+    Kokkos::parallel_scan("Scan", N_phs.extent(0), KOKKOS_LAMBDA(index_t p, int& update, const bool final) {
+      if (final) {
+        offsets(p) = update;
+      }
+      update += N_phs(p);
+    }, n_injected);
+    // Kokkos::fence();
+    // std::cout << "End scan." << std::endl;
 
+    //check values of offsets
+    auto offsets_h = Kokkos::create_mirror_view(offsets);
+    auto N_phs_h = Kokkos::create_mirror_view(N_phs);
+    Kokkos::deep_copy(offsets_h, offsets);
+    Kokkos::deep_copy(N_phs_h, N_phs);
+    for (size_t i = 0; i < offsets.extent(0); ++i) {
+      if (offsets_h(i) < 0 || offsets_h(i) + N_phs_h(i) - 1 >= n_injected) {
+        std::cerr << "Invalid offset: " << offsets_h(i) << std::endl;
+        return 1;
+      }
+    }
+
+    auto total_ph = photon.npart() + n_injected;
+    photon.set_npart(total_ph);
+    std::cout << "Injecting..." << std::endl;
     CurvatureEmission_kernel<Dim::_1D, Coord::Cart> curvature_emission(electron, 
                                                                        photon, 
                                                                        e_min, 
-                                                                       coeff * 1e9, 
                                                                        gamma_emit, 
                                                                        rho, 
-                                                                       100, 
-                                                                       photon.npart(), 
+                                                                       100,
+                                                                       N_phs,
+                                                                       offsets,
                                                                        random_pool);
 
     Kokkos::parallel_for("CurvatureEmission", electron.rangeActiveParticles(), curvature_emission);
 
-    auto n_injected = curvature_emission.num_inj();
+    Kokkos::fence();
     std::cout << "Number of photons injected: " << n_injected << std::endl;
 
-    auto total_ph = photon.npart() + n_injected;
-    photon.set_npart(total_ph);
-
     size_t num_bins { 100 };
-    real_t log_min { math::log(e_min / e_ph) };
-    real_t log_max { ONE };
+    real_t log_min { math::log10(e_min / e_ph) };
+    real_t log_max { 2 };
     auto dx = (log_max - log_min) / num_bins;
 
     auto e_bins = Kokkos::View<size_t*>("e_bins", num_bins);
@@ -108,7 +136,7 @@ auto main(int argc, char* argv[]) -> int {
       if (tag_ph(p) != ParticleTag::alive) {
         return;
       }
-      auto log_e = math::log(pld_ph(p, 0) / e_ph);
+      auto log_e = math::log10(pld_ph(p, 0) / e_ph);
       auto bin = static_cast<index_t>((log_e - log_min) / dx);
       auto access = scatter_ebins.access();
       if (bin < 0) {
@@ -126,13 +154,13 @@ auto main(int argc, char* argv[]) -> int {
 
     std::vector<real_t> bin_centers(num_bins);
     for (size_t i = 0; i < num_bins; ++i) {
-      bin_centers[i] = math::exp(log_min + (i + 0.5) * dx);
+      bin_centers[i] = math::pow(10.0, log_min + (i + 0.5) * dx);
     }
     
     if (n_injected > 0) {
       std::ofstream file("pdf_ph.dat");
       for (size_t i = 0; i < num_bins; ++i) {
-        file << bin_centers[i] << " " << ebins_h(i) / photon.npart() << std::endl;
+        file << bin_centers[i] << " " << ebins_h(i) << std::endl;
       }
       file.close();
     }

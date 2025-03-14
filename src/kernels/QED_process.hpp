@@ -75,7 +75,14 @@ namespace kernel::QED{
                 , N_max { N_max }
                 , N_phs { N_phs_ }
                 , offsets { offsets_ }
-                , random_pool { random_pool_ } { }
+                , random_pool { random_pool_ } { 
+                    if (N_phs.extent(0) != charges.npart()){
+                        raise::KernelError(HERE, "N_phs array size does not match the number of particles.");
+                    }
+                    if (offsets.extent(0) != charges.npart()){
+                        raise::KernelError(HERE, "offsets array size does not match the number of particles.");
+                    }
+                }
             ~CurvatureEmission_kernel() = default;
 
             Inline auto CDF(real_t zeta_) const -> real_t{
@@ -93,7 +100,7 @@ namespace kernel::QED{
                     }
                     return;
                 }
-                if (offsets(p) < 0){
+                if (N_phs(p) == 0){
                     return;
                 }
                 // weight correction
@@ -103,7 +110,9 @@ namespace kernel::QED{
                     w_crect *= N_ph / N_max;
                     N_ph = N_max;
                 }
-            
+                
+                const real_t pp = math::sqrt(ONE + NORM_SQR(ux1(p), ux2(p), ux3(p)));
+                const real_t zeta = e_min * rho * CUBE(gamma_emit / pp);
                 for (short i = 0; i < N_ph; ++i){
                     auto rand_gen = random_pool.get_state();
 
@@ -173,7 +182,7 @@ namespace kernel::QED{
                 const real_t pp = math::sqrt(ONE + NORM_SQR(ux1(p), ux2(p), ux3(p)));
                 const real_t zeta = e_min * rho * CUBE(gamma_emit / pp);
                 auto N_ph = static_cast<size_t>(coeff * CDF(zeta) / SQR(pp));
-
+                
                 N_phs(p) = N_ph;
             }
     };
