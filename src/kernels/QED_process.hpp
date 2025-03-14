@@ -42,48 +42,58 @@ namespace kernel::QED{
 
 
         public:
-            CurvatureEmission_kernel(const array_t<real_t*>        ux1_, 
-                                     const array_t<real_t*>        ux2_,
-                                     const array_t<real_t*>        ux3_,
-                                     const array_t<real_t*>        weight_,  
-                                     const array_t<short*>         tag_,
-                                     const array_t<int*>           i1_,
-                                     const array_t<prtldx_t*>      dx1_,
-                                     array_t<real_t*>              ux1_ph_,
-                                     array_t<real_t*>              ux2_ph_,
-                                     array_t<real_t*>              ux3_ph_,
-                                     array_t<real_t*>              weight_ph_,
-                                     array_t<short*>               tag_ph_,
-                                     array_t<real_t**>             pld_ph_,
-                                     array_t<int*>                 i1_ph_,
-                                     array_t<prtldx_t*>            dx1_ph_,
-                                     const real_t                  e_min_,
-                                     const real_t                  coeff_,
-                                     const real_t                  gamma_emit_,
-                                     const real_t                  rho_,
-                                     const real_t                  npart_ph,
-                                     const size_t                  N_max,
-                                     random_number_pool_t&         random_pool_)
-                : ux1 { ux1_ }
-                , ux2 { ux2_ }
-                , ux3 { ux3_ }
-                , weight { weight_ }
-                , tag { tag_ }
-                , i1 { i1_ }
-                , dx1 { dx1_ }
-                , ux1_ph { ux1_ph_ }
-                , ux2_ph { ux2_ph_ }
-                , ux3_ph { ux3_ph_ }
-                , weight_ph { weight_ph_ }
-                , tag_ph { tag_ph_ }
-                , pld_ph { pld_ph_ }
-                , i1_ph { i1_ph_ }
-                , dx1_ph { dx1_ph_ }
+            // CurvatureEmission_kernel(const array_t<real_t*>        ux1_, 
+            //                          const array_t<real_t*>        ux2_,
+            //                          const array_t<real_t*>        ux3_,
+            //                          const array_t<real_t*>        weight_,  
+            //                          const array_t<short*>         tag_,
+            //                          const array_t<int*>           i1_,
+            //                          const array_t<prtldx_t*>      dx1_,
+            //                          array_t<real_t*>              ux1_ph_,
+            //                          array_t<real_t*>              ux2_ph_,
+            //                          array_t<real_t*>              ux3_ph_,
+            //                          array_t<real_t*>              weight_ph_,
+            //                          array_t<short*>               tag_ph_,
+            //                          array_t<real_t**>             pld_ph_,
+            //                          array_t<int*>                 i1_ph_,
+            //                          array_t<prtldx_t*>            dx1_ph_,
+            //                          const real_t                  e_min_,
+            //                          const real_t                  coeff_,
+            //                          const real_t                  gamma_emit_,
+            //                          const real_t                  rho_,
+            //                          const real_t                  npart_ph,
+            //                          const size_t                  N_max,
+            //                          random_number_pool_t&         random_pool_)
+            CurvatureEmission_kernel(Particles<D, C>&    charges,
+                                     Particles<D, C>&    photons,
+                                     const real_t        e_min_,
+                                     const real_t        coeff_,
+                                     const real_t        gamma_emit_,
+                                     const real_t        rho_,
+                                     const size_t        N_max,
+                                     const size_t        npart_ph,
+                                     random_number_pool_t& random_pool_)
+                : ux1 { charges.ux1_ }
+                , ux2 { charges.ux2_ }
+                , ux3 { charges.ux3_ }
+                , weight { charges.weight_ }
+                , tag { charges.tag_ }
+                , i1 { charges.i1_ }
+                , dx1 { charges.dx1_ }
+                , ux1_ph { photons.ux1_ph_ }
+                , ux2_ph { photons.ux2_ph_ }
+                , ux3_ph { photons.ux3_ph_ }
+                , weight_ph { photons.weight_ph_ }
+                , tag_ph { photons.tag_ph_ }
+                , pld_ph { photons.pld_ph_ }
+                , i1_ph { photons.i1_ph_ }
+                , dx1_ph { photons.dx1_ph_ }
                 , e_min { e_min_ }
                 , coeff { coeff_ }
                 , gamma_emit { gamma_emit_ }
                 , rho { rho_ }
                 , N_max { N_max }
+                , npart_ph { photons.npart() }
                 , random_pool { random_pool_ } {
                     Kokkos::deep_copy(num_ph, 0);
                 }
@@ -119,6 +129,7 @@ namespace kernel::QED{
                 }
                  
                 size_t offset = Kokkos::atomic_fetch_add(&num_ph(), N_ph);
+                offset += npart_ph;
 
                 if (offset + N_ph > ux1_ph.extent(0)){
                     raise::KernelError(HERE, "Exceeded maximum number of photons.");
