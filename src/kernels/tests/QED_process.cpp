@@ -14,6 +14,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <chrono>
 
 using namespace ntt;
 using namespace kernel::QED;
@@ -22,8 +23,8 @@ auto main(int argc, char* argv[]) -> int {
   Kokkos::initialize(argc, argv);
 
   try {
-    size_t N_e = 1e3;
-    size_t N_ph = 1e6;
+    size_t N_e = 1e4;
+    size_t N_ph = 1e7;
     Particles<Dim::_1D, Coord::Cart> electron(1, "e-", 1.0, -1.0, N_e, PrtlPusher::BORIS, false, Cooling::NONE, 0);
     Particles<Dim::_1D, Coord::Cart> photon(2, "photon", 0.0, 0.0, N_ph, PrtlPusher::PHOTON, false, Cooling::NONE, 1);
     
@@ -61,6 +62,7 @@ auto main(int argc, char* argv[]) -> int {
 
     const real_t e_ph { CUBE(gamma / gamma_emit) / rho };
     
+    auto start = std::chrono::high_resolution_clock::now();
     array_t<size_t*> N_phs("N_phs", electron.npart());
 
     // std::cout << "Begin curvature emission number." << std::endl;
@@ -121,9 +123,30 @@ auto main(int argc, char* argv[]) -> int {
     Kokkos::fence();
     std::cout << "Number of photons injected: " << n_injected << std::endl;
 
+    // AtomicCurvatureEmission_kernel<Dim::_1D, Coord::Cart> atomic_curvature_emission(electron, 
+    //                                                                                  photon, 
+    //                                                                                  e_min, 
+    //                                                                                  gamma_emit, 
+    //                                                                                  coeff*1e9,
+    //                                                                                  rho, 
+    //                                                                                  100,
+    //                                                                                  photon.npart(),
+    //                                                                                  random_pool);
+
+    // Kokkos::parallel_for("AtomicCurvatureEmission", electron.rangeActiveParticles(), atomic_curvature_emission);
+
+    // Kokkos::fence();
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    std::cout << "Time: " << elapsed.count() << " s" << std::endl;
+
+    // auto n_injected = atomic_curvature_emission.num_injected();
+    // std::cout << "Number of photons injected: " << n_injected << std::endl;
+    // photon.set_npart(photon.npart() + n_injected);
+
     size_t num_bins { 100 };
     real_t log_min { math::log10(e_min / e_ph) };
-    real_t log_max { 2 };
+    real_t log_max { TWO };
     auto dx = (log_max - log_min) / num_bins;
 
     auto e_bins = Kokkos::View<size_t*>("e_bins", num_bins);
