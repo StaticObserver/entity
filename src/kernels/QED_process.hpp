@@ -298,7 +298,7 @@ namespace kernel::QED{
                     auto rand_gen = random_pool.get_state();
 
                     ux1_ph(offset + i) = SIGN(ux1(p)) * ONE;
-                    pld_ph(offset + i, 0) = inverseCDF(CDF(zeta) * Random<real_t>(rand_gen))
+                    pld_ph(offset + i, 0) = inverseCDF(CDF(zeta) * (Random<real_t>(rand_gen) + 1e-12))
                                              * CUBE(pp / gamma_emit) / rho;
                     i1_ph(offset + i) = i1(p);
                     dx1_ph(offset + i) = dx1(p);

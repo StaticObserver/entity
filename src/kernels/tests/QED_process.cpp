@@ -145,9 +145,9 @@ auto main(int argc, char* argv[]) -> int {
     // photon.set_npart(photon.npart() + n_injected);
 
     size_t num_bins { 100 };
-    real_t log_min { math::log10(e_min / e_ph) };
-    real_t log_max { TWO };
-    auto dx = (log_max - log_min) / num_bins;
+    real_t min { e_min / e_ph };
+    real_t max { 20.0 };
+    auto dx = (max - min) / num_bins;
 
     auto e_bins = Kokkos::View<size_t*>("e_bins", num_bins);
     Kokkos::deep_copy(e_bins, 0);
@@ -159,8 +159,8 @@ auto main(int argc, char* argv[]) -> int {
       if (tag_ph(p) != ParticleTag::alive) {
         return;
       }
-      auto log_e = math::log10(pld_ph(p, 0) / e_ph);
-      auto bin = static_cast<index_t>((log_e - log_min) / dx);
+      auto e = pld_ph(p, 0) / e_ph;
+      auto bin = static_cast<index_t>((e - min) / dx);
       auto access = scatter_ebins.access();
       if (bin < 0) {
         access(0) += 1;
@@ -177,7 +177,7 @@ auto main(int argc, char* argv[]) -> int {
 
     std::vector<real_t> bin_centers(num_bins);
     for (size_t i = 0; i < num_bins; ++i) {
-      bin_centers[i] = math::pow(10.0, log_min + (i + 0.5) * dx);
+      bin_centers[i] = min + (i + 0.5) * dx;
     }
     
     if (n_injected > 0) {
@@ -186,6 +186,7 @@ auto main(int argc, char* argv[]) -> int {
         file << bin_centers[i] << " " << ebins_h(i) << std::endl;
       }
       file.close();
+
     }
 
 
