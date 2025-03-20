@@ -343,15 +343,15 @@ namespace kernel::QED{
 
             const real_t rho { Rho(static_cast<real_t>(i1_ph(p)) + static_cast<real_t>(dx1_ph(p))) };
 
-            real_t sum { math::sin(pld_ph(p, 2)) * exp(-coeff2 / (math::sin(pld_ph(p, 2)) * pld_ph(p, 0)))
-                         + math::sin(pld_ph(p, 2) + ux1_ph(p) * dt / rho) * exp(-coeff2 / (math::sin(pld_ph(p, 2) + ux1_ph(p) * dt / rho) * pld_ph(p, 0))) };
+            real_t sum { pld_ph(p, 2) * exp(-coeff2 / (pld_ph(p, 2) * pld_ph(p, 0)))
+                         + (pld_ph(p, 2) + ux1_ph(p) * dt / rho) * exp(-coeff2 / ((pld_ph(p, 2) + ux1_ph(p) * dt / rho) * pld_ph(p, 0))) };
             
             for (size_t i = 1; i < n_steps; i += 2){
-                sum += FOUR * math::sin(pld_ph(p, 2) + i * dx / rho) * exp(-coeff2 / (math::sin(pld_ph(p, 2)+ i * dx / rho) * pld_ph(p, 0)));
+                sum += FOUR * (pld_ph(p, 2) + i * dx / rho) * exp(-coeff2 / ((pld_ph(p, 2)+ i * dx / rho) * pld_ph(p, 0)));
             }
 
             for (size_t i = 2; i < n_steps; i += 2){
-                sum += TWO * math::sin(pld_ph(p, 2) + i * dx / rho) * exp(-coeff2 / (math::sin(pld_ph(p, 2) + i * dx / rho) * pld_ph(p, 0)));
+                sum += TWO * (pld_ph(p, 2) + i * dx / rho) * exp(-coeff2 / ((pld_ph(p, 2) + i * dx / rho) * pld_ph(p, 0)));
             }
 
             return dx / THREE * sum;
@@ -471,10 +471,7 @@ namespace kernel::QED{
                 if (!should_inj(p)){
                     return;
                 }
-                const real_t u = math::abs(math::cos(pld_ph(p, 2))) * math::cos(pld_ph(p, 2))
-                                  * math::sqrt(SQR(pld_ph(p, 0)) - FOUR) 
-                                  / math::sqrt(SQR(math::sin(pld_ph(p, 2) * pld_ph(p, 0))) 
-                                      + FOUR * math::cos(pld_ph(p, 2)));
+                const real_t u = math::sqrt((SQR(pld_ph(p, 0)) - FOUR) / (SQR(pld_ph(p, 0) * pld_ph(p, 2)) + FOUR));
 
                 ux1_p(offsets_p(p)) = u;
                 ux2_p(offsets_p(p)) = ZERO;
