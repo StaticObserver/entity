@@ -12,6 +12,9 @@
 
 #include <Kokkos_Core.hpp>
 
+#include <iostream>
+#include <fstream>
+
 namespace kernel::QED{
     using namespace ntt;
     
@@ -42,6 +45,8 @@ namespace kernel::QED{
         const size_t                  N_max;
         random_number_pool_t          random_pool;
 
+        const cdfTable&               cdf_table;
+
 
 
         public:
@@ -53,7 +58,8 @@ namespace kernel::QED{
                                      const size_t              N_max,
                                      const array_t<size_t*>&   N_phs_,
                                      const array_t<size_t*>&      offsets_,
-                                     random_number_pool_t&     random_pool_)
+                                     random_number_pool_t&     random_pool_,
+                                     const cdfTable&           cdf_table_)
                 : ux1 { charges.ux1 }
                 , ux2 { charges.ux2 }
                 , ux3 { charges.ux3 }
@@ -75,7 +81,8 @@ namespace kernel::QED{
                 , N_max { N_max }
                 , N_phs { N_phs_ }
                 , offsets { offsets_ }
-                , random_pool { random_pool_ } { 
+                , random_pool { random_pool_ } 
+                , cdf_table { cdf_table_ } {
                     if (N_phs.extent(0) != charges.npart()){
                         raise::KernelError(HERE, "N_phs array size does not match the number of particles.");
                     }
@@ -84,14 +91,6 @@ namespace kernel::QED{
                     }
                 }
             ~CurvatureEmission_kernel() = default;
-
-            Inline auto CDF(real_t zeta_) const -> real_t{
-                return math::exp(-zeta_); 
-           }
-
-            Inline auto inverseCDF(real_t u) const -> real_t{
-                return -math::log(u);
-            }
 
             Inline void operator()(index_t p) const{
                 if(tag(p) != ParticleTag::alive){
@@ -117,7 +116,7 @@ namespace kernel::QED{
                     auto rand_gen = random_pool.get_state();
 
                     ux1_ph(offsets(p) + i) = SIGN(ux1(p)) * ONE;
-                    pld_ph(offsets(p) + i, 0) = inverseCDF(CDF(zeta) * Random<real_t>(rand_gen))
+                    pld_ph(offsets(p) + i, 0) = cdf_table.Inverse_CDF(cdf_table.CDF(zeta) * Random<real_t>(rand_gen))
                                              * CUBE(pp / gamma_emit) / rho;
                     pld_ph(offsets(p) + i, 1) = ZERO;
                     i1_ph(offsets(p) + i) = i1(p);
@@ -145,11 +144,8 @@ namespace kernel::QED{
         const real_t                  gamma_emit;
         const real_t                  gamma_min;
         const real_t                  rho;
+        const cdfTable&               cdf_table;
 
-       
-        Inline auto CDF(real_t zeta_) const -> real_t{
-            return math::exp(-zeta_); 
-        }
 
         public:
             Curvature_Emission_Number(const Particles<D, C>& charge,
@@ -158,7 +154,8 @@ namespace kernel::QED{
                                        const real_t gamma_emit_,
                                        const real_t gamma_min_,
                                        const real_t rho_,
-                                       array_t<size_t*>& N_phs_)
+                                       array_t<size_t*>& N_phs_,
+                                       const cdfTable& cdf_table_)
                 : ux1 { charge.ux1 }
                 , ux2 { charge.ux2 }
                 , ux3 { charge.ux3 }
@@ -168,7 +165,8 @@ namespace kernel::QED{
                 , gamma_emit { gamma_emit_ }
                 , gamma_min { gamma_min_ }
                 , rho { rho_ }
-                , N_phs { N_phs_ }  {
+                , N_phs { N_phs_ } 
+                , cdf_table { cdf_table_ } {
                     Kokkos::deep_copy(N_phs, 0);
                     if (N_phs.extent(0) != charge.npart()){
                         raise::KernelError(HERE, "N_phs array size does not match the number of particles.");
@@ -189,7 +187,7 @@ namespace kernel::QED{
                     return;
                 }
                 const real_t zeta = e_min * rho * CUBE(gamma_emit / pp);
-                auto N_ph = static_cast<size_t>(coeff * CDF(zeta) / SQR(pp));
+                auto N_ph = static_cast<size_t>(coeff * cdf_table.CDF(zeta) / SQR(pp));
                 
                 N_phs(p) = N_ph;
             }
@@ -380,7 +378,110 @@ namespace kernel::QED{
                 
     }; // class InjectPairs_kernel
 
+    class cdfTable{
+        array_t<real_t*> cdf;
+        array_t<real_t*> inv_cdf;
 
+        real_t x_min;
+        real_t x_max;
+        real_t y_min;
+        real_t y_max;
+        real_t dx;
+        real_t dy;
+
+        size_t Nx;
+        size_t Ny;
+
+        
+
+        auto read_from_file(const std::string& filename) -> array_t<real_t**>{
+            std::fstream file;
+            file.open(filename, std::ios::in);
+            if (!file.is_open()){
+                raise::Fatal("Could not open file.", HERE);
+            }
+            std::vector<real_t> x_data;
+            std::vector<real_t> y_data;
+            while (!file.eof()){
+                real_t x, y;
+                file >> x >> y;
+                x_data.push_back(x);
+                y_data.push_back(y);
+            }
+            file.close();
+            auto N = x_data.size();
+            auto data = array_t<real_t**>("data", N);
+            auto data_h = Kokkos::create_mirror_view(data);
+            for (size_t i = 0; i < N; ++i){
+                data_h(i, 0) = x_data[i];
+                data_h(i, 1) = y_data[i];
+            }
+            Kokkos::deep_copy(data, data_h);
+            return data;
+        }
+
+        public:
+            cdfTable(const std::string& cdf_filename, const std::string& inverse_cdf_filename)
+                 {
+                    auto cdf_data = read_from_file(cdf_filename);
+                    auto inv_cdf_data = read_from_file(inverse_cdf_filename);
+
+                    Nx = cdf_data.extent(0);
+                    Ny = inv_cdf_data.extent(0);
+
+                    x_min = cdf_data(0, 0);
+                    x_max = cdf_data(Nx - 1, 0);
+                    dx = (math::log10(x_max) - math::log10(x_min)) / (Nx - 1);
+                    y_min = inv_cdf_data(0, 0);
+                    y_max = inv_cdf_data(Ny - 1, 0);
+                    dy = (y_max - y_min) / (Ny - 1);
+
+                    cdf = array_t<real_t*>("cdf", Nx);
+                    inv_cdf = array_t<real_t*>("inv_cdf", Ny);
+                    
+                    auto cdf_subview = Kokkos::subview(cdf_data, Kokkos::ALL, 1);
+                    auto inv_cdf_subview = Kokkos::subview(inv_cdf_data, Kokkos::ALL, 1);
+                    Kokkos::deep_copy(cdf, cdf_subview);
+                    Kokkos::deep_copy(inv_cdf, inv_cdf_subview);
+                }
+
+            Inline cdfTable(const cdfTable &rhs) 
+                            : cdf(rhs.cdf)
+                            , inv_cdf(rhs.inv_cdf)
+                            , x_min(rhs.x_min)
+                            , x_max(rhs.x_max)
+                            , y_min(rhs.y_min)
+                            , y_max(rhs.y_max)
+                            , dx(rhs.dx)
+                            , dy(rhs.dy)
+                            , Nx(rhs.Nx)
+                            , Ny(rhs.Ny) {}
+
+            ~cdfTable() = default;
+
+            Inline auto CDF(const real_t x) const -> real_t{
+                if (x < x_min){
+                    return ONE + 0.346 * x - math::pow(x, 1/3) * (1.232 + 0.033 * SQR(x));
+                }
+                if (x > x_max){
+                    return cdf(Nx - 1) * math::exp(x - x_max);
+                }
+                const size_t i = static_cast<size_t>((math::log10(x) - math::log10(x_min)) / dx);
+                return cdf(i) + (x - x_min - i * dx) / dx * (cdf(i + 1) - cdf(i));
+            }
+
+            Inline auto Inverse_CDF(const real_t y) const -> real_t{
+                if (y < y_min){
+                    return x_max + math::log(y_min / y);
+                }
+                if (y > y_max){
+                    return CUBE((ONE - y) / 1.232);
+                }
+                const size_t i = static_cast<size_t>((y - y_min) / dy);
+                return inverse_cdf(i) + (y - y_min - i * dy) / dy * (inverse_cdf(i + 1) - inverse_cdf(i));
+            }
+
+    }
 } // namespace QED
 
 
