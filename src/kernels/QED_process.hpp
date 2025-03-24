@@ -18,6 +18,152 @@
 namespace kernel::QED{
     using namespace ntt;
     
+
+    
+    class cdfTable {
+    private:
+        array_t<real_t*> cdf;
+        array_t<real_t*> inv_cdf;
+
+        real_t x_min_lg;
+        real_t x_max_lg;
+        real_t y_min_lg;
+        real_t y_max_lg;
+        real_t dx;
+        real_t dy;
+
+        size_t Nx;
+        size_t Ny;
+
+        // 改进的文件读取方法
+        auto read_from_file(const std::string& filename) -> std::pair<std::vector<real_t>, std::vector<real_t>> {
+            std::fstream file;
+            file.open(filename, std::ios::in);
+            if (!file.is_open()) {
+                raise::Fatal("Could not open file.", HERE);
+            }
+            
+            std::vector<real_t> x_data;
+            std::vector<real_t> y_data;
+            
+            while (!file.eof()) {
+                real_t x, y;
+                if (file >> x >> y) {  // 确保成功读取
+                    if(x <= ZERO || y <= ZERO){
+                        raise::Fatal("Invalid data value (must be positive).", HERE);
+                    }
+                    x_data.push_back(x);
+                    y_data.push_back(y);
+                }
+            }
+            file.close();
+            
+            if (x_data.empty()) {
+                raise::Fatal("Empty data file.", HERE);
+            }
+            
+            return {x_data, y_data};
+        }
+
+    public:
+        cdfTable(const std::string& cdf_filename, const std::string& inverse_cdf_filename) {
+            // 从文件读取数据，使用std::vector暂存
+            auto [x_cdf_data, y_cdf_data] = read_from_file(cdf_filename);
+            auto [x_inv_cdf_data, y_inv_cdf_data] = read_from_file(inverse_cdf_filename);
+            
+            // 设置尺寸
+            Nx = x_cdf_data.size();
+            Ny = x_inv_cdf_data.size();
+            
+            // 设置范围参数
+            x_min_lg = math::log10(x_cdf_data[0]);
+            x_max_lg = math::log10(x_cdf_data[Nx - 1]);
+            dx = (x_max_lg - x_min_lg) / (Nx - 1);
+            y_min_lg = math::log10(x_inv_cdf_data[0]);
+            y_max_lg = math::log10(x_inv_cdf_data[Ny - 1]);
+            dy = (y_max_lg - y_min_lg) / (Ny - 1);
+            
+            // 分配设备内存
+            cdf = array_t<real_t*>("cdf", Nx);
+            inv_cdf = array_t<real_t*>("inv_cdf", Ny);
+            
+            // 创建主机镜像
+            auto cdf_h = Kokkos::create_mirror_view(cdf);
+            auto inv_cdf_h = Kokkos::create_mirror_view(inv_cdf);
+            
+            // 填充数据
+            for (size_t i = 0; i < Nx; ++i) {
+                cdf_h(i) = y_cdf_data[i];
+            }
+            
+            for (size_t i = 0; i < Ny; ++i) {
+                inv_cdf_h(i) = y_inv_cdf_data[i];
+            }
+            
+            // 复制到设备内存
+            Kokkos::deep_copy(cdf, cdf_h);
+            Kokkos::deep_copy(inv_cdf, inv_cdf_h);
+        }
+
+        // 拷贝构造函数保持不变，因为是浅拷贝
+        Inline cdfTable(const cdfTable &rhs) 
+            : cdf(rhs.cdf)
+            , inv_cdf(rhs.inv_cdf)
+            , x_min_lg(rhs.x_min_lg)
+            , x_max_lg(rhs.x_max_lg)
+            , y_min_lg(rhs.y_min_lg)
+            , y_max_lg(rhs.y_max_lg)
+            , dx(rhs.dx)
+            , dy(rhs.dy)
+            , Nx(rhs.Nx)
+            , Ny(rhs.Ny) {}
+
+        ~cdfTable() = default;
+
+        // 保持原始的CDF超出范围处理逻辑
+        Inline auto CDF(const real_t x) const -> real_t {
+            if (x <= ZERO) {
+                raise::KernelError(HERE, "Invalid argument for CDF.");
+            }
+            const int idx = static_cast<int>((math::log10(x) - x_min_lg) / dx);
+            if (idx < 0) {
+                return ONE + 0.346 * x - math::pow(x, ONE / THREE) * (1.232 + 0.033 * SQR(x));
+            }
+            auto i = static_cast<size_t>(idx);
+            if (i >= Nx - 1) {
+                return cdf(Nx - 1);
+            }
+            
+            const real_t t = (x - math::pow(10.0, i * dx + x_min_lg))
+                             / (math::pow(10.0, (i + 1) * dx + x_min_lg) - math::pow(10.0, i * dx + x_min_lg));
+            
+            // 插值公式
+            return cdf(i) * (ONE - t) + cdf(i + 1) * t;
+        }
+
+        // 保持原始的Inverse_CDF超出范围处理逻辑
+        Inline auto Inverse_CDF(const real_t y) const -> real_t {
+            if (y <= ZERO || y >= ONE) {
+                raise::KernelError(HERE, "Invalid argument for Inverse_CDF.");
+            }
+            const int idx = static_cast<int>((math::log10(y) - y_min_lg) / dy);
+            if (idx < 0) {
+                return math::pow(10.0, x_max_lg);
+            }
+            auto i = static_cast<size_t>(idx);
+            if (i >= Ny - 1) {
+                return CUBE((ONE - y) / 1.232);  
+            }
+            
+            const real_t t = (y - math::pow(10.0, i * dy + y_min_lg))
+                             / (math::pow(10.0, (i + 1) * dy + y_min_lg) - math::pow(10.0, i * dy + y_min_lg));
+
+            // 原始插值公式
+            return inv_cdf(i) * (ONE - t) + inv_cdf(i + 1) * t;
+        }
+    }; // class cdfTable
+
+
     template <Dimension D, Coord::type C>
     class CurvatureEmission_kernel{
         static_assert(D == Dim::_1D, "Curvature emission is only implemented in 1D");
@@ -378,110 +524,6 @@ namespace kernel::QED{
                 
     }; // class InjectPairs_kernel
 
-    class cdfTable{
-        array_t<real_t*> cdf;
-        array_t<real_t*> inv_cdf;
-
-        real_t x_min;
-        real_t x_max;
-        real_t y_min;
-        real_t y_max;
-        real_t dx;
-        real_t dy;
-
-        size_t Nx;
-        size_t Ny;
-
-        
-
-        auto read_from_file(const std::string& filename) -> array_t<real_t**>{
-            std::fstream file;
-            file.open(filename, std::ios::in);
-            if (!file.is_open()){
-                raise::Fatal("Could not open file.", HERE);
-            }
-            std::vector<real_t> x_data;
-            std::vector<real_t> y_data;
-            while (!file.eof()){
-                real_t x, y;
-                file >> x >> y;
-                x_data.push_back(x);
-                y_data.push_back(y);
-            }
-            file.close();
-            auto N = x_data.size();
-            auto data = array_t<real_t**>("data", N);
-            auto data_h = Kokkos::create_mirror_view(data);
-            for (size_t i = 0; i < N; ++i){
-                data_h(i, 0) = x_data[i];
-                data_h(i, 1) = y_data[i];
-            }
-            Kokkos::deep_copy(data, data_h);
-            return data;
-        }
-
-        public:
-            cdfTable(const std::string& cdf_filename, const std::string& inverse_cdf_filename)
-                 {
-                    auto cdf_data = read_from_file(cdf_filename);
-                    auto inv_cdf_data = read_from_file(inverse_cdf_filename);
-
-                    Nx = cdf_data.extent(0);
-                    Ny = inv_cdf_data.extent(0);
-
-                    x_min = cdf_data(0, 0);
-                    x_max = cdf_data(Nx - 1, 0);
-                    dx = (math::log10(x_max) - math::log10(x_min)) / (Nx - 1);
-                    y_min = inv_cdf_data(0, 0);
-                    y_max = inv_cdf_data(Ny - 1, 0);
-                    dy = (y_max - y_min) / (Ny - 1);
-
-                    cdf = array_t<real_t*>("cdf", Nx);
-                    inv_cdf = array_t<real_t*>("inv_cdf", Ny);
-                    
-                    auto cdf_subview = Kokkos::subview(cdf_data, Kokkos::ALL, 1);
-                    auto inv_cdf_subview = Kokkos::subview(inv_cdf_data, Kokkos::ALL, 1);
-                    Kokkos::deep_copy(cdf, cdf_subview);
-                    Kokkos::deep_copy(inv_cdf, inv_cdf_subview);
-                }
-
-            Inline cdfTable(const cdfTable &rhs) 
-                            : cdf(rhs.cdf)
-                            , inv_cdf(rhs.inv_cdf)
-                            , x_min(rhs.x_min)
-                            , x_max(rhs.x_max)
-                            , y_min(rhs.y_min)
-                            , y_max(rhs.y_max)
-                            , dx(rhs.dx)
-                            , dy(rhs.dy)
-                            , Nx(rhs.Nx)
-                            , Ny(rhs.Ny) {}
-
-            ~cdfTable() = default;
-
-            Inline auto CDF(const real_t x) const -> real_t{
-                if (x < x_min){
-                    return ONE + 0.346 * x - math::pow(x, 1/3) * (1.232 + 0.033 * SQR(x));
-                }
-                if (x > x_max){
-                    return cdf(Nx - 1) * math::exp(x - x_max);
-                }
-                const size_t i = static_cast<size_t>((math::log10(x) - math::log10(x_min)) / dx);
-                return cdf(i) + (x - x_min - i * dx) / dx * (cdf(i + 1) - cdf(i));
-            }
-
-            Inline auto Inverse_CDF(const real_t y) const -> real_t{
-                if (y < y_min){
-                    return x_max + math::log(y_min / y);
-                }
-                if (y > y_max){
-                    return CUBE((ONE - y) / 1.232);
-                }
-                const size_t i = static_cast<size_t>((y - y_min) / dy);
-                return inverse_cdf(i) + (y - y_min - i * dy) / dy * (inverse_cdf(i + 1) - inverse_cdf(i));
-            }
-
-    }
 } // namespace QED
 
 

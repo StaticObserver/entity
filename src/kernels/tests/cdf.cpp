@@ -30,9 +30,9 @@ auto main(int argc, char* argv[]) -> int {
     array_t<real_t*> y_inv_cdf("y", N);
 
     const real_t x_min { 1e-8 };
-    const real_t x_max { 1e2 };
-    const real_t y_min { 1e-8 };
-    const real_t y_max { 1.0 };
+    const real_t x_max { 11.13 };
+    const real_t y_min { 1e-6 };
+    const real_t y_max { 0.99 };
     
     const real_t dx = (math::log10(x_max) - math::log10(x_min)) / (N - 1);
     const real_t dy = (math::log10(y_max) - math::log10(y_min)) / (N - 1);

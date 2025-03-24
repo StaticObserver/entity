@@ -64,14 +64,17 @@ auto main(int argc, char* argv[]) -> int {
     
     auto start = std::chrono::high_resolution_clock::now();
     array_t<size_t*> N_phs("N_phs", electron.npart());
-
+    
+    cdfTable cdf("cdf_table.txt", "inverse_cdf_table.txt" );
     // std::cout << "Begin curvature emission number." << std::endl;
-    Curvature_Emission_Number<Dim::_1D, Coord::Cart> curvature_number(electron, 
+    Curvature_Emission_Number<Dim::_1D, Coord::Cart> curvature_number(electron,  
                                                                       e_min, 
                                                                       coeff * 1e9, 
+                                                                      1e5,
                                                                       gamma_emit, 
                                                                       rho, 
-                                                                      N_phs);
+                                                                      N_phs,
+                                                                      cdf);
     
 
     Kokkos::parallel_for("CurvatureEmissionNumber", electron.rangeActiveParticles(), curvature_number);
@@ -116,7 +119,8 @@ auto main(int argc, char* argv[]) -> int {
                                                                        100,
                                                                        N_phs,
                                                                        offsets,
-                                                                       random_pool);
+                                                                       random_pool,
+                                                                       cdf);
 
     Kokkos::parallel_for("CurvatureEmission", electron.rangeActiveParticles(), curvature_emission);
 
