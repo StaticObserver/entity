@@ -525,18 +525,18 @@ namespace ntt {
       const auto q0    = m_params.template get<real_t>("scales.q0");
       const auto n0    = m_params.template get<real_t>("scales.n0");
       const auto B0    = m_params.template get<real_t>("scales.B0");
+      const auto ppc0  = m_params.template get<real_t>("particles.ppc0");
       const auto coeff = -dt * q0 * n0 / B0;
       if constexpr (M::CoordType == Coord::Cart) {
         // minkowski case
-        const auto V0 = m_params.template get<real_t>("scales.V0");
 
         Kokkos::parallel_for(
           "Ampere",
           domain.mesh.rangeActiveCells(),
           kernel::mink::CurrentsAmpere_kernel<M::Dim>(domain.fields.em,
                                                       domain.fields.cur,
-                                                      coeff / V0,
-                                                      ONE / n0));
+                                                      coeff,
+                                                      ONE / ppc0));
       } else {
         auto       range = range_with_axis_BCs(domain);
         const auto ni2   = domain.mesh.n_active(in::x2);
