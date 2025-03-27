@@ -7,6 +7,8 @@
 #include "arch/kokkos_aliases.h"
 #include "arch/traits.h"
 
+#include "archetypes/energy_dist.h"
+#include "archetypes/particle_injector.h"
 #include "archetypes/problem_generator.h"
 #include "framework/domain/metadomain.h"
 
@@ -37,7 +39,8 @@ namespace user {
     }
 
     Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
-      return Omega * b0 * (-math::sin(angle) * R + TWO * SQR(skindepth0) * x_Ph[0] / larmor0);
+      // return Omega * b0 * (-math::sin(angle) * R + TWO * SQR(skindepth0) * x_Ph[0] / larmor0);
+      return ZERO;
     }
 
     Inline auto ex3(const coord_t<D>& x_Ph) const -> real_t {
@@ -67,6 +70,10 @@ namespace user {
 
     Inline auto bx3(const coord_t<D>& x_Ph) const -> real_t {
       return b0 * math::sin(angle);
+    }
+
+    Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
+      return ZERO;
     }
 
     Inline auto ex3(const coord_t<D>& x_Ph) const -> real_t {
@@ -120,6 +127,9 @@ namespace user {
     using arch::ProblemGenerator<S, M>::params;
 
     const real_t  B0, angle, R, Omega, skindepth0, larmor0, bp;
+    const real_t  temp;
+    const real_t  drift_u_1, drift_u_2;
+    const real_t  j0;
     InitFields<D> init_flds;
 
     inline PGen(const SimulationParams& p, const Metadomain<S, M>& m)
@@ -132,6 +142,10 @@ namespace user {
       , skindepth0 { p.template get<real_t>("scales.skindepth0") }
       , larmor0 { p.template get<real_t>("scales.larmor0") }
       , bp { p.template get<real_t>("setup.Bp") }
+      , temp { p.template get<real_t>("setup.temp") }
+      , drift_u_1 { p.template get<real_t>("setup.drift_u_1") }
+      , drift_u_2 { p.template get<real_t>("setup.drift_u_2") }
+      , j0 { p.template get<real_t>("setup.j0") }
       , init_flds { B0, angle, Omega, skindepth0, larmor0, R, bp } {}
 
     inline PGen() {}
@@ -143,6 +157,35 @@ namespace user {
     auto MatchFields(real_t) const -> MFields<D> {
       return MFields<D> { B0, angle, Omega, R, bp };
     }
+
+    inline void InitPrtls(Domain<S, M>& local_domain) {
+      const auto energy_dist_1 = arch::Maxwellian<S, M>(local_domain.mesh.metric,
+                                                        local_domain.random_pool,
+                                                        temp,
+                                                        -drift_u_1,
+                                                        in::x1);
+      const auto energy_dist_2 = arch::Maxwellian<S, M>(local_domain.mesh.metric,
+                                                        local_domain.random_pool,
+                                                        temp,
+                                                        drift_u_2,
+                                                        in::x1);
+      const auto injector_1 = arch::UniformInjector<S, M, arch::Maxwellian>(
+        energy_dist_1,
+        { 1, 1 });
+      const auto injector_2 = arch::UniformInjector<S, M, arch::Maxwellian>(
+        energy_dist_2,
+        { 2, 2 });
+      arch::InjectUniform<S, M, arch::UniformInjector<S, M, arch::Maxwellian>>(
+        params,
+        local_domain,
+        injector_1,
+        ONE);
+      arch::InjectUniform<S, M, arch::UniformInjector<S, M, arch::Maxwellian>>(
+        params,
+        local_domain,
+        injector_2,
+        ONE + j0);
+      }
   };
 
 } // namespace user
