@@ -18,8 +18,6 @@
 namespace kernel::QED{
     using namespace ntt;
     
-
-    
     class cdfTable {
     private:
         array_t<real_t*> cdf;

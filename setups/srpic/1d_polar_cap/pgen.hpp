@@ -12,8 +12,11 @@
 #include "archetypes/problem_generator.h"
 #include "framework/domain/metadomain.h"
 
+#include "kernels/QED_process.hpp"
+
 namespace user {
   using namespace ntt;
+  using namespace kernel::QED;
 
   template <Dimension D>
   struct InitFields {
@@ -79,6 +82,7 @@ namespace user {
     const real_t  drift_u_1, drift_u_2;
     const real_t  j0;
     InitFields<D> init_flds;
+    cdfTable cdf;
 
     inline PGen(const SimulationParams& p, const Metadomain<S, M>& m)
       : arch::ProblemGenerator<S, M>(p)
@@ -91,7 +95,8 @@ namespace user {
       , drift_u_1 { p.template get<real_t>("setup.drift_u_1") }
       , drift_u_2 { p.template get<real_t>("setup.drift_u_2") }
       , j0 { p.template get<real_t>("setup.j0") }
-      , init_flds { b0, TWO * FOUR * constant::PI * b0 * Omega * SQR(skindepth0) / larmor0 } {}
+      , init_flds { b0, TWO * FOUR * constant::PI * b0 * Omega * SQR(skindepth0) / larmor0 }
+      , cdf { "cdf_table.txt", "inverse_cdf_table.txt" } {}
 
     inline PGen() {}
 
@@ -131,7 +136,11 @@ namespace user {
   //       injector_2,
   //       ONE + j0);
   //     }
-  // };
+
+    void CustomPostStep(std::size_t, long double, Domain<S, M>& domain) {
+
+    }
+  };
 
 } // namespace user
 
