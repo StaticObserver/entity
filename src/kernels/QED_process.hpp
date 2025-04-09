@@ -362,7 +362,8 @@ namespace kernel::QED{
         const size_t                              n_steps;
         
         Inline auto Rho(const real_t x) const -> real_t{
-            return rho0 * (ONE + 0.8 * x / L);
+            // return rho0 * (ONE + 0.8 * x / L);
+            return rho0;
         }
     
 
