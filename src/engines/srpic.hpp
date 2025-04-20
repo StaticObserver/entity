@@ -153,18 +153,6 @@ namespace ntt {
           timers.stop("FieldSolver");
         }
 
-        auto& cur_view = dom.fields.cur; // Reference to the view
-        real_t j_mean = 0.0;
-        Kokkos::parallel_reduce(
-          "MeanJ",
-          dom.mesh.rangeActiveCells(),
-          KOKKOS_LAMBDA(const std::size_t i, real_t& j_mean_local) {
-            j_mean_local += cur_view(i, cur::jx1); // Use the captured view
-          },
-          j_mean);
-
-        std::cout << "Mean Jx1: " << j_mean / dom.mesh.n_active(in::x1) << std::endl;
-
         timers.start("Communications");
         m_metadomain.CommunicateFields(dom, Comm::E | Comm::J);
         timers.stop("Communications");
@@ -543,14 +531,22 @@ namespace ntt {
       const auto omega = constant::TWO_PI / m_params.template get<real_t>("setup.period");
       const auto rho_ff = -TWO * b0 * omega * SQR(skin0) / larmor0;
       const auto coeff = -dt * q0 * n0 / B0;
+      const auto ds_atm = m_params.template get<real_t>("grid.boundaries.atmosphere.ds");
+      const auto ds_abs = m_params.template get<real_t>("grid.boundaries.match.ds");
       if constexpr (M::CoordType == Coord::Cart) {
         // minkowski case
         const auto V0 = m_params.template get<real_t>("scales.V0");
         auto j0 = rho_ff * m_params.template get<real_t>("setup.j0");
         j0 /= domain.mesh.metric.dxMin();
+        auto x_min = domain.mesh.extent(in::x1).first;
+        auto x_max = domain.mesh.extent(in::x1).second;
+        boundaries_t<real_t> box = {{ x_min + ds_atm, x_max - ds_abs }};
+        auto range = domain.mesh.ExtentToRange(box, {true, true});
+        range.first += 1;
+        range.second -= 1;
          Kokkos::parallel_for(
           "Ampere",
-          domain.mesh.rangeActiveCells(),
+          range[0],
           kernel::mink::CurrentsAmpere_kernel<M::Dim>(domain.fields.em,
                                                       domain.fields.cur,
                                                       coeff ,

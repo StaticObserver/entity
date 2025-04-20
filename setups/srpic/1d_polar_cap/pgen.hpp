@@ -12,29 +12,30 @@
 #include "archetypes/problem_generator.h"
 #include "framework/domain/metadomain.h"
 
-#include "kernels/QED_process.hpp"
-
 namespace user {
   using namespace ntt;
-  using namespace kernel::QED;
 
   template <Dimension D>
   struct InitFields {
-    InitFields(real_t b0_, real_t rho_GJ_) 
+    InitFields(real_t b0_, real_t rho_GJ_, real_t l_atm_) 
           : b0 { b0_ }
-          , rho_GJ { rho_GJ_ } {}
+          , rho_GJ { rho_GJ_ } 
+          , l_atm { l_atm_ }{}
 
     Inline auto bx1(const coord_t<D>& x_Ph) const -> real_t {
       return b0;
     }
 
     Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
-      return rho_GJ * x_Ph[0];
-      //return ZERO;
+        if (x_Ph[0] > l_atm){
+            return rho_GJ * (x_Ph[0] - l_atm);
+        }else{
+            return ZERO;
+        }
     }
 
   private:
-    const real_t b0, rho_GJ;
+    const real_t b0, rho_GJ, l_atm;
   };
 
   template <Dimension D>
@@ -56,12 +57,18 @@ namespace user {
 
   template <Dimension D>
   struct DriveFields : public InitFields<D> {
-    DriveFields(real_t time, real_t b0_)
-      : InitFields<D> { b0_, ZERO} {}
+    DriveFields(real_t time, real_t b0_, real_t l_atm_)
+      : InitFields<D> { b0_, ZERO, l_atm_ } {}
 
     using InitFields<D>::bx1;
 
+    Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
+      return ZERO;
+    }
+
   };
+
+  template <class M>
 
   template <SimEngine::type S, class M>
   struct PGen : public arch::ProblemGenerator<S, M> {
@@ -81,9 +88,8 @@ namespace user {
     const real_t  temp;
     const real_t  drift_u_1, drift_u_2;
     const real_t  j0;
+    const real_t  ds_atm;
     InitFields<D> init_flds;
-    // const real_t e_min, gamma_emit, gamma_rad, gamma_pc, gamma_min, curvR;
-    // cdfTable cdf;
 
     inline PGen(const SimulationParams& p, const Metadomain<S, M>& m)
       : arch::ProblemGenerator<S, M>(p)
@@ -96,24 +102,18 @@ namespace user {
       , drift_u_1 { p.template get<real_t>("setup.drift_u_1") }
       , drift_u_2 { p.template get<real_t>("setup.drift_u_2") }
       , j0 { p.template get<real_t>("setup.j0") }
-      , init_flds { b0, TWO * FOUR * constant::PI * b0 * Omega * SQR(skindepth0) / larmor0 } {}
-      // , e_min { p.template get<real_t>("setup.e_min") }
-      // , gamma_emit { p.template get<real_t>("setup.gamma_emit") }
-      // , gamma_rad { p.template get<real_t>("setup.gamma_rad") }
-      // , gamma_pc { p.template get<real_t>("setup.gamma_pc") }
-      // , gamma_min { p.template get<real_t>("setup.gamma_min") }
-      // , curvR { p.template get<real_t>("setup.curvR") }
-      // , cdf { "cdf_table.txt", "inverse_cdf_table.txt" } {}
+      , init_flds { b0, TWO * FOUR * constant::PI * b0 * Omega * SQR(skindepth0) / larmor0 , ds_atm } {}
 
     inline PGen() {}
 
     auto AtmFields(real_t time) const -> DriveFields<D> {
-      return DriveFields<D> { time, b0 };
+      return DriveFields<D> { time, b0, ds_atm };
     }
 
     auto MatchFields(real_t) const -> MFields<D> {
       return MFields<D> { b0 };
     }
+
 
   //   inline void InitPrtls(Domain<S, M>& local_domain) {
   //     const auto energy_dist_1 = arch::Maxwellian<S, M>(local_domain.mesh.metric,
@@ -143,8 +143,8 @@ namespace user {
   //       injector_2,
   //       ONE + j0);
   //     }
-
-  };
+  
+   };
 
 } // namespace user
 
