@@ -531,22 +531,14 @@ namespace ntt {
       const auto omega = constant::TWO_PI / m_params.template get<real_t>("setup.period");
       const auto rho_ff = -TWO * b0 * omega * SQR(skin0) / larmor0;
       const auto coeff = -dt * q0 * n0 / B0;
-      const auto ds_atm = m_params.template get<real_t>("grid.boundaries.atmosphere.ds");
-      const auto ds_abs = m_params.template get<real_t>("grid.boundaries.match.ds");
       if constexpr (M::CoordType == Coord::Cart) {
         // minkowski case
         const auto V0 = m_params.template get<real_t>("scales.V0");
         auto j0 = rho_ff * m_params.template get<real_t>("setup.j0");
         j0 /= domain.mesh.metric.dxMin();
-        auto x_min = domain.mesh.extent(in::x1).first;
-        auto x_max = domain.mesh.extent(in::x1).second;
-        boundaries_t<real_t> box = {{ x_min + ds_atm, x_max - ds_abs }};
-        auto range = domain.mesh.ExtentToRange(box, {true, true});
-        range.first += 1;
-        range.second -= 1;
          Kokkos::parallel_for(
           "Ampere",
-          range[0],
+          domain.mesh.rangeActiveCells(),
           kernel::mink::CurrentsAmpere_kernel<M::Dim>(domain.fields.em,
                                                       domain.fields.cur,
                                                       coeff ,
@@ -666,6 +658,8 @@ namespace ntt {
         range_min[d] = intersect_range[d].first;
         range_max[d] = intersect_range[d].second;
       }
+      // std::cout << "range_min(match): " << range_min[0] << std::endl;
+      // std::cout << "range_max(match): " << range_max[0] << std::endl;
       if constexpr (traits::has_member<traits::pgen::match_fields_t, pgen_t>::value) {
         auto match_fields = m_pgen.MatchFields(time);
         if (dim == in::x1) {
