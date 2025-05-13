@@ -18,25 +18,22 @@ namespace user {
 
   template <Dimension D>
   struct InitFields {
-    InitFields(real_t b0_, real_t rho_GJ_, real_t l_atm_) 
+    InitFields(real_t b0_, real_t rho_GJ_, real_t l_atm_, real_t ds_) 
           : b0 { b0_ }
           , rho_GJ { rho_GJ_ } 
-          , l_atm { l_atm_ }{}
+          , l_atm { l_atm_ }
+          , ds { ds_ }{}
 
     Inline auto bx1(const coord_t<D>& x_Ph) const -> real_t {
       return b0;
     }
 
     Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
-        if (x_Ph[0] > l_atm){
-            return rho_GJ * (x_Ph[0] - l_atm);
-        }else{
-            return ZERO;
-        }
+        return rho_GJ * (x_Ph[0] + 0.03 * ds * math::log(0.01 + math::exp(l_atm + 0.8 * ds - x_Ph[0]) / 0.03 / ds));
     }
 
   private:
-    const real_t b0, rho_GJ, l_atm;
+    const real_t b0, rho_GJ, l_atm, ds;
   };
 
   template <Dimension D>
@@ -58,8 +55,8 @@ namespace user {
 
   template <Dimension D>
   struct DriveFields : public InitFields<D> {
-    DriveFields(real_t time, real_t b0_, real_t l_atm_)
-      : InitFields<D> { b0_, ZERO, l_atm_ } {}
+    DriveFields(real_t time, real_t b0_, real_t l_atm_, real_t ds_)
+      : InitFields<D> { b0_, ZERO, l_atm_, ds_ } {}
 
     using InitFields<D>::bx1;
 
@@ -84,6 +81,20 @@ namespace user {
               return nmax * math::exp(-(x_Ph[0] - xsurf) / height);
           }
       }; // TargetDensityProfile
+    
+    template <SimEngine::type S, class M>
+    struct ExtraCharge : public arch::SpatialDistribution<S, M> {
+        const real_t xsurf, ds;
+
+        ExtraCharge(const M& metric, real_t xsurf_, real_t ds_)
+          : arch::SpatialDistribution<S, M>(metric)
+          , xsurf { xsurf_ }
+          , ds { ds_ } {}  
+
+        Inline auto operator()(const coord_t<M::Dim>& x_Ph) const -> real_t {
+              return ONE - 0.01 / (0.01 + math::exp(-(x_Ph[0] - xsurf - 0.8 * ds) / 0.03 / ds));
+          }
+      }; // ExtraCharge
   
 
   template <SimEngine::type S, class M>
@@ -103,7 +114,7 @@ namespace user {
     const real_t  b0, Omega, skindepth0, larmor0;
     const real_t  temp;
     const real_t  j0;
-    const real_t  l_atm;
+    const real_t  l_atm, ds;
     InitFields<D> init_flds;
     
 
@@ -116,19 +127,20 @@ namespace user {
       , larmor0 { p.template get<real_t>("scales.larmor0") }
       , temp { p.template get<real_t>("setup.temp") }
       , j0 { p.template get<real_t>("setup.j0") }
+      , ds { p.template get<real_t>("grid.boundaries.atmosphere.ds") }
       , l_atm([&m, this]() {
           const auto min_buff = params.template get<unsigned short>("algorithms.current_filters") + 2;
           const auto buffer_ncells = min_buff > 5 ? min_buff : 5;
           return m.mesh().metric.template convert<1, Crd::Cd, Crd::Ph>(static_cast<real_t>(buffer_ncells));
         }())
-      , init_flds(b0, TWO * FOUR * constant::PI * b0 * Omega * SQR(skindepth0) / larmor0, l_atm)
+      , init_flds(b0, TWO * FOUR * constant::PI * b0 * Omega * SQR(skindepth0) / larmor0, l_atm, ds)
     {}
 
     inline PGen() {}
 
 
     auto AtmFields(real_t time) const -> DriveFields<D> {
-      return DriveFields<D> { time, b0, l_atm };
+      return DriveFields<D> { time, b0, l_atm, ds};
     }
 
     auto MatchFields(real_t) const -> MFields<D> {
@@ -155,6 +167,22 @@ namespace user {
         local_domain,
         injector,
         ONE);
+
+      const auto extra_charge = ExtraCharge<S, M>(
+        local_domain.mesh.metric,
+        l_atm,
+        ds
+      );
+      const auto injector_extra_charge = arch::NonUniformInjector<S, M, arch::Maxwellian, ExtraCharge>(
+        energy_dist,
+        extra_charge,
+        { 2, 2 }
+      );
+      arch::InjectNonUniform<S, M, decltype(injector_extra_charge)>(
+        params,
+        local_domain,
+        injector_extra_charge,
+        HALF);
     }
   }; // PGen  
 

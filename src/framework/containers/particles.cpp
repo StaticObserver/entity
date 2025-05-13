@@ -117,6 +117,8 @@ namespace ntt {
                          const array_t<std::size_t*>& indices_alive) {
     auto n_alive = indices_alive.extent(0);
     auto buffer  = Kokkos::View<T*>("buffer", n_alive);
+
+
     Kokkos::parallel_for(
       "PopulateBufferAlive",
       n_alive,
