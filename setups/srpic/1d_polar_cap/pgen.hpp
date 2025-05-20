@@ -18,10 +18,10 @@ namespace user {
 
   template <Dimension D>
   struct InitFields {
-    InitFields(real_t b0_, real_t rho_GJ_, real_t xsurf_, real_t ds_) 
+    InitFields(real_t b0_, real_t rho_GJ_, real_t l_atm_, real_t ds_) 
           : b0 { b0_ }
           , rho_GJ { rho_GJ_ } 
-          , xsurf { xsurf_ }
+          , l_atm { l_atm_ }
           , ds { ds_ }{}
 
     Inline auto bx1(const coord_t<D>& x_Ph) const -> real_t {
@@ -29,13 +29,12 @@ namespace user {
     }
 
     Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
-        return -rho_GJ * (x_Ph[0] + 
-                          0.03 * ds * math::log(0.01 + math::exp((xsurf + 0.8 * ds - x_Ph[0]) / 0.03 / ds)) -
-                          0.03 * ds * math::log(0.01 + math::exp((0.8 * ds) / 0.03 / ds)) - xsurf);
+        //return -rho_GJ * (x_Ph[0] + 0.03 * ds * math::log(0.01 + math::exp(l_atm + 0.8 * ds - x_Ph[0]) / 0.03 / ds));
+        return -rho_GJ * (x_Ph[0] - l_atm);
     }
 
   private:
-    const real_t b0, rho_GJ, xsurf, ds;
+    const real_t b0, rho_GJ, l_atm, ds;
   };
 
   template <Dimension D>
@@ -80,11 +79,7 @@ namespace user {
           , xsurf { xsurf } {}
 
         Inline auto operator()(const coord_t<M::Dim>& x_Ph) const -> real_t {
-              if (x_Ph[0] < xsurf) {
-                return ZERO;
-              }else{
-                return nmax * math::exp(-(x_Ph[0] - xsurf) / height);
-              }
+              return nmax * math::exp(-(x_Ph[0] - xsurf) / height);
           }
       }; // TargetDensityProfile
     
@@ -98,12 +93,8 @@ namespace user {
           , ds { ds_ } {}  
 
         Inline auto operator()(const coord_t<M::Dim>& x_Ph) const -> real_t {
-              if (x_Ph[0] < xsurf) {
-                return ZERO;
-              }else{
-                return ONE - 0.01 / (0.01 + math::exp(-(x_Ph[0] - xsurf - 0.8 * ds) / 0.03 / ds));
-              }
-        }
+              return ONE - 0.01 / (0.01 + math::exp(-(x_Ph[0] - xsurf - 0.8 * ds) / 0.03 / ds));
+          }
       }; // ExtraCharge
   
 
@@ -143,7 +134,8 @@ namespace user {
           const auto buffer_ncells = min_buff > 5 ? min_buff : 5;
           return m.mesh().metric.template convert<1, Crd::Cd, Crd::Ph>(static_cast<real_t>(buffer_ncells));
         }())
-      , init_flds(b0, -TWO * FOUR * constant::PI * b0 * Omega * SQR(skindepth0) / larmor0, l_atm, ds)
+      // , init_flds(b0, TWO * FOUR * constant::PI * b0 * Omega * SQR(skindepth0) / larmor0, l_atm, ds)
+      , init_flds(b0, ONE, l_atm, ds)
     {}
 
     inline PGen() {}
@@ -162,37 +154,48 @@ namespace user {
       const auto energy_dist = arch::Maxwellian<S, M>(local_domain.mesh.metric,
                                                         local_domain.random_pool,
                                                         temp);
-      const auto spatial_dist = TargetDensityProfile<S, M>(
-          local_domain.mesh.metric,
-          params.template get<real_t>("grid.boundaries.atmosphere.density"),
-          params.template get<real_t>("grid.boundaries.atmosphere.height"),
-          l_atm);
-      const auto injector = arch::NonUniformInjector<S, M, arch::Maxwellian, TargetDensityProfile>(
+      const auto injector = arch::UniformInjector<S, M, arch::Maxwellian>(
         energy_dist,
-        spatial_dist,
         { 1, 2 }
       );
-      arch::InjectNonUniform<S, M, decltype(injector)>(
+
+      arch::InjectUniform<S, M, decltype(injector)>(
         params,
         local_domain,
         injector,
-        ONE);
+        ONE
+      );
+      // const auto spatial_dist = TargetDensityProfile<S, M>(
+      //     local_domain.mesh.metric,
+      //     params.template get<real_t>("grid.boundaries.atmosphere.density"),
+      //     params.template get<real_t>("grid.boundaries.atmosphere.height"),
+      //     l_atm);
+      // const auto injector = arch::NonUniformInjector<S, M, arch::Maxwellian, TargetDensityProfile>(
+      //   energy_dist,
+      //   spatial_dist,
+      //   { 1, 2 }
+      // );
+      // arch::InjectNonUniform<S, M, decltype(injector)>(
+      //   params,
+      //   local_domain,
+      //   injector,
+      //   ONE);
 
-      const auto extra_charge = ExtraCharge<S, M>(
-        local_domain.mesh.metric,
-        l_atm,
-        ds
-      );
-      const auto injector_extra_charge = arch::NonUniformInjector<S, M, arch::Maxwellian, ExtraCharge>(
-        energy_dist,
-        extra_charge,
-        { 2, 2 }
-      );
-      arch::InjectNonUniform<S, M, decltype(injector_extra_charge)>(
-        params,
-        local_domain,
-        injector_extra_charge,
-        TWO);
+      // const auto extra_charge = ExtraCharge<S, M>(
+      //   local_domain.mesh.metric,
+      //   l_atm,
+      //   ds
+      // );
+      // const auto injector_extra_charge = arch::NonUniformInjector<S, M, arch::Maxwellian, ExtraCharge>(
+      //   energy_dist,
+      //   extra_charge,
+      //   { 2, 2 }
+      // );
+      // arch::InjectNonUniform<S, M, decltype(injector_extra_charge)>(
+      //   params,
+      //   local_domain,
+      //   injector_extra_charge,
+      //   HALF);
     }
   }; // PGen  
 
