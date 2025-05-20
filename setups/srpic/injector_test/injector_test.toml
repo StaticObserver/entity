@@ -1,0 +1,84 @@
+[simulation]
+  name    = "srpc1d"
+  engine  = "srpic"
+  runtime = 50.0
+
+[grid]
+  resolution = [ 10000 ]
+  extent     = [[0.0, 1.0]]
+
+  [grid.metric]
+    metric = "minkowski"
+
+  [grid.boundaries]
+    fields    = [["MATCH", "MATCH"]]
+    particles = [["ABSORB", "ABSORB"]]
+
+    [grid.boundaries.match]
+      ds = 0.05
+
+    [grid.boundaries.atmosphere]
+      temperature = 0.1
+      density     = 1.2 
+      height      = 0.01
+      species     = [1, 2]
+      ds          = 0.05
+
+[scales]
+  larmor0    = 4e-4
+  skindepth0 = 0.02
+
+[algorithms]
+  current_filters = 4
+
+  [algorithms.timestep]
+    CFL = 0.5
+
+
+[particles]
+  ppc0           = 5.0
+  use_weights    = false
+  clear_interval = 100
+
+  [[particles.species]]
+    label    = "e-"
+    mass     = 1.0
+    charge   = -1.0
+    maxnpart = 1e7
+    pusher   = "Boris"
+
+  [[particles.species]]
+    label    = "e+"
+    mass     = 1.0
+    charge   = 1.0
+    maxnpart = 1e7
+    pusher   = "Boris"
+
+[setup]
+  B0  = -1.0
+  period = 12.5664
+  R = 0.0
+  j0 = 0.5
+  angle = 0.0
+  Bp = -0.0
+  temp = 0.01
+  drift_u_1 = 10.0
+  drift_u_2 = 10.0
+
+[output]
+  format = "hdf5"
+  separate_files = false
+
+  [output.fields]
+    interval_time = 1.0
+    quantities    = ["N_1", "N_2", "Charge", "E", "B", "J", "T00", "T0i"]
+
+  [output.particles]
+    enable = false
+
+  [output.spectra]
+    enable = true
+
+[diagnostics]
+  interval       = 50
+  colored_stdout = true

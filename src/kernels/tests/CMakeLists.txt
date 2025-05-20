@@ -1,3 +1,4 @@
+# cmake-lint: disable=C0103,C0111
 # ------------------------------
 # @brief: Generates tests for the `ntt_kernels` module
 #
@@ -15,7 +16,7 @@ function(gen_test title)
   set(src ${title}.cpp)
   add_executable(${exec} ${src})
 
-  set(libs ntt_kernels ntt_metrics)
+  set(libs ntt_kernels ntt_metrics ntt_framework)
   add_dependencies(${exec} ${libs})
   target_link_libraries(${exec} PRIVATE ${libs})
 
@@ -32,3 +33,10 @@ gen_test(prtls_to_phys)
 gen_test(gca_pusher)
 gen_test(prtl_bc)
 gen_test(flds_bc)
+<<<<<<< HEAD
+gen_test(QED_process)
+gen_test(cdf)
+=======
+gen_test(pusher)
+gen_test(ext_force)
+>>>>>>> origin/1.2.0rc
