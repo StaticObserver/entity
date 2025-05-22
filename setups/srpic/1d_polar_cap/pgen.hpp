@@ -6,6 +6,7 @@
 
 #include "arch/kokkos_aliases.h"
 #include "arch/traits.h"
+#include "utils/numeric.h"
 
 #include "archetypes/energy_dist.h"
 #include "archetypes/spatial_dist.h"
@@ -29,8 +30,8 @@ namespace user {
     }
 
     Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
-        //return -rho_GJ * (x_Ph[0] + 0.03 * ds * math::log(0.01 + math::exp(l_atm + 0.8 * ds - x_Ph[0]) / 0.03 / ds));
-        return -rho_GJ * (x_Ph[0] - l_atm);
+        return -rho_GJ * (x_Ph[0] + 0.03 * ds * math::log(0.01 + math::exp(l_atm + 0.8 * ds - x_Ph[0]) / 0.03 / ds));
+        // return -rho_GJ * (x_Ph[0] - l_atm);
     }
 
   private:
@@ -98,6 +99,27 @@ namespace user {
       }; // ExtraCharge
   
 
+  template <Dimension D>
+  struct MagnetosphericCurrent { 
+    MagnetosphericCurrent(const real_t J0_)
+      : J0 { J0_ } {};
+
+    Inline auto jx1(const coord_t<D>& x_Ph) const -> real_t {
+        return J0;
+      }
+
+    Inline auto jx2(const coord_t<D>& x_Ph) const -> real_t {
+        return ZERO;
+      }
+
+    Inline auto jx3(const coord_t<D>& x_Ph) const -> real_t {
+        return ZERO;
+      }
+
+    private:
+      const real_t J0; 
+  };
+   
   template <SimEngine::type S, class M>
   struct PGen : public arch::ProblemGenerator<S, M> {
     // compatibility traits for the problem generator
@@ -117,6 +139,7 @@ namespace user {
     const real_t  j0;
     const real_t  l_atm, ds;
     InitFields<D> init_flds;
+    MagnetosphericCurrent<D> ext_current;
     
 
     inline PGen(const SimulationParams& p, const Metadomain<S, M>& m)
@@ -136,6 +159,7 @@ namespace user {
         }())
       // , init_flds(b0, TWO * FOUR * constant::PI * b0 * Omega * SQR(skindepth0) / larmor0, l_atm, ds)
       , init_flds(b0, ONE, l_atm, ds)
+      , ext_current(j0)
     {}
 
     inline PGen() {}
@@ -154,48 +178,48 @@ namespace user {
       const auto energy_dist = arch::Maxwellian<S, M>(local_domain.mesh.metric,
                                                         local_domain.random_pool,
                                                         temp);
-      const auto injector = arch::UniformInjector<S, M, arch::Maxwellian>(
-        energy_dist,
-        { 1, 2 }
-      );
-
-      arch::InjectUniform<S, M, decltype(injector)>(
-        params,
-        local_domain,
-        injector,
-        ONE
-      );
-      // const auto spatial_dist = TargetDensityProfile<S, M>(
-      //     local_domain.mesh.metric,
-      //     params.template get<real_t>("grid.boundaries.atmosphere.density"),
-      //     params.template get<real_t>("grid.boundaries.atmosphere.height"),
-      //     l_atm);
-      // const auto injector = arch::NonUniformInjector<S, M, arch::Maxwellian, TargetDensityProfile>(
+      // const auto injector = arch::UniformInjector<S, M, arch::Maxwellian>(
       //   energy_dist,
-      //   spatial_dist,
       //   { 1, 2 }
       // );
-      // arch::InjectNonUniform<S, M, decltype(injector)>(
+
+      // arch::InjectUniform<S, M, decltype(injector)>(
       //   params,
       //   local_domain,
       //   injector,
-      //   ONE);
+      //   ONE
+      // );
+      const auto spatial_dist = TargetDensityProfile<S, M>(
+          local_domain.mesh.metric,
+          params.template get<real_t>("grid.boundaries.atmosphere.density"),
+          params.template get<real_t>("grid.boundaries.atmosphere.height"),
+          l_atm);
+      const auto injector = arch::NonUniformInjector<S, M, arch::Maxwellian, TargetDensityProfile>(
+        energy_dist,
+        spatial_dist,
+        { 1, 2 }
+      );
+      arch::InjectNonUniform<S, M, decltype(injector)>(
+        params,
+        local_domain,
+        injector,
+        ONE);
 
-      // const auto extra_charge = ExtraCharge<S, M>(
-      //   local_domain.mesh.metric,
-      //   l_atm,
-      //   ds
-      // );
-      // const auto injector_extra_charge = arch::NonUniformInjector<S, M, arch::Maxwellian, ExtraCharge>(
-      //   energy_dist,
-      //   extra_charge,
-      //   { 2, 2 }
-      // );
-      // arch::InjectNonUniform<S, M, decltype(injector_extra_charge)>(
-      //   params,
-      //   local_domain,
-      //   injector_extra_charge,
-      //   HALF);
+      const auto extra_charge = ExtraCharge<S, M>(
+        local_domain.mesh.metric,
+        l_atm,
+        ds
+      );
+      const auto injector_extra_charge = arch::NonUniformInjector<S, M, arch::Maxwellian, ExtraCharge>(
+        energy_dist,
+        extra_charge,
+        { 2, 2 }
+      );
+      arch::InjectNonUniform<S, M, decltype(injector_extra_charge)>(
+        params,
+        local_domain,
+        injector_extra_charge,
+        TWO);
     }
   }; // PGen  
 

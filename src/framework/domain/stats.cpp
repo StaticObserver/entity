@@ -22,7 +22,7 @@
 #include <Kokkos_ScatterView.hpp>
 #include <Kokkos_StdAlgorithms.hpp>
 
-#include <filesystem>
+#include <experimental/filesystem>
 
 namespace ntt {
 
@@ -43,8 +43,8 @@ namespace ntt {
     if (enable_stats and (not is_resuming)) {
       CallOnce(
         [](auto& filename) {
-          if (std::filesystem::exists(filename)) {
-            std::filesystem::remove(filename);
+          if (std::experimental::filesystem::exists(filename)) {
+            std::experimental::filesystem::remove(filename);
           }
         },
         filename);
@@ -57,7 +57,7 @@ namespace ntt {
     g_stats_writer.defineStatsFilename(filename);
     g_stats_writer.defineStatsOutputs(stats_to_write);
 
-    if (not std::filesystem::exists(filename)) {
+    if (not std::experimental::filesystem::exists(filename)) {
       g_stats_writer.writeHeader();
     }
   }

@@ -28,6 +28,7 @@
 #include "framework/parameters.h"
 
 #include "engines/engine.hpp"
+#include "impl/Kokkos_Combined_Reducer.hpp"
 #include "kernels/ampere_mink.hpp"
 #include "kernels/ampere_sr.hpp"
 #include "kernels/currents_deposit.hpp"
@@ -89,20 +90,20 @@ namespace ntt {
         ParticleInjector(dom);
       }
 
-      // if (fieldsolver_enabled) {
-      //   timers.start("FieldSolver");
-      //   Faraday(dom, HALF);
-      //   timers.stop("FieldSolver");
+      if (fieldsolver_enabled) {
+        timers.start("FieldSolver");
+        Faraday(dom, HALF);
+        timers.stop("FieldSolver");
 
-      //   timers.start("Communications");
-      //   m_metadomain.CommunicateFields(dom, Comm::B);
-      //   timers.stop("Communications");
+        timers.start("Communications");
+        m_metadomain.CommunicateFields(dom, Comm::B);
+        timers.stop("Communications");
 
-      //   timers.start("FieldBoundaries");
-      //   FieldBoundaries(dom, BC::B);
-      //   timers.stop("FieldBoundaries");
-      //   Kokkos::fence();
-      // }
+        timers.start("FieldBoundaries");
+        FieldBoundaries(dom, BC::B);
+        timers.stop("FieldBoundaries");
+        Kokkos::fence();
+      }
 
       {
         timers.start("ParticlePusher");
@@ -131,21 +132,21 @@ namespace ntt {
       }
 
       if (fieldsolver_enabled) {
-        // timers.start("FieldSolver");
-        // Faraday(dom, HALF);
-        // timers.stop("FieldSolver");
+        timers.start("FieldSolver");
+        Faraday(dom, HALF);
+        timers.stop("FieldSolver");
 
-        // timers.start("Communications");
-        // m_metadomain.CommunicateFields(dom, Comm::B);
-        // timers.stop("Communications");
+        timers.start("Communications");
+        m_metadomain.CommunicateFields(dom, Comm::B);
+        timers.stop("Communications");
 
-        // timers.start("FieldBoundaries");
-        // FieldBoundaries(dom, BC::B);
-        // timers.stop("FieldBoundaries");
+        timers.start("FieldBoundaries");
+        FieldBoundaries(dom, BC::B);
+        timers.stop("FieldBoundaries");
 
-        // timers.start("FieldSolver");
-        // Ampere(dom, ONE);
-        // timers.stop("FieldSolver");
+        timers.start("FieldSolver");
+        Ampere(dom, ONE);
+        timers.stop("FieldSolver");
 
         if (deposit_enabled) {
           timers.start("FieldSolver");
@@ -538,27 +539,49 @@ namespace ntt {
                                            domain.mesh.extent(in::x3).first };
           const auto                ext_current = m_pgen.ext_current;
           const auto dx = domain.mesh.metric.template sqrt_h_<1, 1>({});
+          auto J = domain.fields.cur;
+          real_t jx1 { ZERO };
+          real_t jx1_after { ZERO };
           // clang-format off
+          Kokkos::parallel_reduce(
+            "Ampere",
+            domain.mesh.rangeActiveCells(),
+            KOKKOS_LAMBDA(index_t i1, real_t& val) {
+              val += J(i1, cur::jx1);
+            },
+            jx1);
+          jx1 /= domain.mesh.n_active(in::x1);
+          jx1 /= ppc0;
           Kokkos::parallel_for(
             "Ampere",
             domain.mesh.rangeActiveCells(),
             kernel::mink::CurrentsAmpere_kernel<M::Dim, decltype(ext_current)>(
               domain.fields.em, domain.fields.cur,
               coeff, ppc0, ext_current, xmin, dx));
+          Kokkos::parallel_reduce(
+            "Ampere",
+            domain.mesh.rangeActiveCells(),
+            KOKKOS_LAMBDA(index_t i1, real_t& val) {
+              val += J(i1, cur::jx1);
+            },
+            jx1_after);
+          jx1_after /= domain.mesh.n_active(in::x1);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
           // clang-format on
+          std::cout << "jx1_before: " << jx1 << std::endl;
+          std::cout << "jx1_after: " << jx1_after << std::endl;
         } else {
           Kokkos::parallel_for(
             "Ampere",
             domain.mesh.rangeActiveCells(),
             kernel::mink::CurrentsAmpere_kernel<M::Dim>(domain.fields.em,
                                                         domain.fields.cur,
-                                                        coeff,
+                                                        coeff,       
                                                         ppc0));
         }
       } else {
         // non-minkowski
         const auto coeff = -dt * q0 * n0 / B0;
-        auto       range = range_with_axis_BCs(domain);
+        auto       range = range_with_axis_BCs(domain);             
         const auto ni2   = domain.mesh.n_active(in::x2);
         Kokkos::parallel_for(
           "Ampere",

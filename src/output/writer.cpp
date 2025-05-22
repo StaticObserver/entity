@@ -18,7 +18,7 @@
   #include <mpi.h>
 #endif
 
-#include <filesystem>
+#include <experimental/filesystem>
 #include <string>
 #include <vector>
 
@@ -37,15 +37,9 @@ namespace out {
     m_io = p_adios->DeclareIO("Entity::Output");
     m_io.SetEngine(engine);
 
-<<<<<<< HEAD
-    m_io.DefineVariable<std::size_t>("Step");
-    m_io.DefineVariable<long double>("Time");
-    m_fname = title + + (m_engine == "hdf5" ? ".h5" : ".bp");
-=======
     m_io.DefineVariable<timestep_t>("Step");
     m_io.DefineVariable<simtime_t>("Time");
     m_fname = title;
->>>>>>> dev/1dsr
   }
 
   void Writer::addTracker(const std::string& type,
@@ -450,13 +444,13 @@ namespace out {
         }
         CallOnce(
           [](auto& main_path, auto& mode_path) {
-            const std::filesystem::path main { main_path };
-            const std::filesystem::path mode { mode_path };
-            if (!std::filesystem::exists(main_path)) {
-              std::filesystem::create_directory(main_path);
+            const std::experimental::filesystem::path main { main_path };
+            const std::experimental::filesystem::path mode { mode_path };
+            if (!std::experimental::filesystem::exists(main_path)) {
+              std::experimental::filesystem::create_directory(main_path);
             }
-            if (!std::filesystem::exists(main / mode)) {
-              std::filesystem::create_directory(main / mode);
+            if (!std::experimental::filesystem::exists(main / mode)) {
+              std::experimental::filesystem::create_directory(main / mode);
             }
           },
           m_fname,
@@ -470,7 +464,7 @@ namespace out {
         m_mode   = adios2::Mode::Write;
       } else {
         filename = fmt::format("%s.%s", m_fname.c_str(), ext.c_str());
-        m_mode   = std::filesystem::exists(filename) ? adios2::Mode::Append
+        m_mode   = std::experimental::filesystem::exists(filename) ? adios2::Mode::Append
                                                      : adios2::Mode::Write;
       }
       m_writer = m_io.Open(filename, m_mode);
