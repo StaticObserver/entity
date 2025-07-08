@@ -443,25 +443,14 @@ namespace out {
           raise::Fatal("Unknown write mode", HERE);
         }
         CallOnce(
-<<<<<<< HEAD
-          [](auto& main_path, auto& mode_path) {
-            const std::experimental::filesystem::path main { main_path };
-            const std::experimental::filesystem::path mode { mode_path };
-            if (!std::experimental::filesystem::exists(main_path)) {
-              std::experimental::filesystem::create_directory(main_path);
-            }
-            if (!std::experimental::filesystem::exists(main / mode)) {
-              std::experimental::filesystem::create_directory(main / mode);
-=======
           [](auto&& main_path, auto&& mode_path) {
             const path_t main { main_path };
             const path_t mode { mode_path };
-            if (!std::filesystem::exists(main_path)) {
-              std::filesystem::create_directory(main_path);
+            if (!std::experimental::filesystem::exists(main_path)) {
+              std::experimental::filesystem::create_directory(main_path);
             }
-            if (!std::filesystem::exists(main_path / mode_path)) {
-              std::filesystem::create_directory(main_path / mode_path);
->>>>>>> 1.2.0rc
+            if (!std::experimental::filesystem::exists(main_path / mode_path)) {
+              std::experimental::filesystem::create_directory(main_path / mode_path);
             }
           },
           m_root,
@@ -473,13 +462,8 @@ namespace out {
                    fmt::format("%s.%08lu.%s", mode_str.c_str(), tstep, ext.c_str());
         m_mode = adios2::Mode::Write;
       } else {
-<<<<<<< HEAD
-        filename = fmt::format("%s.%s", m_fname.c_str(), ext.c_str());
-        m_mode   = std::experimental::filesystem::exists(filename) ? adios2::Mode::Append
-=======
         filename = fmt::format("%s.%s", m_root.c_str(), ext.c_str());
-        m_mode   = std::filesystem::exists(filename) ? adios2::Mode::Append
->>>>>>> 1.2.0rc
+        m_mode   = std::experimental::filesystem::exists(filename) ? adios2::Mode::Append
                                                      : adios2::Mode::Write;
       }
       m_writer = m_io.Open(filename, m_mode);

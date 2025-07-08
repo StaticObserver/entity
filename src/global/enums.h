@@ -260,7 +260,7 @@ namespace ntt {
     constexpr PrtlPusher(uint8_t c)
       : enums_hidden::BaseEnum<PrtlPusher> { c } {}
 
-    static constexpr type variants[] = { BORIS, VAY, PHOTON, NONE };
+    static constexpr type variants[] = { BORIS, VAY, PHOTON, FORCEFREE, NONE };
     static constexpr const char* lookup[] = { "boris", "vay", "photon", "forcefree", "none"};
     static constexpr std::size_t total = sizeof(variants) / sizeof(variants[0]);
   };

@@ -11,6 +11,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# 添加抑制警告的选项
+set(SUPPRESS_WARNINGS
+    OFF
+    CACHE BOOL "Suppress all compiler warnings")
+
 if($DEBUG)
   set(CMAKE_BUILD_TYPE
       Release
@@ -20,8 +25,13 @@ else()
   set(CMAKE_BUILD_TYPE
       Debug
       CACHE STRING "CMake build type")
-  set(CMAKE_CXX_FLAGS
-      "${CMAKE_CXX_FLAGS} -DDEBUG -Wall -Wextra -Wno-unknown-pragmas")
+  if(SUPPRESS_WARNINGS)
+    set(CMAKE_CXX_FLAGS
+        "${CMAKE_CXX_FLAGS} -DDEBUG -w")
+  else()
+    set(CMAKE_CXX_FLAGS
+        "${CMAKE_CXX_FLAGS} -DDEBUG -Wall -Wextra -Wno-unknown-pragmas")
+  endif()
 endif()
 
 set(BUILD_TESTING
