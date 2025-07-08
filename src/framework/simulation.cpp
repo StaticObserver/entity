@@ -11,8 +11,6 @@
 #include "utils/plog.h"
 #include "utils/toml.h"
 
-#include "framework/parameters.h"
-
 #include <filesystem>
 #include <string>
 
@@ -32,7 +30,12 @@ namespace ntt {
 
     const auto raw_params = toml::parse(inputfname);
     const auto sim_name = toml::find<std::string>(raw_params, "simulation", "name");
-    logger::initPlog<files::LogFile, files::InfoFile, files::ErrFile>(sim_name);
+    const auto log_level = toml::find_or<std::string>(raw_params,
+                                                      "diagnostics",
+                                                      "log_level",
+                                                      defaults::diag::log_level);
+    logger::initPlog<files::LogFile, files::InfoFile, files::ErrFile>(sim_name,
+                                                                      log_level);
 
     m_requested_engine = SimEngine::pick(
       fmt::toLower(toml::find<std::string>(raw_params, "simulation", "engine")).c_str());
@@ -40,47 +43,55 @@ namespace ntt {
       fmt::toLower(toml::find<std::string>(raw_params, "grid", "metric", "metric"))
         .c_str());
 
-    const auto res = toml::find<std::vector<std::size_t>>(raw_params,
-                                                          "grid",
-                                                          "resolution");
+    const auto res = toml::find<std::vector<ncells_t>>(raw_params,
+                                                       "grid",
+                                                       "resolution");
     raise::ErrorIf(res.size() < 1 || res.size() > 3,
                    "invalid `grid.resolution`",
                    HERE);
     m_requested_dimension = static_cast<Dimension>(res.size());
 
-    // !TODO: when mixing checkpoint metadata with input,
-    // ... need to properly take care of the diffs
     m_params.setRawData(raw_params);
-    std::size_t checkpoint_step = 0;
+    timestep_t checkpoint_step = 0;
+
     if (is_resuming) {
       logger::Checkpoint("Reading params from a checkpoint", HERE);
-      if (not std::filesystem::exists("checkpoints")) {
+      const auto checkpoint_write_path = toml::find_or<std::string>(
+        raw_params,
+        "checkpoint",
+        "write_path",
+        fmt::format(defaults::checkpoint::write_path.c_str(), sim_name.c_str()));
+      const path_t checkpoint_read_path = toml::find_or<std::string>(
+        raw_params,
+        "checkpoint",
+        "read_path",
+        checkpoint_write_path);
+      if (not std::filesystem::exists(checkpoint_read_path)) {
         raise::Fatal("No checkpoints found", HERE);
       }
       for (const auto& entry :
-           std::filesystem::directory_iterator("checkpoints")) {
+           std::filesystem::directory_iterator(checkpoint_read_path)) {
         const auto fname = entry.path().filename().string();
         if (fname.find("step-") == 0) {
-          const std::size_t step = std::stoi(fname.substr(5, fname.size() - 5 - 3));
+          const timestep_t step = std::stoi(fname.substr(5, fname.size() - 5 - 3));
           if (step > checkpoint_step) {
             checkpoint_step = step;
           }
         }
       }
-      std::string checkpoint_inputfname = fmt::format(
-        "checkpoints/meta-%08lu.toml",
-        checkpoint_step);
-      if (not std::filesystem::exists(checkpoint_inputfname)) {
+      path_t checkpoint_metafname = checkpoint_read_path /
+                                    fmt::format("meta-%08lu.toml", checkpoint_step);
+      if (not std::filesystem::exists(checkpoint_metafname)) {
         raise::Fatal(
           fmt::format("metainformation for %lu not found", checkpoint_step),
           HERE);
-        checkpoint_inputfname = inputfname;
+        checkpoint_metafname = inputfname;
       }
       logger::Checkpoint(fmt::format("Using %08lu", checkpoint_step), HERE);
-      const auto raw_checkpoint_params = toml::parse(checkpoint_inputfname);
-      const auto start_time = toml::find<long double>(raw_checkpoint_params,
-                                                      "metadata",
-                                                      "time");
+      const auto raw_checkpoint_params = toml::parse(checkpoint_metafname);
+      const auto start_time = toml::find<simtime_t>(raw_checkpoint_params,
+                                                    "metadata",
+                                                    "time");
       m_params.setImmutableParams(raw_checkpoint_params);
       m_params.setMutableParams(raw_params);
       m_params.setCheckpointParams(true, checkpoint_step, start_time);

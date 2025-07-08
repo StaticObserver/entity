@@ -16,13 +16,16 @@
 
 #include <Kokkos_Core.hpp>
 
+#include <string>
+
 namespace ntt {
 
   template <SimEngine::type S, class M>
   void Engine<S, M>::init() {
     if constexpr (pgen_is_ok) {
+      m_metadomain.InitStatsWriter(m_params, is_resuming);
 #if defined(OUTPUT_ENABLED)
-      m_metadomain.InitWriter(&m_adios, m_params, is_resuming);
+      m_metadomain.InitWriter(&m_adios, m_params);
       m_metadomain.InitCheckpointWriter(&m_adios, m_params);
 #endif
       logger::Checkpoint("Initializing Engine", HERE);
@@ -53,7 +56,7 @@ namespace ntt {
 #if defined(OUTPUT_ENABLED)
         // read simulation data from the checkpoint
         raise::ErrorIf(
-          m_params.template get<std::size_t>("checkpoint.start_step") == 0,
+          m_params.template get<timestep_t>("checkpoint.start_step") == 0,
           "Resuming simulation from a checkpoint requires a valid start_step",
           HERE);
         logger::Checkpoint("Resuming simulation from a checkpoint", HERE);
@@ -65,6 +68,7 @@ namespace ntt {
 #endif
       }
     }
+    print_report();
   }
 
   template class Engine<SimEngine::SRPIC, metric::Minkowski<Dim::_1D>>;
@@ -75,4 +79,5 @@ namespace ntt {
   template class Engine<SimEngine::GRPIC, metric::KerrSchild<Dim::_2D>>;
   template class Engine<SimEngine::GRPIC, metric::KerrSchild0<Dim::_2D>>;
   template class Engine<SimEngine::GRPIC, metric::QKerrSchild<Dim::_2D>>;
+
 } // namespace ntt

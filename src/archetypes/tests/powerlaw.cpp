@@ -31,7 +31,7 @@ struct Caller {
   Inline void operator()(index_t) const {
     vec_t<Dim::_3D> vp { ZERO };
     coord_t<D>      xp { ZERO };
-    for (unsigned short d = 0; d < D; ++d) {
+    for (dim_t d { 0u }; d < D; ++d) {
       xp[d] = 2.0;
     }
     dist(xp, vp);
@@ -45,10 +45,12 @@ struct Caller {
         raise::KernelError(HERE, "Gamma out of bounds");
       }
     } else {
-      vec_t<Dim::_3D> vup { ZERO };
-      metric.template transform<Idx::D, Idx::U>(xp, vp, vup);
+      vec_t<Dim::_3D> vd { ZERO };
+      vec_t<Dim::_3D> vu { ZERO };
+      metric.template transform<Idx::T, Idx::D>(xp, vp, vd);
+      metric.template transform<Idx::T, Idx::U>(xp, vp, vu);
       const auto gamma = math::sqrt(
-        ONE + vup[0] * vp[0] + vup[1] * vp[1] + vup[2] * vp[2]);
+        ONE + vu[0] * vd[0] + vu[1] * vd[1] + vu[2] * vd[2]);
       if (gamma < 10 or gamma > 1000) {
         raise::KernelError(HERE, "Gamma out of bounds");
       }
@@ -73,13 +75,13 @@ void testEnergyDist(const std::vector<std::size_t>&      res,
     if constexpr (M::Dim == Dim::_2D) {
       extent = {
         ext[0],
-        {ZERO, constant::PI}
+        { ZERO, constant::PI }
       };
     } else if constexpr (M::Dim == Dim::_3D) {
       extent = {
         ext[0],
-        {ZERO,     constant::PI},
-        {ZERO, constant::TWO_PI}
+        { ZERO,     constant::PI },
+        { ZERO, constant::TWO_PI }
       };
     }
   }

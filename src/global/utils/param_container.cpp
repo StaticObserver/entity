@@ -13,7 +13,6 @@
   #include <string>
   #include <type_traits>
   #include <typeindex>
-  #include <typeinfo>
   #include <utility>
   #include <vector>
 
@@ -215,34 +214,36 @@ namespace prm {
   }
 
   void Parameters::write(adios2::IO& io) const {
-    register_write_function<double>();
+    register_write_function<bool>();
     register_write_function<float>();
+    register_write_function<double>();
+    register_write_function<long double>();
     register_write_function<int>();
-    register_write_function<std::size_t>();
     register_write_function<unsigned int>();
     register_write_function<long int>();
-    register_write_function<long double>();
     register_write_function<unsigned long int>();
+    register_write_function<long long int>();
+    register_write_function<unsigned long long int>();
     register_write_function<short>();
-    register_write_function<bool>();
     register_write_function<unsigned short>();
+    register_write_function<Dimension>();
+    register_write_function<std::string>();
     register_write_function<ntt::FldsBC>();
     register_write_function<ntt::PrtlBC>();
     register_write_function<ntt::Coord>();
     register_write_function<ntt::Metric>();
     register_write_function<ntt::SimEngine>();
     register_write_function<ntt::PrtlPusher>();
-    register_write_function<Dimension>();
-    register_write_function<std::string>();
 
-    register_write_function_for_pair<double>();
     register_write_function_for_pair<float>();
+    register_write_function_for_pair<double>();
+    register_write_function_for_pair<long double>();
     register_write_function_for_pair<int>();
-    register_write_function_for_pair<std::size_t>();
     register_write_function_for_pair<unsigned int>();
     register_write_function_for_pair<long int>();
-    register_write_function_for_pair<long double>();
     register_write_function_for_pair<unsigned long int>();
+    register_write_function_for_pair<long long int>();
+    register_write_function_for_pair<unsigned long long int>();
     register_write_function_for_pair<short>();
     register_write_function_for_pair<unsigned short>();
     register_write_function_for_pair<std::string>();
@@ -253,14 +254,15 @@ namespace prm {
     register_write_function_for_pair<ntt::SimEngine>();
     register_write_function_for_pair<ntt::PrtlPusher>();
 
-    register_write_function_for_vector<double>();
     register_write_function_for_vector<float>();
+    register_write_function_for_vector<double>();
+    register_write_function_for_vector<long double>();
     register_write_function_for_vector<int>();
-    register_write_function_for_vector<std::size_t>();
     register_write_function_for_vector<unsigned int>();
     register_write_function_for_vector<long int>();
-    register_write_function_for_vector<long double>();
     register_write_function_for_vector<unsigned long int>();
+    register_write_function_for_vector<long long int>();
+    register_write_function_for_vector<unsigned long long int>();
     register_write_function_for_vector<short>();
     register_write_function_for_vector<unsigned short>();
     register_write_function_for_vector<std::string>();
@@ -271,14 +273,15 @@ namespace prm {
     register_write_function_for_vector<ntt::SimEngine>();
     register_write_function_for_vector<ntt::PrtlPusher>();
 
-    register_write_function_for_vector_of_pair<double>();
     register_write_function_for_vector_of_pair<float>();
+    register_write_function_for_vector_of_pair<double>();
+    register_write_function_for_vector_of_pair<long double>();
     register_write_function_for_vector_of_pair<int>();
-    register_write_function_for_vector_of_pair<std::size_t>();
     register_write_function_for_vector_of_pair<unsigned int>();
     register_write_function_for_vector_of_pair<long int>();
-    register_write_function_for_vector_of_pair<long double>();
     register_write_function_for_vector_of_pair<unsigned long int>();
+    register_write_function_for_vector_of_pair<long long int>();
+    register_write_function_for_vector_of_pair<unsigned long long int>();
     register_write_function_for_vector_of_pair<short>();
     register_write_function_for_vector_of_pair<unsigned short>();
     register_write_function_for_vector_of_pair<std::string>();
@@ -289,14 +292,15 @@ namespace prm {
     register_write_function_for_vector_of_pair<ntt::SimEngine>();
     register_write_function_for_vector_of_pair<ntt::PrtlPusher>();
 
-    register_write_function_for_vector_of_vector<double>();
     register_write_function_for_vector_of_vector<float>();
+    register_write_function_for_vector_of_vector<double>();
+    register_write_function_for_vector_of_vector<long double>();
     register_write_function_for_vector_of_vector<int>();
-    register_write_function_for_vector_of_vector<std::size_t>();
     register_write_function_for_vector_of_vector<unsigned int>();
     register_write_function_for_vector_of_vector<long int>();
-    register_write_function_for_vector_of_vector<long double>();
     register_write_function_for_vector_of_vector<unsigned long int>();
+    register_write_function_for_vector_of_vector<long long int>();
+    register_write_function_for_vector_of_vector<unsigned long long int>();
     register_write_function_for_vector_of_vector<short>();
     register_write_function_for_vector_of_vector<unsigned short>();
     register_write_function_for_vector_of_vector<std::string>();
@@ -307,22 +311,32 @@ namespace prm {
     register_write_function_for_vector_of_vector<ntt::SimEngine>();
     register_write_function_for_vector_of_vector<ntt::PrtlPusher>();
 
-    register_write_function_for_dict<double>();
     register_write_function_for_dict<float>();
+    register_write_function_for_dict<double>();
+    register_write_function_for_dict<long double>();
     register_write_function_for_dict<int>();
-    register_write_function_for_dict<std::size_t>();
     register_write_function_for_dict<unsigned int>();
     register_write_function_for_dict<long int>();
-    register_write_function_for_dict<long double>();
     register_write_function_for_dict<unsigned long int>();
+    register_write_function_for_dict<long long int>();
+    register_write_function_for_dict<unsigned long long int>();
     register_write_function_for_dict<short>();
     register_write_function_for_dict<unsigned short>();
     register_write_function_for_dict<std::string>();
 
     for (auto& [key, value] : allVars()) {
+      // @TODO: add particles.species support in attrs
+      if (key == "particles.species") {
+        continue;
+      }
       try {
         write_any(io, key, value);
       } catch (const std::exception& e) {
+        raise::Warning(
+          fmt::format("Failed to write parameter '%s', skipping. Error msg: %s",
+                      key.c_str(),
+                      e.what()),
+          HERE);
         continue;
       }
     }
@@ -330,4 +344,4 @@ namespace prm {
 
 } // namespace prm
 
-#endif
+#endif // OUTPUT_ENABLED

@@ -140,7 +140,7 @@ namespace ntt {
     auto     recv_slice   = std::vector<range_tuple_t> {};
     const in components[] = { in::x1, in::x2, in::x3 };
     // find the field components and indices to be sent/received
-    for (std::size_t d { 0 }; d < direction.size(); ++d) {
+    for (auto d { 0u }; d < direction.size(); ++d) {
       const auto c   = components[d];
       const auto dir = direction[d];
       if (not synchronize) {
@@ -206,13 +206,22 @@ namespace ntt {
 
   template <SimEngine::type S, class M>
   void Metadomain<S, M>::CommunicateFields(Domain<S, M>& domain, CommTags tags) {
-    const auto comm_fields = (tags & Comm::E) || (tags & Comm::B) ||
-                             (tags & Comm::J) || (tags & Comm::D) ||
-                             (tags & Comm::D0) || (tags & Comm::B0);
-    const bool comm_em = (tags & Comm::E) || (tags & Comm::B) || (tags & Comm::D);
-    const bool comm_em0 = (tags & Comm::B0) || (tags & Comm::D0);
+    // const auto comm_fields = (tags & Comm::E) or (tags & Comm::B) or
+    //                          (tags & Comm::J) or (tags & Comm::D) or
+    //                          (tags & Comm::D0) or (tags & Comm::B0) or
+    //                          (tags & Comm::H);
+    const auto comm_em = ((S == SimEngine::SRPIC) and
+                          ((tags & Comm::E) or (tags & Comm::B))) or
+                         ((S == SimEngine::GRPIC) and
+                          ((tags & Comm::D) or (tags & Comm::B)));
+    const bool comm_em0 = (S == SimEngine::GRPIC) and
+                          ((tags & Comm::B0) or (tags & Comm::D0));
     const bool comm_j   = (tags & Comm::J);
-    raise::ErrorIf(not comm_fields, "CommunicateFields called with no task", HERE);
+    const bool comm_aux = (S == SimEngine::GRPIC) and
+                          ((tags & Comm::E) or (tags & Comm::H));
+    raise::ErrorIf(not(comm_em or comm_em0 or comm_j or comm_aux),
+                   "CommunicateFields called with no task",
+                   HERE);
 
     std::string comms = "";
     if (tags & Comm::E) {
@@ -226,6 +235,9 @@ namespace ntt {
     }
     if (tags & Comm::D) {
       comms += "D ";
+    }
+    if (tags & Comm::H) {
+      comms += "H ";
     }
     if (tags & Comm::D0) {
       comms += "D0 ";
@@ -243,16 +255,17 @@ namespace ntt {
     auto comp_range_fld = range_tuple_t {};
     auto comp_range_cur = range_tuple_t {};
     if constexpr (S == SimEngine::GRPIC) {
-      if (((tags & Comm::D) && (tags & Comm::B)) ||
-          ((tags & Comm::D0) && (tags & Comm::B0))) {
+      if (((tags & Comm::D) and (tags & Comm::B)) or
+          ((tags & Comm::D0) and (tags & Comm::B0)) or
+          ((tags & Comm::E) and (tags & Comm::H))) {
         comp_range_fld = range_tuple_t(em::dx1, em::bx3 + 1);
-      } else if ((tags & Comm::D) || (tags & Comm::D0)) {
+      } else if ((tags & Comm::D) or (tags & Comm::D0) or (tags & Comm::E)) {
         comp_range_fld = range_tuple_t(em::dx1, em::dx3 + 1);
-      } else if ((tags & Comm::B) || (tags & Comm::B0)) {
+      } else if ((tags & Comm::B) or (tags & Comm::B0) or (tags & Comm::H)) {
         comp_range_fld = range_tuple_t(em::bx1, em::bx3 + 1);
       }
     } else if constexpr (S == SimEngine::SRPIC) {
-      if ((tags & Comm::E) && (tags & Comm::B)) {
+      if ((tags & Comm::E) and (tags & Comm::B)) {
         comp_range_fld = range_tuple_t(em::ex1, em::bx3 + 1);
       } else if (tags & Comm::E) {
         comp_range_fld = range_tuple_t(em::ex1, em::ex3 + 1);
@@ -290,6 +303,19 @@ namespace ntt {
                                           false);
       }
       if constexpr (S == SimEngine::GRPIC) {
+        if (comm_aux) {
+          comm::CommunicateField<M::Dim, 6>(domain.index(),
+                                            domain.fields.aux,
+                                            domain.fields.aux,
+                                            send_ind,
+                                            recv_ind,
+                                            send_rank,
+                                            recv_rank,
+                                            send_slice,
+                                            recv_slice,
+                                            comp_range_fld,
+                                            false);
+        }
         if (comm_em0) {
           comm::CommunicateField<M::Dim, 6>(domain.index(),
                                             domain.fields.em0,
@@ -302,20 +328,59 @@ namespace ntt {
                                             recv_slice,
                                             comp_range_fld,
                                             false);
+          // @HACK_GR_1.2.0 -- this has to be done carefully
+          // comm::CommunicateField<M::Dim, 6>(domain.index(),
+          //                                   domain.fields.aux,
+          //                                   domain.fields.aux,
+          //                                   send_ind,
+          //                                   recv_ind,
+          //                                   send_rank,
+          //                                   recv_rank,
+          //                                   send_slice,
+          //                                   recv_slice,
+          //                                   comp_range_fld,
+          //                                   false);
         }
-      }
-      if (comm_j) {
-        comm::CommunicateField<M::Dim, 3>(domain.index(),
-                                          domain.fields.cur,
-                                          domain.fields.cur,
-                                          send_ind,
-                                          recv_ind,
-                                          send_rank,
-                                          recv_rank,
-                                          send_slice,
-                                          recv_slice,
-                                          comp_range_cur,
-                                          false);
+        if (comm_j) {
+          comm::CommunicateField<M::Dim, 3>(domain.index(),
+                                            domain.fields.cur0,
+                                            domain.fields.cur0,
+                                            send_ind,
+                                            recv_ind,
+                                            send_rank,
+                                            recv_rank,
+                                            send_slice,
+                                            recv_slice,
+                                            comp_range_cur,
+                                            false);
+        }
+      } else {
+        if (comm_em) {
+          comm::CommunicateField<M::Dim, 6>(domain.index(),
+                                            domain.fields.em,
+                                            domain.fields.em,
+                                            send_ind,
+                                            recv_ind,
+                                            send_rank,
+                                            recv_rank,
+                                            send_slice,
+                                            recv_slice,
+                                            comp_range_fld,
+                                            false);
+        }
+        if (comm_j) {
+          comm::CommunicateField<M::Dim, 3>(domain.index(),
+                                            domain.fields.cur,
+                                            domain.fields.cur,
+                                            send_ind,
+                                            recv_ind,
+                                            send_rank,
+                                            recv_rank,
+                                            send_slice,
+                                            recv_slice,
+                                            comp_range_cur,
+                                            false);
+        }
       }
     }
   }
@@ -435,17 +500,31 @@ namespace ntt {
         continue;
       }
       if (comm_j) {
-        comm::CommunicateField<M::Dim, 3>(domain.index(),
-                                          domain.fields.cur,
-                                          domain.fields.buff,
-                                          send_ind,
-                                          recv_ind,
-                                          send_rank,
-                                          recv_rank,
-                                          send_slice,
-                                          recv_slice,
-                                          comp_range_cur,
-                                          synchronize);
+        if constexpr (S == SimEngine::GRPIC) {
+          comm::CommunicateField<M::Dim, 3>(domain.index(),
+                                            domain.fields.cur0,
+                                            domain.fields.buff,
+                                            send_ind,
+                                            recv_ind,
+                                            send_rank,
+                                            recv_rank,
+                                            send_slice,
+                                            recv_slice,
+                                            comp_range_cur,
+                                            synchronize);
+        } else {
+          comm::CommunicateField<M::Dim, 3>(domain.index(),
+                                            domain.fields.cur,
+                                            domain.fields.buff,
+                                            send_ind,
+                                            recv_ind,
+                                            send_rank,
+                                            recv_rank,
+                                            send_slice,
+                                            recv_slice,
+                                            comp_range_cur,
+                                            synchronize);
+        }
       }
       if (comm_bckp) {
         comm::CommunicateField<M::Dim, 6>(domain.index(),
@@ -475,10 +554,17 @@ namespace ntt {
       }
     }
     if (comm_j) {
-      AddBufferedFields<M::Dim, 3>(domain.fields.cur,
-                                   domain.fields.buff,
-                                   domain.mesh.rangeActiveCells(),
-                                   comp_range_cur);
+      if constexpr (S == SimEngine::GRPIC) {
+        AddBufferedFields<M::Dim, 3>(domain.fields.cur0,
+                                     domain.fields.buff,
+                                     domain.mesh.rangeActiveCells(),
+                                     comp_range_cur);
+      } else {
+        AddBufferedFields<M::Dim, 3>(domain.fields.cur,
+                                     domain.fields.buff,
+                                     domain.mesh.rangeActiveCells(),
+                                     comp_range_cur);
+      }
     }
     if (comm_bckp) {
       AddBufferedFields<M::Dim, 6>(domain.fields.bckp,
@@ -506,15 +592,14 @@ namespace ntt {
       const auto npart_dead          = npptag_vec[ParticleTag::dead];
       const auto npart_alive         = npptag_vec[ParticleTag::alive];
 
-      const auto npart       = species.npart();
-      const auto npart_holes = npart - npart_alive;
+      const auto npart = species.npart();
 
       // # of particles to receive per each tag (direction)
-      std::vector<std::size_t> npptag_recv_vec(ntags - 2, 0);
+      std::vector<npart_t> npptag_recv_vec(ntags - 2, 0);
       // coordinate shifts per each direction
-      array_t<int*>            shifts_in_x1 { "shifts_in_x1", ntags - 2 };
-      array_t<int*>            shifts_in_x2 { "shifts_in_x2", ntags - 2 };
-      array_t<int*>            shifts_in_x3 { "shifts_in_x3", ntags - 2 };
+      array_t<int*>        shifts_in_x1 { "shifts_in_x1", ntags - 2 };
+      array_t<int*>        shifts_in_x2 { "shifts_in_x2", ntags - 2 };
+      array_t<int*>        shifts_in_x3 { "shifts_in_x3", ntags - 2 };
       auto shifts_in_x1_h = Kokkos::create_mirror_view(shifts_in_x1);
       auto shifts_in_x2_h = Kokkos::create_mirror_view(shifts_in_x2);
       auto shifts_in_x3_h = Kokkos::create_mirror_view(shifts_in_x3);
@@ -527,7 +612,7 @@ namespace ntt {
       std::vector<int> recv_ranks, recv_inds;
 
       // total # of reaceived particles from all directions
-      std::size_t npart_recv = 0u;
+      npart_t npart_recv = 0u;
 
       for (const auto& direction : dir::Directions<D>::all) {
         // tags corresponding to the direction (both send & recv)
@@ -559,7 +644,7 @@ namespace ntt {
 
         // request the # of particles to-be-received ...
         // ... and send the # of particles to-be-sent
-        std::size_t nrecv = 0;
+        npart_t nrecv = 0;
         comm::ParticleSendRecvCount(send_rank, recv_rank, nsend, nrecv);
         npart_recv                    += nrecv;
         npptag_recv_vec[tag_recv - 2]  = nrecv;
@@ -604,8 +689,7 @@ namespace ntt {
       Kokkos::deep_copy(shifts_in_x2, shifts_in_x2_h);
       Kokkos::deep_copy(shifts_in_x3, shifts_in_x3_h);
 
-      array_t<std::size_t*> outgoing_indices { "outgoing_indices",
-                                               npart - npart_alive };
+      array_t<npart_t*> outgoing_indices { "outgoing_indices", npart - npart_alive };
       // clang-format off
       Kokkos::parallel_for(
         "PrepareOutgoingPrtls",
@@ -643,13 +727,23 @@ namespace ntt {
     }
   }
 
-  template struct Metadomain<SimEngine::SRPIC, metric::Minkowski<Dim::_1D>>;
-  template struct Metadomain<SimEngine::SRPIC, metric::Minkowski<Dim::_2D>>;
-  template struct Metadomain<SimEngine::SRPIC, metric::Minkowski<Dim::_3D>>;
-  template struct Metadomain<SimEngine::SRPIC, metric::Spherical<Dim::_2D>>;
-  template struct Metadomain<SimEngine::SRPIC, metric::QSpherical<Dim::_2D>>;
-  template struct Metadomain<SimEngine::GRPIC, metric::KerrSchild<Dim::_2D>>;
-  template struct Metadomain<SimEngine::GRPIC, metric::QKerrSchild<Dim::_2D>>;
-  template struct Metadomain<SimEngine::GRPIC, metric::KerrSchild0<Dim::_2D>>;
+#define METADOMAIN_COMM(S, M)                                                  \
+  template void Metadomain<S, M>::CommunicateFields(Domain<S, M>&, CommTags);  \
+  template void Metadomain<S, M>::SynchronizeFields(Domain<S, M>&,             \
+                                                    CommTags,                  \
+                                                    const range_tuple_t&);     \
+  template void Metadomain<S, M>::CommunicateParticles(Domain<S, M>&);         \
+  template void Metadomain<S, M>::RemoveDeadParticles(Domain<S, M>&);
+
+  METADOMAIN_COMM(SimEngine::SRPIC, metric::Minkowski<Dim::_1D>)
+  METADOMAIN_COMM(SimEngine::SRPIC, metric::Minkowski<Dim::_2D>)
+  METADOMAIN_COMM(SimEngine::SRPIC, metric::Minkowski<Dim::_3D>)
+  METADOMAIN_COMM(SimEngine::SRPIC, metric::Spherical<Dim::_2D>)
+  METADOMAIN_COMM(SimEngine::SRPIC, metric::QSpherical<Dim::_2D>)
+  METADOMAIN_COMM(SimEngine::GRPIC, metric::KerrSchild<Dim::_2D>)
+  METADOMAIN_COMM(SimEngine::GRPIC, metric::QKerrSchild<Dim::_2D>)
+  METADOMAIN_COMM(SimEngine::GRPIC, metric::KerrSchild0<Dim::_2D>)
+
+#undef METADOMAIN_COMM
 
 } // namespace ntt

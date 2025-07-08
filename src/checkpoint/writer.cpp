@@ -15,46 +15,49 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <stdexcept>
 #include <string>
 
 namespace checkpoint {
 
-  void Writer::init(adios2::ADIOS* ptr_adios,
-                    std::size_t    interval,
-                    long double    interval_time,
-                    int            keep) {
-    m_keep    = keep;
-    m_enabled = keep != 0;
+  void Writer::init(adios2::ADIOS*     ptr_adios,
+                    const path_t&      checkpoint_root,
+                    timestep_t         interval,
+                    simtime_t          interval_time,
+                    int                keep,
+                    const std::string& walltime) {
+    m_keep            = keep;
+    m_checkpoint_root = checkpoint_root;
+    m_enabled         = keep != 0;
     if (not m_enabled) {
       return;
     }
-    m_tracker.init("checkpoint", interval, interval_time);
+    m_tracker.init("checkpoint", interval, interval_time, walltime);
     p_adios = ptr_adios;
     raise::ErrorIf(p_adios == nullptr, "ADIOS pointer is null", HERE);
 
     m_io = p_adios->DeclareIO("Entity::Checkpoint");
     m_io.SetEngine("BPFile");
 
-    m_io.DefineVariable<std::size_t>("Step");
-    m_io.DefineVariable<long double>("Time");
+    m_io.DefineVariable<timestep_t>("Step");
+    m_io.DefineVariable<simtime_t>("Time");
     m_io.DefineAttribute("NGhosts", ntt::N_GHOSTS);
 
-    CallOnce([]() {
-      const std::filesystem::path save_path { "checkpoints" };
-      if (!std::filesystem::exists(save_path)) {
-        std::filesystem::create_directory(save_path);
-      }
-    });
+    CallOnce(
+      [](auto&& checkpoint_root) {
+        if (!std::filesystem::exists(checkpoint_root)) {
+          std::filesystem::create_directory(checkpoint_root);
+        }
+      },
+      m_checkpoint_root);
   }
 
-  void Writer::defineFieldVariables(const ntt::SimEngine&           S,
-                                    const std::vector<std::size_t>& glob_shape,
-                                    const std::vector<std::size_t>& loc_corner,
-                                    const std::vector<std::size_t>& loc_shape) {
-    auto gs6 = std::vector<std::size_t>(glob_shape.begin(), glob_shape.end());
-    auto lc6 = std::vector<std::size_t>(loc_corner.begin(), loc_corner.end());
-    auto ls6 = std::vector<std::size_t>(loc_shape.begin(), loc_shape.end());
+  void Writer::defineFieldVariables(const ntt::SimEngine&        S,
+                                    const std::vector<ncells_t>& glob_shape,
+                                    const std::vector<ncells_t>& loc_corner,
+                                    const std::vector<ncells_t>& loc_shape) {
+    auto gs6 = std::vector<ncells_t>(glob_shape.begin(), glob_shape.end());
+    auto lc6 = std::vector<ncells_t>(loc_corner.begin(), loc_corner.end());
+    auto ls6 = std::vector<ncells_t>(loc_shape.begin(), loc_shape.end());
     gs6.push_back(6);
     lc6.push_back(0);
     ls6.push_back(6);
@@ -62,9 +65,9 @@ namespace checkpoint {
     m_io.DefineVariable<real_t>("em", gs6, lc6, ls6);
     if (S == ntt::SimEngine::GRPIC) {
       m_io.DefineVariable<real_t>("em0", gs6, lc6, ls6);
-      auto gs3 = std::vector<std::size_t>(glob_shape.begin(), glob_shape.end());
-      auto lc3 = std::vector<std::size_t>(loc_corner.begin(), loc_corner.end());
-      auto ls3 = std::vector<std::size_t>(loc_shape.begin(), loc_shape.end());
+      auto gs3 = std::vector<ncells_t>(glob_shape.begin(), glob_shape.end());
+      auto lc3 = std::vector<ncells_t>(loc_corner.begin(), loc_corner.end());
+      auto ls3 = std::vector<ncells_t>(loc_shape.begin(), loc_shape.end());
       gs3.push_back(3);
       lc3.push_back(0);
       ls3.push_back(3);
@@ -80,10 +83,10 @@ namespace checkpoint {
                    "Number of payloads does not match the number of species",
                    HERE);
     for (auto s { 0u }; s < nspec; ++s) {
-      m_io.DefineVariable<std::size_t>(fmt::format("s%d_npart", s + 1),
-                                       { adios2::UnknownDim },
-                                       { adios2::UnknownDim },
-                                       { adios2::UnknownDim });
+      m_io.DefineVariable<npart_t>(fmt::format("s%d_npart", s + 1),
+                                   { adios2::UnknownDim },
+                                   { adios2::UnknownDim },
+                                   { adios2::UnknownDim });
 
       for (auto d { 0u }; d < dim; ++d) {
         m_io.DefineVariable<int>(fmt::format("s%d_i%d", s + 1, d + 1),
@@ -135,11 +138,11 @@ namespace checkpoint {
     }
   }
 
-  auto Writer::shouldSave(std::size_t step, long double time) -> bool {
+  auto Writer::shouldSave(timestep_t step, simtime_t time) -> bool {
     return m_enabled and m_tracker.shouldWrite(step, time);
   }
 
-  void Writer::beginSaving(std::size_t step, long double time) {
+  void Writer::beginSaving(timestep_t step, simtime_t time) {
     raise::ErrorIf(!m_enabled, "Checkpoint is not enabled", HERE);
     raise::ErrorIf(p_adios == nullptr, "ADIOS pointer is null", HERE);
     if (m_writing_mode) {
@@ -147,21 +150,22 @@ namespace checkpoint {
     }
     m_writing_mode = true;
     try {
-      auto fname      = fmt::format("checkpoints/step-%08lu.bp", step);
-      m_writer        = m_io.Open(fname, adios2::Mode::Write);
-      auto meta_fname = fmt::format("checkpoints/meta-%08lu.toml", step);
-      m_written.push_back({ fname, meta_fname });
+      const auto filename = m_checkpoint_root / fmt::format("step-%08lu.bp", step);
+      const auto metafilename = m_checkpoint_root /
+                                fmt::format("meta-%08lu.toml", step);
+      m_writer = m_io.Open(filename, adios2::Mode::Write);
+      m_written.push_back({ filename, metafilename });
       logger::Checkpoint(fmt::format("Writing checkpoint to %s and %s",
-                                     fname.c_str(),
-                                     meta_fname.c_str()),
+                                     filename.c_str(),
+                                     metafilename.c_str()),
                          HERE);
     } catch (std::exception& e) {
       raise::Fatal(e.what(), HERE);
     }
 
     m_writer.BeginStep();
-    m_writer.Put(m_io.InquireVariable<std::size_t>("Step"), &step);
-    m_writer.Put(m_io.InquireVariable<long double>("Time"), &time);
+    m_writer.Put(m_io.InquireVariable<timestep_t>("Step"), &step);
+    m_writer.Put(m_io.InquireVariable<simtime_t>("Time"), &time);
   }
 
   void Writer::endSaving() {
@@ -200,7 +204,7 @@ namespace checkpoint {
     m_writer.Put(var, &data);
   }
 
-  void Writer::saveAttrs(const ntt::SimulationParams& params, long double time) {
+  void Writer::saveAttrs(const ntt::SimulationParams& params, simtime_t time) {
     CallOnce([&]() {
       std::ofstream metadata;
       if (m_written.empty()) {
@@ -226,9 +230,9 @@ namespace checkpoint {
 
   template <typename T>
   void Writer::saveParticleQuantity(const std::string& quantity,
-                                    std::size_t        glob_total,
-                                    std::size_t        loc_offset,
-                                    std::size_t        loc_size,
+                                    npart_t            glob_total,
+                                    npart_t            loc_offset,
+                                    npart_t            loc_size,
                                     const array_t<T*>& data) {
     const auto slice = range_tuple_t(0, loc_size);
     auto       var   = m_io.InquireVariable<T>(quantity);
@@ -244,9 +248,9 @@ namespace checkpoint {
 
   void Writer::saveParticlePayloads(const std::string&       quantity,
                                     std::size_t              nplds,
-                                    std::size_t              glob_total,
-                                    std::size_t              loc_offset,
-                                    std::size_t              loc_size,
+                                    npart_t                  glob_total,
+                                    npart_t                  loc_offset,
+                                    npart_t                  loc_size,
                                     const array_t<real_t**>& data) {
     const auto slice = range_tuple_t(0, loc_size);
     auto       var   = m_io.InquireVariable<real_t>(quantity);
@@ -261,54 +265,38 @@ namespace checkpoint {
     m_writer.Put(var, data_sub.data(), adios2::Mode::Sync);
   }
 
-  template void Writer::savePerDomainVariable<int>(const std::string&,
-                                                   std::size_t,
-                                                   std::size_t,
-                                                   int);
-  template void Writer::savePerDomainVariable<float>(const std::string&,
-                                                     std::size_t,
-                                                     std::size_t,
-                                                     float);
-  template void Writer::savePerDomainVariable<double>(const std::string&,
-                                                      std::size_t,
-                                                      std::size_t,
-                                                      double);
-  template void Writer::savePerDomainVariable<std::size_t>(const std::string&,
-                                                           std::size_t,
-                                                           std::size_t,
-                                                           std::size_t);
+#define CHECKPOINT_PERDOMAIN_VARIABLE(T)                                       \
+  template void Writer::savePerDomainVariable<T>(const std::string&,           \
+                                                 std::size_t,                  \
+                                                 std::size_t,                  \
+                                                 T);
+  CHECKPOINT_PERDOMAIN_VARIABLE(int)
+  CHECKPOINT_PERDOMAIN_VARIABLE(float)
+  CHECKPOINT_PERDOMAIN_VARIABLE(double)
+  CHECKPOINT_PERDOMAIN_VARIABLE(npart_t)
+#undef CHECKPOINT_PERDOMAIN_VARIABLE
 
-  template void Writer::saveField<Dim::_1D, 3>(const std::string&,
-                                               const ndfield_t<Dim::_1D, 3>&);
-  template void Writer::saveField<Dim::_1D, 6>(const std::string&,
-                                               const ndfield_t<Dim::_1D, 6>&);
-  template void Writer::saveField<Dim::_2D, 3>(const std::string&,
-                                               const ndfield_t<Dim::_2D, 3>&);
-  template void Writer::saveField<Dim::_2D, 6>(const std::string&,
-                                               const ndfield_t<Dim::_2D, 6>&);
-  template void Writer::saveField<Dim::_3D, 3>(const std::string&,
-                                               const ndfield_t<Dim::_3D, 3>&);
-  template void Writer::saveField<Dim::_3D, 6>(const std::string&,
-                                               const ndfield_t<Dim::_3D, 6>&);
+#define CHECKPOINT_FIELD(D, N)                                                 \
+  template void Writer::saveField<D, N>(const std::string&,                    \
+                                        const ndfield_t<D, N>&);
+  CHECKPOINT_FIELD(Dim::_1D, 3)
+  CHECKPOINT_FIELD(Dim::_1D, 6)
+  CHECKPOINT_FIELD(Dim::_2D, 3)
+  CHECKPOINT_FIELD(Dim::_2D, 6)
+  CHECKPOINT_FIELD(Dim::_3D, 3)
+  CHECKPOINT_FIELD(Dim::_3D, 6)
+#undef CHECKPOINT_FIELD
 
-  template void Writer::saveParticleQuantity<int>(const std::string&,
-                                                  std::size_t,
-                                                  std::size_t,
-                                                  std::size_t,
-                                                  const array_t<int*>&);
-  template void Writer::saveParticleQuantity<float>(const std::string&,
-                                                    std::size_t,
-                                                    std::size_t,
-                                                    std::size_t,
-                                                    const array_t<float*>&);
-  template void Writer::saveParticleQuantity<double>(const std::string&,
-                                                     std::size_t,
-                                                     std::size_t,
-                                                     std::size_t,
-                                                     const array_t<double*>&);
-  template void Writer::saveParticleQuantity<short>(const std::string&,
-                                                    std::size_t,
-                                                    std::size_t,
-                                                    std::size_t,
-                                                    const array_t<short*>&);
+#define CHECKPOINT_PARTICLE_QUANTITY(T)                                        \
+  template void Writer::saveParticleQuantity<T>(const std::string&,            \
+                                                npart_t,                       \
+                                                npart_t,                       \
+                                                npart_t,                       \
+                                                const array_t<T*>&);
+  CHECKPOINT_PARTICLE_QUANTITY(int)
+  CHECKPOINT_PARTICLE_QUANTITY(float)
+  CHECKPOINT_PARTICLE_QUANTITY(double)
+  CHECKPOINT_PARTICLE_QUANTITY(short)
+#undef CHECKPOINT_PARTICLE_QUANTITY
+
 } // namespace checkpoint

@@ -32,7 +32,7 @@ namespace ntt {
                    "local_domain is a placeholder",
                    HERE);
 
-    std::vector<std::size_t> glob_shape_with_ghosts, off_ncells_with_ghosts;
+    std::vector<ncells_t> glob_shape_with_ghosts, off_ncells_with_ghosts;
     for (auto d { 0u }; d < M::Dim; ++d) {
       off_ncells_with_ghosts.push_back(
         local_domain->offset_ncells()[d] +
@@ -47,11 +47,16 @@ namespace ntt {
       nplds.push_back(local_domain->species[s].npld());
     }
 
+    const path_t checkpoint_root = params.template get<std::string>(
+      "checkpoint.write_path");
+
     g_checkpoint_writer.init(
       ptr_adios,
-      params.template get<std::size_t>("checkpoint.interval"),
-      params.template get<long double>("checkpoint.interval_time"),
-      params.template get<int>("checkpoint.keep"));
+      checkpoint_root,
+      params.template get<timestep_t>("checkpoint.interval"),
+      params.template get<simtime_t>("checkpoint.interval_time"),
+      params.template get<int>("checkpoint.keep"),
+      params.template get<std::string>("checkpoint.walltime"));
     if (g_checkpoint_writer.enabled()) {
       g_checkpoint_writer.defineFieldVariables(S,
                                                glob_shape_with_ghosts,
@@ -66,10 +71,10 @@ namespace ntt {
 
   template <SimEngine::type S, class M>
   auto Metadomain<S, M>::WriteCheckpoint(const SimulationParams& params,
-                                         std::size_t             current_step,
-                                         std::size_t             finished_step,
-                                         long double             current_time,
-                                         long double finished_time) -> bool {
+                                         timestep_t              current_step,
+                                         timestep_t              finished_step,
+                                         simtime_t               current_time,
+                                         simtime_t finished_time) -> bool {
     raise::ErrorIf(
       l_subdomain_indices().size() != 1,
       "Checkpointing for now is only supported for one subdomain per rank",
@@ -98,17 +103,17 @@ namespace ntt {
 #endif // MPI_ENABLED
 
       for (auto s { 0u }; s < local_domain->species.size(); ++s) {
-        auto        npart    = local_domain->species[s].npart();
-        std::size_t offset   = 0;
-        auto        glob_tot = npart;
+        auto    npart    = local_domain->species[s].npart();
+        npart_t offset   = 0;
+        auto    glob_tot = npart;
 #if defined(MPI_ENABLED)
-        auto glob_npart = std::vector<std::size_t>(g_ndomains);
+        auto glob_npart = std::vector<npart_t>(g_ndomains);
         MPI_Allgather(&npart,
                       1,
-                      mpi::get_type<std::size_t>(),
+                      mpi::get_type<npart_t>(),
                       glob_npart.data(),
                       1,
-                      mpi::get_type<std::size_t>(),
+                      mpi::get_type<npart_t>(),
                       MPI_COMM_WORLD);
         glob_tot = 0;
         for (auto r = 0; r < g_mpi_size; ++r) {
@@ -118,7 +123,7 @@ namespace ntt {
           glob_tot += glob_npart[r];
         }
 #endif // MPI_ENABLED
-        g_checkpoint_writer.savePerDomainVariable<std::size_t>(
+        g_checkpoint_writer.savePerDomainVariable<npart_t>(
           fmt::format("s%d_npart", s + 1),
           dom_tot,
           dom_offset,
@@ -261,9 +266,12 @@ namespace ntt {
   void Metadomain<S, M>::ContinueFromCheckpoint(adios2::ADIOS* ptr_adios,
                                                 const SimulationParams& params) {
     raise::ErrorIf(ptr_adios == nullptr, "adios == nullptr", HERE);
-    auto fname = fmt::format(
-      "checkpoints/step-%08lu.bp",
-      params.template get<std::size_t>("checkpoint.start_step"));
+    const path_t checkpoint_root = params.template get<std::string>(
+      "checkpoint.read_path");
+    const auto fname = checkpoint_root /
+                       fmt::format("step-%08lu.bp",
+                                   params.template get<timestep_t>(
+                                     "checkpoint.start_step"));
     logger::Checkpoint(fmt::format("Reading checkpoint from %s", fname.c_str()),
                        HERE);
 
@@ -307,7 +315,7 @@ namespace ntt {
                                           range3,
                                           domain.fields.cur0);
       }
-      for (auto s { 0u }; s < (unsigned short)(domain.species.size()); ++s) {
+      for (auto s { 0u }; s < domain.species.size(); ++s) {
         const auto [loc_npart, offset_npart] =
           checkpoint::ReadParticleCount(io, reader, s, ldidx, ndomains());
         raise::ErrorIf(loc_npart > domain.species[s].maxnpart(),
@@ -474,13 +482,24 @@ namespace ntt {
       HERE);
   }
 
-  template struct Metadomain<SimEngine::SRPIC, metric::Minkowski<Dim::_1D>>;
-  template struct Metadomain<SimEngine::SRPIC, metric::Minkowski<Dim::_2D>>;
-  template struct Metadomain<SimEngine::SRPIC, metric::Minkowski<Dim::_3D>>;
-  template struct Metadomain<SimEngine::SRPIC, metric::Spherical<Dim::_2D>>;
-  template struct Metadomain<SimEngine::SRPIC, metric::QSpherical<Dim::_2D>>;
-  template struct Metadomain<SimEngine::GRPIC, metric::KerrSchild<Dim::_2D>>;
-  template struct Metadomain<SimEngine::GRPIC, metric::QKerrSchild<Dim::_2D>>;
-  template struct Metadomain<SimEngine::GRPIC, metric::KerrSchild0<Dim::_2D>>;
+#define METADOMAIN_CHECKPOINTS(S, M)                                             \
+  template void Metadomain<S, M>::InitCheckpointWriter(adios2::ADIOS*,           \
+                                                       const SimulationParams&); \
+  template auto Metadomain<S, M>::WriteCheckpoint(const SimulationParams&,       \
+                                                  timestep_t,                    \
+                                                  timestep_t,                    \
+                                                  simtime_t,                     \
+                                                  simtime_t) -> bool;            \
+  template void Metadomain<S, M>::ContinueFromCheckpoint(adios2::ADIOS*,         \
+                                                         const SimulationParams&);
+  METADOMAIN_CHECKPOINTS(SimEngine::SRPIC, metric::Minkowski<Dim::_1D>)
+  METADOMAIN_CHECKPOINTS(SimEngine::SRPIC, metric::Minkowski<Dim::_2D>)
+  METADOMAIN_CHECKPOINTS(SimEngine::SRPIC, metric::Minkowski<Dim::_3D>)
+  METADOMAIN_CHECKPOINTS(SimEngine::SRPIC, metric::Spherical<Dim::_2D>)
+  METADOMAIN_CHECKPOINTS(SimEngine::SRPIC, metric::QSpherical<Dim::_2D>)
+  METADOMAIN_CHECKPOINTS(SimEngine::GRPIC, metric::KerrSchild<Dim::_2D>)
+  METADOMAIN_CHECKPOINTS(SimEngine::GRPIC, metric::QKerrSchild<Dim::_2D>)
+  METADOMAIN_CHECKPOINTS(SimEngine::GRPIC, metric::KerrSchild0<Dim::_2D>)
+#undef METADOMAIN_CHECKPOINTS
 
 } // namespace ntt

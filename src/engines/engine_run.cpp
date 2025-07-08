@@ -34,11 +34,11 @@ namespace ntt {
          },
         m_params.get<bool>("diagnostics.blocking_timers")
       };
-      const auto diag_interval = m_params.get<std::size_t>(
+      const auto diag_interval = m_params.get<timestep_t>(
         "diagnostics.interval");
 
       auto       time_history   = pbar::DurationHistory { 1000 };
-      const auto clear_interval = m_params.template get<std::size_t>(
+      const auto clear_interval = m_params.template get<timestep_t>(
         "particles.clear_interval");
 
       // main algorithm loop
@@ -71,18 +71,41 @@ namespace ntt {
           traits::has_method<traits::pgen::custom_field_output_t, decltype(m_pgen)>::value) {
           auto lambda_custom_field_output = [&](const std::string&    name,
                                                 ndfield_t<M::Dim, 6>& buff,
-                                                std::size_t           idx,
+                                                index_t               idx,
+                                                timestep_t            step,
+                                                simtime_t             time,
                                                 const Domain<S, M>&   dom) {
-            m_pgen.CustomFieldOutput(name, buff, idx, dom);
+            m_pgen.CustomFieldOutput(name, buff, idx, step, time, dom);
           };
-          print_output = m_metadomain.Write(m_params,
-                                            step,
-                                            step - 1,
-                                            time,
-                                            time - dt,
-                                            lambda_custom_field_output);
+          print_output &= m_metadomain.Write(m_params,
+                                             step,
+                                             step - 1,
+                                             time,
+                                             time - dt,
+                                             lambda_custom_field_output);
         } else {
-          print_output = m_metadomain.Write(m_params, step, step - 1, time, time - dt);
+          print_output &= m_metadomain.Write(m_params, step, step - 1, time, time - dt);
+        }
+        if constexpr (
+          traits::has_method<traits::pgen::custom_stat_t, decltype(m_pgen)>::value) {
+          auto lambda_custom_stat = [&](const std::string&  name,
+                                        timestep_t          step,
+                                        simtime_t           time,
+                                        const Domain<S, M>& dom) -> real_t {
+            return m_pgen.CustomStat(name, step, time, dom);
+          };
+          print_output &= m_metadomain.WriteStats(m_params,
+                                                  step,
+                                                  step - 1,
+                                                  time,
+                                                  time - dt,
+                                                  lambda_custom_stat);
+        } else {
+          print_output &= m_metadomain.WriteStats(m_params,
+                                                  step,
+                                                  step - 1,
+                                                  time,
+                                                  time - dt);
         }
         timers.stop("Output");
 
@@ -128,4 +151,5 @@ namespace ntt {
   template void Engine<SimEngine::GRPIC, metric::KerrSchild<Dim::_2D>>::run();
   template void Engine<SimEngine::GRPIC, metric::KerrSchild0<Dim::_2D>>::run();
   template void Engine<SimEngine::GRPIC, metric::QKerrSchild<Dim::_2D>>::run();
+
 } // namespace ntt
