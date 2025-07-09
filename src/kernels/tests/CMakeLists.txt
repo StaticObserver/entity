@@ -33,10 +33,8 @@ gen_test(prtls_to_phys)
 gen_test(gca_pusher)
 gen_test(prtl_bc)
 gen_test(flds_bc)
-<<<<<<< HEAD
 gen_test(QED_process)
 gen_test(cdf)
-=======
 gen_test(pusher)
 gen_test(ext_force)
->>>>>>> origin/1.2.0rc
+gen_test(reduced_stats)
