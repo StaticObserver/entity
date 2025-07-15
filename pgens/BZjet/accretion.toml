@@ -1,11 +1,11 @@
 [simulation]
-  name    = "wald"
+  name    = "BZjet"
   engine  = "grpic"
   runtime = 500.0
 
 [grid]
   resolution = [256, 256]
-  extent     = [[1.0, 6.0]]
+  extent     = [[0.98, 10.0]]
 
   [grid.metric]
     metric  = "qkerr_schild"
@@ -59,12 +59,13 @@
     pusher   = "Boris"
 
 [setup]
-  multiplicity = 1.0
-  sigma_max    = 2000.0
+  sigma_max    = 1000.0
   temperature  = 0.01
   xi_min       = [1.1, 0.0]
   xi_max       = [6.0, 3.14159265]
   m_eps        = 1.0
+  inj_coeff    = 0.5
+  db_thr       = 1e-2
 
 [output]
   format = "hdf5"

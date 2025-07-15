@@ -24,7 +24,7 @@ namespace user {
 
   template <class M, Dimension D>
   struct InitFields {
-    InitFields(M metric_) : metric { metric_ } {}
+    InitFields(M metric_, real_t m_eps_) : metric { metric_ }, m_eps { m_eps_ } {}
 
     Inline auto A_3(const coord_t<D>& x_Cd) const -> real_t {
       return HALF * (metric.template h_<3, 3>(x_Cd) +
@@ -51,16 +51,16 @@ namespace user {
       metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
 
       x0m[0] = xi[0];
-      x0m[1] = xi[1] - HALF;
+      x0m[1] = xi[1] - HALF * m_eps;
       x0p[0] = xi[0];
-      x0p[1] = xi[1] + HALF;
+      x0p[1] = xi[1] + HALF * m_eps;
 
       real_t inv_sqrt_detH_ijP { ONE / metric.sqrt_det_h({ xi[0], xi[1] }) };
 
       if (cmp::AlmostZero(x_Ph[1])) {
         return ONE;
       } else {
-        return (A_3(x0p) - A_3(x0m)) * inv_sqrt_detH_ijP;
+        return (A_3(x0p) - A_3(x0m)) * inv_sqrt_detH_ijP / m_eps;
       }
     }
 
@@ -68,16 +68,16 @@ namespace user {
       coord_t<D> xi { ZERO }, x0m { ZERO }, x0p { ZERO };
       metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
 
-      x0m[0] = xi[0] - HALF;
+      x0m[0] = xi[0] - HALF * m_eps;
       x0m[1] = xi[1];
-      x0p[0] = xi[0] + HALF;
+      x0p[0] = xi[0] + HALF * m_eps;
       x0p[1] = xi[1];
 
       real_t inv_sqrt_detH_ijP { ONE / metric.sqrt_det_h({ xi[0], xi[1] }) };
       if (cmp::AlmostZero(x_Ph[1])) {
         return ZERO;
       } else {
-        return -(A_3(x0p) - A_3(x0m)) * inv_sqrt_detH_ijP;
+        return -(A_3(x0p) - A_3(x0m)) * inv_sqrt_detH_ijP / m_eps;
       }
     }
 
@@ -87,12 +87,12 @@ namespace user {
       metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
 
       x0m[0] = xi[0];
-      x0m[1] = xi[1] - HALF;
+      x0m[1] = xi[1] - HALF * m_eps;
       x0p[0] = xi[0];
-      x0p[1] = xi[1] + HALF;
+      x0p[1] = xi[1] + HALF * m_eps;
 
       real_t inv_sqrt_detH_iPjP { ONE / metric.sqrt_det_h({ xi[0], xi[1] }) };
-      return -(A_1(x0p) - A_1(x0m)) * inv_sqrt_detH_iPjP;
+      return -(A_1(x0p) - A_1(x0m)) * inv_sqrt_detH_iPjP / m_eps;
     }
 
     Inline auto dx1(const coord_t<D>& x_Ph) const -> real_t { // at ( i + HALF , j )
@@ -101,24 +101,24 @@ namespace user {
 
       real_t alpha_iPj { metric.alpha({ xi[0], xi[1] }) };
       real_t inv_sqrt_detH_ij { ONE / metric.sqrt_det_h({ xi[0] - HALF, xi[1] }) };
-      real_t sqrt_detH_ij { metric.sqrt_det_h({ xi[0] - HALF, xi[1] }) };
+      real_t sqrt_detH_ij { metric.sqrt_det_h({ xi[0] - HALF, xi[1] }) }; 
       real_t beta_ij { metric.beta1({ xi[0] - HALF, xi[1] }) };
       real_t alpha_ij { metric.alpha({ xi[0] - HALF, xi[1] }) };
 
       // D1 at ( i + HALF , j )
-      x0m[0] = xi[0] - HALF;
+      x0m[0] = xi[0] - HALF * m_eps;
       x0m[1] = xi[1];
-      x0p[0] = xi[0] + HALF;
+      x0p[0] = xi[0] + HALF * m_eps;
       x0p[1] = xi[1];
-      real_t E1d { (A_0(x0p) - A_0(x0m)) };
+      real_t E1d { (A_0(x0p) - A_0(x0m)) / m_eps };
       real_t D1d { E1d / alpha_iPj };
 
       // D3 at ( i , j )
-      x0m[0] = xi[0] - HALF - HALF;
+      x0m[0] = xi[0] - HALF - HALF * m_eps;
       x0m[1] = xi[1];
-      x0p[0] = xi[0] - HALF + HALF;
+      x0p[0] = xi[0] - HALF + HALF * m_eps;
       x0p[1] = xi[1];
-      real_t D3d { (A_3(x0p) - A_3(x0m)) * beta_ij / alpha_ij };
+      real_t D3d { (A_3(x0p) - A_3(x0m)) * beta_ij / alpha_ij / m_eps};
 
       real_t D1u { metric.template h<1, 1>({ xi[0], xi[1] }) * D1d +
                    metric.template h<1, 3>({ xi[0], xi[1] }) * D3d };
@@ -130,16 +130,16 @@ namespace user {
       coord_t<D> xi { ZERO }, x0m { ZERO }, x0p { ZERO };
       metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
       x0m[0] = xi[0];
-      x0m[1] = xi[1] - HALF;
+      x0m[1] = xi[1] - HALF * m_eps;
       x0p[0] = xi[0];
-      x0p[1] = xi[1] + HALF;
+      x0p[1] = xi[1] + HALF * m_eps;
       real_t inv_sqrt_detH_ijP { ONE / metric.sqrt_det_h({ xi[0], xi[1] }) };
       real_t sqrt_detH_ijP { metric.sqrt_det_h({ xi[0], xi[1] }) };
       real_t alpha_ijP { metric.alpha({ xi[0], xi[1] }) };
       real_t beta_ijP { metric.beta1({ xi[0], xi[1] }) };
 
-      real_t E2d { (A_0(x0p) - A_0(x0m)) };
-      real_t D2d { E2d / alpha_ijP - (A_1(x0p) - A_1(x0m)) * beta_ijP / alpha_ijP };
+      real_t E2d { (A_0(x0p) - A_0(x0m)) / m_eps };
+      real_t D2d { E2d / alpha_ijP - (A_1(x0p) - A_1(x0m)) * beta_ijP / alpha_ijP / m_eps};
       real_t D2u { metric.template h<2, 2>({ xi[0], xi[1] }) * D2d };
 
       return D2u;
@@ -155,18 +155,18 @@ namespace user {
       real_t alpha_iPj { metric.alpha({ xi[0] + HALF, xi[1] }) };
 
       // D3 at ( i , j )
-      x0m[0] = xi[0] - HALF;
+      x0m[0] = xi[0] - HALF * m_eps;
       x0m[1] = xi[1];
-      x0p[0] = xi[0] + HALF;
+      x0p[0] = xi[0] + HALF * m_eps;
       x0p[1] = xi[1];
-      real_t D3d { (A_3(x0p) - A_3(x0m)) * beta_ij / alpha_ij };
+      real_t D3d { (A_3(x0p) - A_3(x0m)) * beta_ij / alpha_ij / m_eps};
 
       // D1 at ( i + HALF , j )
-      x0m[0] = xi[0] + HALF - HALF;
+      x0m[0] = xi[0] + HALF - HALF * m_eps;
       x0m[1] = xi[1];
-      x0p[0] = xi[0] + HALF + HALF;
+      x0p[0] = xi[0] + HALF + HALF * m_eps;
       x0p[1] = xi[1];
-      real_t E1d { (A_0(x0p) - A_0(x0m)) };
+      real_t E1d { (A_0(x0p) - A_0(x0m)) / m_eps };
       real_t D1d { E1d / alpha_iPj };
 
       if (cmp::AlmostZero(x_Ph[1])) {
@@ -179,17 +179,16 @@ namespace user {
 
   private:
     const M metric;
+    const real_t m_eps;
   };
 
   template <SimEngine::type S, class M>
   struct PointDistribution : public arch::SpatialDistribution<S, M> {
     PointDistribution(const std::vector<real_t>& xi_min,
                       const std::vector<real_t>& xi_max,
-                      const real_t               d0,
-                      const real_t               rho0,
                       const real_t               sigma_thr,
+                      const real_t               inj_coeff,
                       const real_t               db_thr,
-                      const real_t               dens_thr,
                       const SimulationParams&    params,
                       Domain<S, M>*              domain_ptr)
       : arch::SpatialDistribution<S, M> { domain_ptr->mesh.metric }
@@ -201,7 +200,7 @@ namespace user {
       , d0 { params.template get<real_t>("scales.skindepth0") }
       , rho0 { params.template get<real_t>("scales.larmor0") }
       , inv_n0 { ONE / params.template get<real_t>("scales.n0") }
-      , dens_thr { dens_thr } {
+      , inj_coeff { inj_coeff } {
       std::copy(xi_min.begin(), xi_min.end(), x_min);
       std::copy(xi_max.begin(), xi_max.end(), x_max);
 
@@ -258,16 +257,21 @@ namespace user {
           DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
         const auto db = DOT(D_cntrv[0], D_cntrv[1], D_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
         const auto dens = density(i1, i2, 0);
-        return (bsqr > sigma_thr * dens) && (db > db_thr * bsqr);
+        if(cmp::AlmostZero(dens)) {
+          return db * SIGN(db) > db_thr * bsqr;
+        }else{
+          return (bsqr > sigma_thr * dens) && (db * SIGN(db) > db_thr * bsqr);
+        }
       }
       return false;
     }
 
-    Inline auto operator()(const coord_t<M::Dim>& x_Ph) const -> real_t override {
-      auto fill = false;
+    Inline auto operator()(const coord_t<M::Dim>& x_Ph) const -> real_t {
+      auto fill = true;
       for (auto d = 0u; d < M::Dim; ++d) {
         fill &= x_Ph[d] > x_min[d] and x_Ph[d] < x_max[d] and sigma_crit(x_Ph);
       }
+      coord_t<M::Dim> xi { ZERO };
       metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
       const auto i1 = static_cast<int>(xi[0]) + static_cast<int>(N_GHOSTS);
       const auto i2 = static_cast<int>(xi[1]) + static_cast<int>(N_GHOSTS);
@@ -282,7 +286,7 @@ namespace user {
       const auto bsqr =
         DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
       const auto db = DOT(D_cntrv[0], D_cntrv[1], D_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
-      const real_t inj_n = dens_thr * db / SQRT(bsqr) * SQR(d0) / rho0;
+      const real_t inj_n = inj_coeff * db * SIGN(db) / math::sqrt(bsqr) * SQR(d0) / rho0;
       return fill ? inj_n : ZERO;
     }
 
@@ -291,7 +295,7 @@ namespace user {
     tuple_t<real_t, M::Dim> x_max;
     const real_t            sigma_thr;
     const real_t            db_thr;
-    const real_t            dens_thr;
+    const real_t            inj_coeff;
     const real_t            inv_n0;
     const real_t            d0;
     const real_t            rho0;
@@ -318,7 +322,7 @@ namespace user {
 
     const std::vector<real_t> xi_min;
     const std::vector<real_t> xi_max;
-    const real_t sigma0, sigma_max, multiplicity, temperature, m_eps;
+    const real_t sigma0, sigma_max, inj_coeff, db_thr, temperature, m_eps;
 
     InitFields<M, D>        init_flds;
     const Metadomain<S, M>* metadomain;
@@ -329,7 +333,8 @@ namespace user {
       , xi_max { p.template get<std::vector<real_t>>("setup.xi_max") }
       , sigma_max { p.template get<real_t>("setup.sigma_max") }
       , sigma0 { p.template get<real_t>("scales.sigma0") }
-      , multiplicity { p.template get<real_t>("setup.multiplicity") }
+      , inj_coeff { p.template get<real_t>("setup.inj_coeff") }
+      , db_thr { p.template get<real_t>("setup.db_thr") }
       , temperature { p.template get<real_t>("setup.temperature") }
       , m_eps { p.template get<real_t>("setup.m_eps") }
       , init_flds { m.mesh().metric, m_eps }
@@ -342,7 +347,8 @@ namespace user {
         const auto spatial_dist = PointDistribution<S, M>(xi_min,
                                                           xi_max,
                                                           sigma_max / sigma0,
-                                                          multiplicity,
+                                                          inj_coeff,
+                                                          db_thr,
                                                           params,
                                                           &local_domain);
   
