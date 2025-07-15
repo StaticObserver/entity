@@ -257,11 +257,7 @@ namespace user {
           DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
         const auto db = DOT(D_cntrv[0], D_cntrv[1], D_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
         const auto dens = density(i1, i2, 0);
-        if(cmp::AlmostZero(dens)) {
-          return db * SIGN(db) > db_thr * bsqr;
-        }else{
-          return (bsqr > sigma_thr * dens) && (db * SIGN(db) > db_thr * bsqr);
-        }
+        return (bsqr > sigma_thr * dens) && (db * SIGN(db) > db_thr * bsqr);
       }
       return false;
     }
