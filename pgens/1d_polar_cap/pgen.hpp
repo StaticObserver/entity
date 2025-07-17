@@ -6,6 +6,7 @@
 
 #include "arch/kokkos_aliases.h"
 #include "arch/traits.h"
+#include "utils/numeric.h"
 
 #include "archetypes/energy_dist.h"
 #include "archetypes/spatial_dist.h"
@@ -29,9 +30,14 @@ namespace user {
     }
 
     Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
-        return -rho_GJ * (x_Ph[0] + 
-                          0.03 * ds * math::log(0.01 + math::exp((xsurf + 0.8 * ds - x_Ph[0]) / 0.03 / ds)) -
-                          0.03 * ds * math::log(0.01 + math::exp((0.8 * ds) / 0.03 / ds)) - xsurf);
+          if (x_Ph[0] <  xsurf + ds){
+              return ZERO;
+          }else{
+              // return -rho_GJ * (x_Ph[0] - xsurf - ds
+              //                       + 0.03 * ds * math::log(0.01 + math::exp((xsurf + 1.0 * ds - x_Ph[0]) / 0.03 / ds))
+              //                       - 0.03 * ds * math::log(0.01 + 1.0));
+              return -rho_GJ * (x_Ph[0] - xsurf - ds);
+          }
     }
 
   private:
@@ -57,8 +63,8 @@ namespace user {
 
   template <Dimension D>
   struct DriveFields : public InitFields<D> {
-    DriveFields(real_t time, real_t b0_, real_t l_atm_, real_t ds_)
-      : InitFields<D> { b0_, ZERO, l_atm_, ds_ } {}
+    DriveFields(real_t time, real_t b0_, real_t xsurf_, real_t ds_)
+      : InitFields<D> { b0_, ZERO, xsurf_, ds_ } {}
 
     using InitFields<D>::bx1;
 
@@ -71,21 +77,22 @@ namespace user {
 
   template <SimEngine::type S, class M>
     struct TargetDensityProfile : public arch::SpatialDistribution<S, M> {
-        const real_t nmax, height, xsurf;
+        const real_t nmax, height, xsurf, ds;
 
-        TargetDensityProfile(const M& metric, real_t nmax, real_t height, real_t xsurf)
+        TargetDensityProfile(const M& metric, real_t nmax, real_t height, real_t xsurf, real_t ds)
           : arch::SpatialDistribution<S, M>(metric)
           , nmax { nmax }
           , height { height }
-          , xsurf { xsurf } {}
+          , xsurf { xsurf }
+          , ds { ds } {}
 
         Inline auto operator()(const coord_t<M::Dim>& x_Ph) const -> real_t {
-              if (x_Ph[0] < xsurf) {
-                return ZERO;
-              }else{
-                return nmax * math::exp(-(x_Ph[0] - xsurf) / height);
-              }
-          }
+             if (x_Ph[0] < xsurf){
+                  return ZERO;
+             }else{
+                  return nmax * math::exp(-(x_Ph[0] - xsurf) / height);
+             }
+           }
       }; // TargetDensityProfile
     
     template <SimEngine::type S, class M>
@@ -98,15 +105,37 @@ namespace user {
           , ds { ds_ } {}  
 
         Inline auto operator()(const coord_t<M::Dim>& x_Ph) const -> real_t {
-              if (x_Ph[0] < xsurf) {
-                return ZERO;
-              }else{
-                return ONE - 0.01 / (0.01 + math::exp(-(x_Ph[0] - xsurf - 0.8 * ds) / 0.03 / ds));
-              }
-        }
+               if (xsurf < x_Ph[0] and x_Ph[0] <= xsurf + ds){
+                  return ONE;
+               }else{
+                  // return ONE - 0.01 / (0.01 + math::exp(-(x_Ph[0] - xsurf - 1.0 * ds) / 0.03 / ds));
+                  return ZERO;
+               }
+          }
       }; // ExtraCharge
   
 
+  template <Dimension D>
+  struct MagnetosphericCurrent { 
+    MagnetosphericCurrent(const real_t J0_)
+      : J0 { J0_ } {};
+
+    Inline auto jx1(const coord_t<D>& x_Ph) const -> real_t {
+        return J0;
+      }
+
+    Inline auto jx2(const coord_t<D>& x_Ph) const -> real_t {
+        return ZERO;
+      }
+
+    Inline auto jx3(const coord_t<D>& x_Ph) const -> real_t {
+        return ZERO;
+      }
+
+    private:
+      const real_t J0; 
+  };
+   
   template <SimEngine::type S, class M>
   struct PGen : public arch::ProblemGenerator<S, M> {
     // compatibility traits for the problem generator
@@ -124,8 +153,9 @@ namespace user {
     const real_t  b0, Omega, skindepth0, larmor0;
     const real_t  temp;
     const real_t  j0;
-    const real_t  l_atm, ds;
+    const real_t  xsurf, ds;
     InitFields<D> init_flds;
+    MagnetosphericCurrent<D> ext_current;
     
 
     inline PGen(const SimulationParams& p, const Metadomain<S, M>& m)
@@ -136,21 +166,24 @@ namespace user {
       , skindepth0 { p.template get<real_t>("scales.skindepth0") }
       , larmor0 { p.template get<real_t>("scales.larmor0") }
       , temp { p.template get<real_t>("setup.temp") }
-      , j0 { p.template get<real_t>("setup.j0") }
+      , j0 { p.template get<real_t>("setup.j0") / p.template get<real_t>("scales.V0")}
       , ds { p.template get<real_t>("grid.boundaries.atmosphere.ds") }
-      , l_atm([&m, this]() {
+      , xsurf([&m, this]() {
           const auto min_buff = params.template get<unsigned short>("algorithms.current_filters") + 2;
           const auto buffer_ncells = min_buff > 5 ? min_buff : 5;
           return m.mesh().metric.template convert<1, Crd::Cd, Crd::Ph>(static_cast<real_t>(buffer_ncells));
         }())
-      , init_flds(b0, -TWO * FOUR * constant::PI * b0 * Omega * SQR(skindepth0) / larmor0, l_atm, ds)
+      //, l_atm { ZERO } 
+      // , init_flds(b0, TWO * FOUR * constant::PI * b0 * Omega * SQR(skindepth0) / larmor0, l_atm, ds)
+      , init_flds(b0, ONE, xsurf, ds)
+      , ext_current(j0)
     {}
 
     inline PGen() {}
 
 
     auto AtmFields(real_t time) const -> DriveFields<D> {
-      return DriveFields<D> { time, b0, l_atm, ds};
+      return DriveFields<D> { time, b0, xsurf, ds};
     }
 
     auto MatchFields(real_t) const -> MFields<D> {
@@ -162,11 +195,23 @@ namespace user {
       const auto energy_dist = arch::Maxwellian<S, M>(local_domain.mesh.metric,
                                                         local_domain.random_pool,
                                                         temp);
+      // const auto injector = arch::UniformInjector<S, M, arch::Maxwellian>(
+      //   energy_dist,
+      //   { 1, 2 }
+      // );
+
+      // arch::InjectUniform<S, M, decltype(injector)>(
+      //   params,
+      //   local_domain,
+      //   injector,
+      //   ONE
+      // );
       const auto spatial_dist = TargetDensityProfile<S, M>(
           local_domain.mesh.metric,
           params.template get<real_t>("grid.boundaries.atmosphere.density"),
           params.template get<real_t>("grid.boundaries.atmosphere.height"),
-          l_atm);
+          xsurf,
+          ds);
       const auto injector = arch::NonUniformInjector<S, M, arch::Maxwellian, TargetDensityProfile>(
         energy_dist,
         spatial_dist,
@@ -180,7 +225,7 @@ namespace user {
 
       const auto extra_charge = ExtraCharge<S, M>(
         local_domain.mesh.metric,
-        l_atm,
+        xsurf,
         ds
       );
       const auto injector_extra_charge = arch::NonUniformInjector<S, M, arch::Maxwellian, ExtraCharge>(
