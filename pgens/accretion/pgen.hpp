@@ -40,10 +40,12 @@ namespace user {
                     metric.template h_<1, 1>(x_Cd) * metric.beta1(x_Cd) *
                       metric.beta1(x_Cd) };
       return HALF * (metric.template h_<1, 3>(x_Cd) * metric.beta1(x_Cd) +
-                     TWO * metric.spin() * g_00);
+                     TWO * metric.spin() * (g_00 + ONE));
+
     }
 
-    Inline auto bx1(const coord_t<D>& x_Ph) const -> real_t { // at ( i , j + HALF )
+    Inline auto bx1(const coord_t<D>& x_Ph) const
+      -> real_t { // at ( i , j + HALF )
       coord_t<D> xi { ZERO }, x0m { ZERO }, x0p { ZERO };
       metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
 
@@ -61,7 +63,8 @@ namespace user {
       }
     }
 
-    Inline auto bx2(const coord_t<D>& x_Ph) const -> real_t { // at ( i + HALF , j )
+    Inline auto bx2(const coord_t<D>& x_Ph) const
+      -> real_t { // at ( i + HALF , j )
       coord_t<D> xi { ZERO }, x0m { ZERO }, x0p { ZERO };
       metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
 
@@ -79,7 +82,20 @@ namespace user {
     }
 
     Inline auto bx3(const coord_t<D>& x_Ph) const -> real_t {
-      return ZERO;
+      coord_t<D> xi { ZERO }, x0m { ZERO }, x0p { ZERO };
+      metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
+
+      x0m[0] = xi[0];
+      x0m[1] = xi[1] - HALF * m_eps;
+      x0p[0] = xi[0];
+      x0p[1] = xi[1] + HALF * m_eps;
+
+      real_t inv_sqrt_detH_ijP { ONE / metric.sqrt_det_h({ xi[0], xi[1] }) };
+      if (cmp::AlmostZero(x_Ph[1])) {
+        return ZERO;
+      } else {
+        return -(A_1(x0p) - A_1(x0m)) * inv_sqrt_detH_ijP / m_eps;
+      }
     }
 
     Inline auto dx1(const coord_t<D>& x_Ph) const -> real_t {
@@ -174,7 +190,7 @@ namespace user {
       return false;
     }
 
-    Inline auto operator()(const coord_t<M::Dim>& x_Ph) const -> real_t override {
+    Inline auto operator()(const coord_t<M::Dim>& x_Ph) const -> real_t {
       auto fill = true;
       for (auto d = 0u; d < M::Dim; ++d) {
         fill &= x_Ph[d] > x_min[d] and x_Ph[d] < x_max[d] and sigma_crit(x_Ph);
