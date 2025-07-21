@@ -527,37 +527,12 @@ namespace ntt {
                                            domain.mesh.extent(in::x2).first,
                                            domain.mesh.extent(in::x3).first };
           const auto                ext_current = m_pgen.ext_current;
-          const auto dx = domain.mesh.metric.template sqrt_h_<1, 1>({});
-          auto J = domain.fields.cur;
-          real_t jx1 { ZERO };
-          real_t jx1_after { ZERO };
-          // clang-format off
-          Kokkos::parallel_reduce(
-            "Ampere",
-            domain.mesh.rangeActiveCells(),
-            KOKKOS_LAMBDA(index_t i1, real_t& val) {
-              val += J(i1, cur::jx1);
-            },
-            jx1);
-          jx1 /= domain.mesh.n_active(in::x1);
-          jx1 /= ppc0;
           Kokkos::parallel_for(
             "Ampere",
             domain.mesh.rangeActiveCells(),
             kernel::mink::CurrentsAmpere_kernel<M::Dim, decltype(ext_current)>(
               domain.fields.em, domain.fields.cur,
               coeff, ppc0, ext_current, xmin, dx));
-          Kokkos::parallel_reduce(
-            "Ampere",
-            domain.mesh.rangeActiveCells(),
-            KOKKOS_LAMBDA(index_t i1, real_t& val) {
-              val += J(i1, cur::jx1);
-            },
-            jx1_after);
-          jx1_after /= domain.mesh.n_active(in::x1);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
-          // clang-format on
-          std::cout << "jx1_before: " << jx1 << std::endl;
-          std::cout << "jx1_after: " << jx1_after << std::endl;
         } else {
           Kokkos::parallel_for(
             "Ampere",
