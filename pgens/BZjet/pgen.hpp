@@ -189,6 +189,7 @@ namespace user {
                       const real_t               sigma_thr,
                       const real_t               inj_coeff,
                       const real_t               db_thr,
+                      const bool                 is_weight, 
                       const SimulationParams&    params,
                       Domain<S, M>*              domain_ptr)
       : arch::SpatialDistribution<S, M> { domain_ptr->mesh.metric }
@@ -200,7 +201,9 @@ namespace user {
       , d0 { params.template get<real_t>("scales.skindepth0") }
       , rho0 { params.template get<real_t>("scales.larmor0") }
       , inv_n0 { ONE / params.template get<real_t>("scales.n0") }
-      , inj_coeff { inj_coeff } {
+      , inv_ppc0 { ONE / params.template get<real_t>("particles.ppc0") }
+      , inj_coeff { inj_coeff }
+      , is_weight { is_weight } {
       std::copy(xi_min.begin(), xi_min.end(), x_min);
       std::copy(xi_max.begin(), xi_max.end(), x_max);
 
@@ -283,7 +286,11 @@ namespace user {
         DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
       const auto db = DOT(D_cntrv[0], D_cntrv[1], D_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
       const real_t inj_n = inj_coeff * db * SIGN(db) / math::sqrt(bsqr) * SQR(d0) / rho0;
-      return fill ? inj_n : ZERO;
+      if (is_weight) {
+        return fill ? inj_n : ZERO;
+      } else {
+        return fill ? TWO * inv_ppc0 * 1.01 : ZERO;
+      }
     }
 
   private:
@@ -295,10 +302,12 @@ namespace user {
     const real_t            inv_n0;
     const real_t            d0;
     const real_t            rho0;
+    const real_t            inv_ppc0;
     Domain<S, M>*           domain_ptr;
     ndfield_t<M::Dim, 3>    density;
     ndfield_t<M::Dim, 6>    EM;
     const M                 metric;
+    const bool              is_weight;
   };
 
 
@@ -341,24 +350,33 @@ namespace user {
         const auto energy_dist  = arch::Maxwellian<S, M>(local_domain.mesh.metric,
                                                         local_domain.random_pool,
                                                         temperature);
-        const auto spatial_dist = PointDistribution<S, M>(xi_min,
+        const auto spatial_dist1 = PointDistribution<S, M>(xi_min,
                                                           xi_max,
                                                           sigma_max / sigma0,
                                                           inj_coeff,
                                                           db_thr,
+                                                          false,
+                                                          params,
+                                                          &local_domain);
+        const auto spatial_dist2 = PointDistribution<S, M>(xi_min,
+                                                          xi_max,
+                                                          sigma_max / sigma0,
+                                                          inj_coeff,
+                                                          db_thr,
+                                                          true,
                                                           params,
                                                           &local_domain);
   
         const auto injector =
-          arch::NonUniformInjector<S, M, arch::Maxwellian, PointDistribution>(
+          arch::experimental::Injector_with_weights<S, M, arch::Maxwellian, PointDistribution, PointDistribution>(
             energy_dist,
-            spatial_dist,
+            spatial_dist1,
+            spatial_dist2,
             { 1, 2 });
-        arch::InjectNonUniform<S, M, decltype(injector)>(params,
+        arch::experimental::InjectWithWeights<S, M, decltype(injector)>(params,
                                                          local_domain,
                                                          injector,
-                                                         1.0,
-                                                         true);
+                                                         1.0);
     }
 
     void CustomFieldOutput(const std::string&   name,

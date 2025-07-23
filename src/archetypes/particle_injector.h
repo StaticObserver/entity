@@ -284,6 +284,8 @@ namespace arch {
     ~NonUniformInjector() = default;
   };
 
+
+
   template <SimEngine::type S, class M, bool P, in O>
   struct AtmosphereInjector {
     struct TargetDensityProfile {
@@ -733,6 +735,112 @@ namespace arch {
         domain.species[injector.species.second - 1].npart() + n_inj);
     }
   }
+
+  namespace experimental {
+    template <SimEngine::type S,
+    class M,
+    template <SimEngine::type, class> class ED,
+    template <SimEngine::type, class> class SD1,
+    template <SimEngine::type, class> class SD2>
+      struct Injector_with_weights {
+      using energy_dist_t  = ED<S, M>;
+      using spatial_dist_t1 = SD1<S, M>;
+      using spatial_dist_t2 = SD2<S, M>;
+      static_assert(M::is_metric, "M must be a metric class");
+      static_assert(energy_dist_t::is_energy_dist,
+                "E must be an energy distribution class");
+      static_assert(spatial_dist_t1::is_spatial_dist,
+                "SD must be a spatial distribution class");
+      static_assert(spatial_dist_t2::is_spatial_dist,
+                "SD must be a spatial distribution class");
+      static constexpr bool      is_nonuniform_injector { true };
+      static constexpr Dimension D { M::Dim };
+      static constexpr Coord     C { M::CoordType };
+
+      const energy_dist_t               energy_dist;
+      const spatial_dist_t1              spatial_dist1;
+      const spatial_dist_t2              spatial_dist2;
+      const std::pair<spidx_t, spidx_t> species;
+
+      Injector_with_weights(const energy_dist_t&               energy_dist,
+                    const spatial_dist_t1&              spatial_dist1,
+                    const spatial_dist_t2&              spatial_dist2,
+                    const std::pair<spidx_t, spidx_t>& species)
+      : energy_dist { energy_dist }
+      , spatial_dist1 { spatial_dist1 }
+      , spatial_dist2 { spatial_dist2 }
+      , species { species } {}
+
+      ~Injector_with_weights() = default;
+    }; // struct Injector_with_weights
+
+    template <SimEngine::type S, class M, class I>
+    inline void InjectWithWeights(const SimulationParams&     params,
+                                Domain<S, M>&               domain,
+                                const I&                    injector,
+                                real_t                      number_density,
+                                const boundaries_t<real_t>& box         = {}) {
+      static_assert(M::is_metric, "M must be a metric class");
+      static_assert(I::is_nonuniform_injector,
+                    "I must be a nonuniform injector class");
+      raise::ErrorIf(
+        not params.template get<bool>("particles.use_weights"),
+        "Weights must be enabled for the injector",
+        HERE);
+      if (domain.species[injector.species.first - 1].charge() +
+            domain.species[injector.species.second - 1].charge() !=
+          0.0f) {
+        raise::Warning("Total charge of the injected species is non-zero", HERE);
+      }
+      {
+        range_t<M::Dim> cell_range;
+        if (box.size() == 0) {
+          cell_range = domain.mesh.rangeActiveCells();
+        } else {
+          raise::ErrorIf(box.size() != M::Dim,
+                        "Box must have the same dimension as the mesh",
+                        HERE);
+          boundaries_t<bool> incl_ghosts;
+          for (auto d = 0; d < M::Dim; ++d) {
+            incl_ghosts.push_back({ false, false });
+          }
+          const auto extent = domain.mesh.ExtentToRange(box, incl_ghosts);
+          tuple_t<ncells_t, M::Dim> x_min { 0 }, x_max { 0 };
+          for (auto d = 0; d < M::Dim; ++d) {
+            x_min[d] = extent[d].first;
+            x_max[d] = extent[d].second;
+          }
+          cell_range = CreateRangePolicy<M::Dim>(x_min, x_max);
+        }
+        const auto ppc = number_density *
+                        params.template get<real_t>("particles.ppc0") * HALF;
+        auto injector_kernel =
+          kernel::experimental::Injector_with_weights_kernel<S, M, typename I::energy_dist_t, typename I::spatial_dist_t1, typename I::spatial_dist_t2>(
+            ppc,
+            injector.species.first,
+            injector.species.second,
+            domain.species[injector.species.first - 1],
+            domain.species[injector.species.second - 1],
+            domain.species[injector.species.first - 1].npart(),
+            domain.species[injector.species.second - 1].npart(),
+            domain.mesh.metric,
+            injector.energy_dist,
+            injector.spatial_dist1,
+            injector.spatial_dist2,
+            ONE / params.template get<real_t>("scales.V0"),
+            domain.random_pool);
+        Kokkos::parallel_for("InjectWithWeights",
+                            cell_range,
+                            injector_kernel);
+        const auto n_inj = injector_kernel.number_injected();
+        domain.species[injector.species.first - 1].set_npart(
+          domain.species[injector.species.first - 1].npart() + n_inj);
+        domain.species[injector.species.second - 1].set_npart(
+          domain.species[injector.species.second - 1].npart() + n_inj);
+      }
+    } // function InjectWithWeights
+    
+  } // namespace experimental
 
 } // namespace arch
 
