@@ -201,7 +201,7 @@ namespace user {
       , d0 { params.template get<real_t>("scales.skindepth0") }
       , rho0 { params.template get<real_t>("scales.larmor0") }
       , inv_n0 { ONE / params.template get<real_t>("scales.n0") }
-      , inv_ppc0 { ONE / params.template get<real_t>("particles.ppc0") }
+      , ppc0 { params.template get<real_t>("particles.ppc0") }
       , inj_coeff { inj_coeff }
       , is_weight { is_weight } {
       std::copy(xi_min.begin(), xi_min.end(), x_min);
@@ -270,26 +270,27 @@ namespace user {
       for (auto d = 0u; d < M::Dim; ++d) {
         fill &= x_Ph[d] > x_min[d] and x_Ph[d] < x_max[d] and sigma_crit(x_Ph);
       }
-      coord_t<M::Dim> xi { ZERO };
-      metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
-      const auto i1 = static_cast<int>(xi[0]) + static_cast<int>(N_GHOSTS);
-      const auto i2 = static_cast<int>(xi[1]) + static_cast<int>(N_GHOSTS);
-      const vec_t<Dim::_3D> B_cntrv { EM(i1, i2, em::bx1),
-                                      EM(i1, i2, em::bx2),
-                                      EM(i1, i2, em::bx3) };
-      const vec_t<Dim::_3D> D_cntrv { EM(i1, i2, em::dx1),
-                                      EM(i1, i2, em::dx2),
-                                      EM(i1, i2, em::dx3) };
-      vec_t<Dim::_3D>       B_cov { ZERO };
-      metric.template transform<Idx::U, Idx::D>(xi, B_cntrv, B_cov);
-      const auto bsqr =
-        DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
-      const auto db = DOT(D_cntrv[0], D_cntrv[1], D_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
-      const real_t inj_n = inj_coeff * db * SIGN(db) / math::sqrt(bsqr) * SQR(d0) / rho0;
       if (is_weight) {
-        return fill ? inj_n : ZERO;
+        coord_t<M::Dim> xi { ZERO };
+        metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
+        const auto i1 = static_cast<int>(xi[0]) + static_cast<int>(N_GHOSTS);
+        const auto i2 = static_cast<int>(xi[1]) + static_cast<int>(N_GHOSTS);
+        const vec_t<Dim::_3D> B_cntrv { EM(i1, i2, em::bx1),
+                                        EM(i1, i2, em::bx2),
+                                        EM(i1, i2, em::bx3) };
+        const vec_t<Dim::_3D> D_cntrv { EM(i1, i2, em::dx1),
+                                        EM(i1, i2, em::dx2),
+                                        EM(i1, i2, em::dx3) };
+        vec_t<Dim::_3D>       B_cov { ZERO };
+        metric.template transform<Idx::U, Idx::D>(xi, B_cntrv, B_cov);
+        const auto bsqr =
+          DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
+        const auto db = DOT(D_cntrv[0], D_cntrv[1], D_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
+        const real_t inj_n = inj_coeff * db * SIGN(db) / math::sqrt(bsqr) * SQR(d0) / rho0;
+      
+        return fill ? inj_n * ppc0: ZERO;
       } else {
-        return fill ? TWO * inv_ppc0 * 1.01 : ZERO;
+        return fill ? TWO / ppc0 * 1.01 : ZERO;
       }
     }
 
@@ -302,7 +303,7 @@ namespace user {
     const real_t            inv_n0;
     const real_t            d0;
     const real_t            rho0;
-    const real_t            inv_ppc0;
+    const real_t            ppc0;
     Domain<S, M>*           domain_ptr;
     ndfield_t<M::Dim, 3>    density;
     ndfield_t<M::Dim, 6>    EM;
