@@ -288,7 +288,7 @@ namespace user {
         const auto db = DOT(D_cntrv[0], D_cntrv[1], D_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
         const real_t inj_n = inj_coeff * db * SIGN(db) / math::sqrt(bsqr) * SQR(d0) / rho0;
       
-        return fill ? inj_n * ppc0: ZERO;
+        return fill ? inj_n * ppc0 : ZERO;
       } else {
         return fill ? TWO / ppc0 * 1.01 : ZERO;
       }
@@ -408,76 +408,6 @@ namespace user {
               buffer(i1, i2, index) = DOT(B_cov[0], B_cov[1], B_cov[2], D_cntrv[0], D_cntrv[1], D_cntrv[2])
                                       / DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cntrv[0], B_cntrv[1], B_cntrv[2]);
             });
-          }
-        } else if (name == "fRho"){
-          auto T3 = domain.fields.buff;
-          auto& mesh         = domain.mesh;
-          const auto use_weights = params.template get<bool>(
-            "particles.use_weights");
-          const auto ni2 = mesh.n_active(in::x2);
-          std::vector<unsigned short> specs {};
-          for (auto& sp : domain.species) {
-            if (sp.mass() > 0) {
-              specs.push_back(sp.index());
-            }
-          }
-          const auto& metric = domain.mesh.metric;
-
-          // compute T_00, T_01, T_11
-          auto scatter_buff = Kokkos::Experimental::create_scatter_view(T3);
-          for (const auto& sp : specs) {
-            auto& prtl_spec = domain.species[sp - 1];
-            // clang-format off
-            Kokkos::parallel_for(
-              "ComputeMoments",
-              prtl_spec.rangeActiveParticles(),
-              kernel::ParticleMoments_kernel<S, M, FldsID::T, 3>({0, 0}, scatter_buff, 0u,
-                                                                  prtl_spec.i1, prtl_spec.i2, prtl_spec.i3,
-                                                                  prtl_spec.dx1, prtl_spec.dx2, prtl_spec.dx3,
-                                                                  prtl_spec.ux1, prtl_spec.ux2, prtl_spec.ux3,
-                                                                  prtl_spec.phi, prtl_spec.weight, prtl_spec.tag,
-                                                                  prtl_spec.mass(), prtl_spec.charge(),
-                                                                  use_weights,
-                                                                  metric, mesh.flds_bc(),
-                                                                  ni2, inv_n0, ZERO));
-            Kokkos::parallel_for(
-              "ComputeMoments",
-              prtl_spec.rangeActiveParticles(),
-              kernel::ParticleMoments_kernel<S, M, FldsID::T, 3>({0, 1}, scatter_buff, 1u,
-                                                                  prtl_spec.i1, prtl_spec.i2, prtl_spec.i3,
-                                                                  prtl_spec.dx1, prtl_spec.dx2, prtl_spec.dx3,
-                                                                  prtl_spec.ux1, prtl_spec.ux2, prtl_spec.ux3,
-                                                                  prtl_spec.phi, prtl_spec.weight, prtl_spec.tag,
-                                                                  prtl_spec.mass(), prtl_spec.charge(),
-                                                                  use_weights,
-                                                                  metric, mesh.flds_bc(),
-                                                                  ni2, inv_n0, ZERO));
-            Kokkos::parallel_for(
-              "ComputeMoments",
-              prtl_spec.rangeActiveParticles(),
-              kernel::ParticleMoments_kernel<S, M, FldsID::T, 3>({1, 1}, scatter_buff, 2u,
-                                                                  prtl_spec.i1, prtl_spec.i2, prtl_spec.i3,
-                                                                  prtl_spec.dx1, prtl_spec.dx2, prtl_spec.dx3,
-                                                                  prtl_spec.ux1, prtl_spec.ux2, prtl_spec.ux3,
-                                                                  prtl_spec.phi, prtl_spec.weight, prtl_spec.tag,
-                                                                  prtl_spec.mass(), prtl_spec.charge(),
-                                                                  use_weights,
-                                                                  metric, mesh.flds_bc(),
-                                                                  ni2, inv_n0, ZERO));
-            // clang-format on
-          }
-          Kokkos::Experimental::contribute(T3, scatter_buff);
-
-          if constexpr (M::Dim == Dim::_2D) {
-            Kokkos::parallel_for(
-              "fRho",
-              domain.mesh.rangeActiveCells(),
-              Lambda(index_t i1, index_t i2) {
-                coord_t<M::Dim> xi { static_cast<real_t>(i1 - N_GHOSTS), static_cast<real_t>(i2 - N_GHOSTS) };
-                real_t alpha_ij = metric.alpha(xi);
-                real_t beta_ij = metric.beta1(xi);
-                buffer(i1, i2, index) = (T3(i1, i2, 0) - TWO * beta_ij * T3(i1, i2, 1) + SQR(beta_ij) * T3(i1, i2, 2)) / SQR(alpha_ij);
-              });
           }
         } else {
           raise::Error("Custom output not provided", HERE);
