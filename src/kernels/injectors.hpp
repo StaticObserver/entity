@@ -693,13 +693,13 @@ namespace kernel {
           energy_dist(x_Ph, v_T, spidx1);
           metric.template transform_xyz<Idx::T, Idx::XYZ>(x_Cd, v_T, v_XYZ);
           ux1s_1(index + offset1) = v_XYZ[0];
-          ux2s_1(index + offset1) = v_XYZ[1];
-          ux3s_1(index + offset1) = v_XYZ[2];
+          ux2s_1(index + offset1) = ZERO;
+          ux3s_1(index + offset1) = ZERO;
           energy_dist(x_Ph, v_T, spidx2);
           metric.template transform_xyz<Idx::T, Idx::XYZ>(x_Cd, v_T, v_XYZ);
           ux1s_2(index + offset2) = v_XYZ[0];
-          ux2s_2(index + offset2) = v_XYZ[1];
-          ux3s_2(index + offset2) = v_XYZ[2];
+          ux2s_2(index + offset2) = ZERO;
+          ux3s_2(index + offset2) = ZERO;
 
           tags_1(index + offset1) = ParticleTag::alive;
           tags_2(index + offset2) = ParticleTag::alive;

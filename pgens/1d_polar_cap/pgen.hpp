@@ -19,9 +19,9 @@ namespace user {
 
   template <Dimension D>
   struct InitFields {
-    InitFields(real_t b0_, real_t rho_GJ_, real_t xsurf_, real_t ds_) 
+    InitFields(real_t b0_, real_t coeff_, real_t xsurf_, real_t ds_) 
           : b0 { b0_ }
-          , rho_GJ { rho_GJ_ } 
+          , coeff { coeff_ } 
           , xsurf { xsurf_ }
           , ds { ds_ }{}
 
@@ -30,18 +30,21 @@ namespace user {
     }
 
     Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
-          if (x_Ph[0] <  xsurf + ds){
+          if (x_Ph[0] <  xsurf + ds ){
               return ZERO;
+          }else if (x_Ph[0] > xsurf + 1.33 * ds){
+               return -coeff * (x_Ph[0] - xsurf - ds * (ONE + 0.03 * math::log(1.01) - 0.33 * math::log(0.01 + math::exp(-11.0 / ds))));
+               
           }else{
-              // return -rho_GJ * (x_Ph[0] - xsurf - ds
-              //                       + 0.03 * ds * math::log(0.01 + math::exp((xsurf + 1.0 * ds - x_Ph[0]) / 0.03 / ds))
-              //                       - 0.03 * ds * math::log(0.01 + 1.0));
-              return -rho_GJ * (x_Ph[0] - xsurf - ds);
+               return -coeff * (x_Ph[0] - xsurf - ds
+                                     + 0.03 * ds * math::log(0.01 + math::exp((xsurf + 1.0 * ds - x_Ph[0]) / 0.03 / ds))
+                                     - 0.03 * ds * math::log(0.01 + ONE));
+              //return -coeff * (x_Ph[0] - xsurf - ds);
           }
     }
 
   private:
-    const real_t b0, rho_GJ, xsurf, ds;
+    const real_t b0, coeff, xsurf, ds;
   };
 
   template <Dimension D>
@@ -105,11 +108,14 @@ namespace user {
           , ds { ds_ } {}  
 
         Inline auto operator()(const coord_t<M::Dim>& x_Ph) const -> real_t {
-               if (xsurf < x_Ph[0] and x_Ph[0] <= xsurf + ds){
-                  return ONE;
-               }else{
-                  // return ONE - 0.01 / (0.01 + math::exp(-(x_Ph[0] - xsurf - 1.0 * ds) / 0.03 / ds));
+               if ( x_Ph[0] < xsurf or x_Ph[0] > 1.33 * ds + xsurf){
                   return ZERO;
+               }else{
+                   if (x_Ph[0] < ds + xsurf){
+                       return ONE;
+                   }else{
+                       return ONE - 0.01 / (0.01 + math::exp(-(x_Ph[0] - xsurf - 1.0 * ds) / 0.03 / ds));
+                   }
                }
           }
       }; // ExtraCharge
@@ -175,7 +181,7 @@ namespace user {
         }())
       //, l_atm { ZERO } 
       // , init_flds(b0, TWO * FOUR * constant::PI * b0 * Omega * SQR(skindepth0) / larmor0, l_atm, ds)
-      , init_flds(b0, ONE, xsurf, ds)
+      , init_flds(b0, larmor0 / SQR(skindepth0), xsurf, ds)
       , ext_current(j0)
     {}
 
