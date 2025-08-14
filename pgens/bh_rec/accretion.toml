@@ -59,13 +59,11 @@
     pusher   = "Boris"
 
 [setup]
-  sigma_max    = 125.0
-  temperature  = 0.5
+  temperature  = 1.0
   xi_min       = [1.04, 0.0]
   xi_max       = [6.0, 3.14159265]
   m_eps        = 0.1
-  inj_coeff    = 0.5
-  db_thr       = 1e-2
+  dens_thr     = 1.0
 
 [output]
   format = "hdf5"

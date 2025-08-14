@@ -742,7 +742,7 @@ namespace arch {
     template <SimEngine::type, class> class ED,
     template <SimEngine::type, class> class SD1,
     template <SimEngine::type, class> class SD2>
-      struct Injector_with_weights {
+    struct Injector_with_weights {
       using energy_dist_t  = ED<S, M>;
       using spatial_dist_t1 = SD1<S, M>;
       using spatial_dist_t2 = SD2<S, M>;
