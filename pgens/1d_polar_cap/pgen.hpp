@@ -156,7 +156,7 @@ namespace user {
     using arch::ProblemGenerator<S, M>::C;
     using arch::ProblemGenerator<S, M>::params;
 
-    const real_t  b0, Omega, skindepth0, larmor0;
+    const real_t  b0, skindepth0, larmor0;
     const real_t  temp;
     const real_t  j0;
     const real_t  xsurf, ds;
@@ -167,8 +167,6 @@ namespace user {
     inline PGen(const SimulationParams& p, const Metadomain<S, M>& m)
       : arch::ProblemGenerator<S, M>(p)
       , b0 { p.template get<real_t>("setup.B0", ONE) } 
-      , Omega { static_cast<real_t>(constant::TWO_PI) /
-                p.template get<real_t>("setup.period", ONE) }
       , skindepth0 { p.template get<real_t>("scales.skindepth0") }
       , larmor0 { p.template get<real_t>("scales.larmor0") }
       , temp { p.template get<real_t>("setup.temp") }
