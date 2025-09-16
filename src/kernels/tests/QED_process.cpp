@@ -63,90 +63,34 @@ auto main(int argc, char* argv[]) -> int {
     const real_t e_ph { CUBE(gamma / gamma_emit) / rho };
     
     auto start = std::chrono::high_resolution_clock::now();
-    array_t<size_t*> N_phs("N_phs", electron.npart());
     
     cdfTable cdf("cdf_table.txt", "inverse_cdf_table.txt" );
     // std::cout << "Begin curvature emission number." << std::endl;
-    Curvature_Emission_Number<Dim::_1D, Coord::Cart> curvature_number(electron,  
+    Curvature_Emission_Number<Dim::_1D, Coord::Cart> curvature_emission(electron, 
+                                                                      photon,
                                                                       e_min, 
-                                                                      coeff * 1e9, 
-                                                                      1e5,
                                                                       gamma_emit, 
+                                                                      coeff * 1e9, 
                                                                       rho, 
-                                                                      N_phs,
+                                                                      1e5,
+                                                                      random_pool,
                                                                       cdf);
     
 
     Kokkos::parallel_for("CurvatureEmissionNumber", electron.rangeActiveParticles(), curvature_number);
 
-    // Kokkos::fence();
-    // std::cout << "End curvature emission number." << std::endl;
+    Kokkos::fence();
 
-    array_t<size_t*> offsets("offsets", electron.npart());
-    Kokkos::deep_copy(offsets, 0);
-
-    size_t n_injected { 0 };
-    // std::cout << "Begin scan." << std::endl;
-    Kokkos::parallel_scan("Scan", N_phs.extent(0), KOKKOS_LAMBDA(index_t p, size_t& update, const bool final) {
-      if (final) {
-        offsets(p) = update;
-      }
-      update += N_phs(p);
-    }, n_injected);
-    // Kokkos::fence();
-    // std::cout << "End scan." << std::endl;
-
-    //check values of offsets
-    auto offsets_h = Kokkos::create_mirror_view(offsets);
-    auto N_phs_h = Kokkos::create_mirror_view(N_phs);
-    Kokkos::deep_copy(offsets_h, offsets);
-    Kokkos::deep_copy(N_phs_h, N_phs);
-    for (size_t i = 0; i < offsets.extent(0); ++i) {
-      if (offsets_h(i) < 0 || offsets_h(i) + N_phs_h(i) - 1 >= n_injected) {
-        std::cerr << "Invalid offset: " << offsets_h(i) << std::endl;
-        return 1;
-      }
-    }
+    auto n_injected = curvature_emission.num_injected();
+    std::cout << "Number of photons injected: " << n_injected << std::endl;
 
     auto total_ph = photon.npart() + n_injected;
     photon.set_npart(total_ph);
-    std::cout << "Injecting..." << std::endl;
-    CurvatureEmission_kernel<Dim::_1D, Coord::Cart> curvature_emission(electron, 
-                                                                       photon, 
-                                                                       e_min, 
-                                                                       gamma_emit, 
-                                                                       100,
-                                                                       rho, 
-                                                                       N_phs,
-                                                                       offsets,
-                                                                       random_pool,
-                                                                       cdf);
 
-    Kokkos::parallel_for("CurvatureEmission", electron.rangeActiveParticles(), curvature_emission);
 
-    Kokkos::fence();
-    std::cout << "Number of photons injected: " << n_injected << std::endl;
-
-    // AtomicCurvatureEmission_kernel<Dim::_1D, Coord::Cart> atomic_curvature_emission(electron, 
-    //                                                                                  photon, 
-    //                                                                                  e_min, 
-    //                                                                                  gamma_emit, 
-    //                                                                                  coeff*1e9,
-    //                                                                                  rho, 
-    //                                                                                  100,
-    //                                                                                  photon.npart(),
-    //                                                                                  random_pool);
-
-    // Kokkos::parallel_for("AtomicCurvatureEmission", electron.rangeActiveParticles(), atomic_curvature_emission);
-
-    // Kokkos::fence();
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
     std::cout << "Time: " << elapsed.count() << " s" << std::endl;
-
-    // auto n_injected = atomic_curvature_emission.num_injected();
-    // std::cout << "Number of photons injected: " << n_injected << std::endl;
-    // photon.set_npart(photon.npart() + n_injected);
 
     size_t num_bins { 100 };
     real_t min { e_min / e_ph };
@@ -196,59 +140,21 @@ auto main(int argc, char* argv[]) -> int {
     std::cout << "PairCreation" << std::endl;
     auto start_pair = std::chrono::high_resolution_clock::now();
 
-    array_t<bool*>    should_inj { "should_inj", photon.npart() };
-    Particles<Dim::_1D, Coord::Cart> positron(1, "e+", 1.0, 1.0, N_e, PrtlPusher::BORIS, false, Cooling::NONE, 0);
-
     PairCreation_kernel<Dim::_1D, Coord::Cart> pair_creation(photon, 
-                                                             1.0,
-                                                             1.0,
-                                                             1.0,
-                                                             1.0,
-                                                             3.0,
-                                                             10,
-                                                             should_inj);
+                                                              electron, 
+                                                              electron, 
+                                                              1.0, 
+                                                              1.0, 
+                                                              1.0, 
+                                                              1.0, 
+                                                              1.0, 
+                                                              10);
     Kokkos::parallel_for("PairCreation", photon.rangeActiveParticles(), pair_creation);
 
-    // auto pld_ph_h = Kokkos::create_mirror_view(photon.pld);
-    // auto tag_ph_h = Kokkos::create_mirror_view(photon.tag);
-    // Kokkos::deep_copy(pld_ph_h, photon.pld);
-    // Kokkos::deep_copy(tag_ph_h, photon.tag);
-    // for (size_t i = 0; i < photon.npart(); ++i) {
-    //   if (tag_ph_h(i) == ParticleTag::alive) {
-    //     std::cout << "Probability: " << pld_ph_h(i, 1) << std::endl;
-    //   }
-    // }
-
-    array_t<size_t*> offsets_e { "offsets_e", photon.npart() };
-    array_t<size_t*> offsets_p { "offsets_p", photon.npart() };
-    Kokkos::deep_copy(offsets_e, electron.npart());
-    Kokkos::deep_copy(offsets_p, positron.npart());
-
-    size_t n_injected_e { 0 };
-
-    Kokkos::parallel_scan("Scan_e", should_inj.extent(0), KOKKOS_LAMBDA(index_t p, size_t& update, const bool final) {
-      if (final) {
-        offsets_e(p) += update;
-        offsets_p(p) += update;
-      }
-      update += static_cast<size_t>(should_inj(p));
-    }, n_injected_e);
-
-
-    std::cout << "Number of pairs injected: " << n_injected_e << std::endl;
-
-    electron.set_npart(electron.npart() + n_injected_e);
-    positron.set_npart(positron.npart() + n_injected_e);
-
-    InjectPairs_kernel<Dim::_1D, Coord::Cart> inject_pairs(photon, 
-                                                            electron, 
-                                                            positron, 
-                                                            should_inj, 
-                                                            offsets_e, 
-                                                            offsets_p);
-    Kokkos::parallel_for("InjectPairs", photon.rangeActiveParticles(), inject_pairs);
-
     Kokkos::fence();
+
+    auto n_pairs = pair_creation.num_injected();
+    std::cout << "Number of pairs injected: " << n_pairs << std::endl;
 
     auto end_pair = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed_pair = end_pair - start_pair;
