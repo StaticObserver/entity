@@ -38,8 +38,8 @@ namespace user {
                bz { bz_ },
                phases { "Phases", n2 - n1 + 1, n2 - n1 + 1 } {
                 raise::FatalIf(n2 <= n1, "Mode n2 must be greater than n1.", HERE);
-                Kokkos::Random_XorShift1024_Pool<HostExeSpace> pool { constant::RandomSeed };
-                Kokkos::Random_XorShift1024_Pool<HostExeSpace>::generator_type  rand_gen = pool.get_state();
+                Kokkos::Random_XorShift1024_Pool<Kokkos::HostSpace> pool { constant::RandomSeed };
+                Kokkos::Random_XorShift1024_Pool<Kokkos::HostSpace>::generator_type  rand_gen = pool.get_state();
                 auto phases_h = Kokkos::create_mirror_view(phases);
                 for (size_t i = 0; i < n2 - n1 + 1; ++i) {
                   for (size_t j = 0; j < n2 - n1 + 1; ++j) {

@@ -406,13 +406,13 @@ namespace ntt {
           } else if (fld.is_divergence()) {
             // @TODO: is this correct for GR too? not em0?
             const auto c = static_cast<idx_t>(addresses.back());
-            Kokkos::parallel_for(
-              "ComputeDivergence",
-              local_domain->mesh.rangeActiveCells(),
-              kernel::ComputeDivergence_kernel<M, 6>(local_domain->mesh.metric,
-                                                     local_domain->fields.em,
-                                                     local_domain->fields.bckp,
-                                                     c));
+            // Kokkos::parallel_for(
+            //   "ComputeDivergence",
+            //   local_domain->mesh.rangeActiveCells(),
+            //   kernel::ComputeDivergence_kernel<M, 6>(local_domain->mesh.metric,
+            //                                          local_domain->fields.em,
+            //                                          local_domain->fields.bckp,
+            //                                          c));
           } else if (fld.is_custom()) {
             if (CustomFieldOutput) {
               CustomFieldOutput(fld.name().substr(1),
