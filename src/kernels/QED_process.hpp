@@ -281,6 +281,68 @@ namespace kernel::QED{
     }; // class CurvatureEmission_kernel
 
     template <Dimension D, Coord::type C>
+    struct PayloadUpdate {
+      const real_t                        coeff1, coeff2, dt, rho;
+      const array_t<real_t**>             pld_ph;
+      const array_t<real_t*>              ux1_ph;
+      const array_t<int*>                 i1_ph;
+      const array_t<short*>               tag_ph;
+      array_t<prtldx_t*>                  dx1_ph;
+
+      const size_t                        n_steps;
+
+
+
+    Inline auto integrate(const index_t p, const size_t n_steps) const -> real_t{
+        const real_t dx { ux1_ph(p) * dt / n_steps };
+
+        real_t sum { pld_ph(p, 2) * exp(-coeff2 / (pld_ph(p, 2) * pld_ph(p, 0)))
+                     + (pld_ph(p, 2) + ux1_ph(p) * dt / rho) * exp(-coeff2 / ((pld_ph(p, 2) + ux1_ph(p) * dt / rho) * pld_ph(p, 0))) };
+        
+        for (size_t i = 1; i < n_steps; i += 2){
+            sum += FOUR * (pld_ph(p, 2) + i * dx / rho) * exp(-coeff2 / ((pld_ph(p, 2)+ i * dx / rho) * pld_ph(p, 0)));
+        }
+
+        for (size_t i = 2; i < n_steps; i += 2){
+            sum += TWO * (pld_ph(p, 2) + i * dx / rho) * exp(-coeff2 / ((pld_ph(p, 2) + i * dx / rho) * pld_ph(p, 0)));
+        }
+
+        return dx / THREE * sum;
+
+    }
+
+      public:
+        PayloadUpdate(Particles<D, C>& photon,
+                      const real_t coeff1_,
+                      const real_t coeff2_,
+                      const real_t dt_,
+                      const real_t rho_,
+                      const size_t n_steps_)
+          : coeff1 { coeff1_ }
+          , coeff2 { coeff2_ }
+          , dt { dt_ }
+          , rho { rho_ }
+          , pld_ph { photon.pld }
+          , ux1_ph { photon.ux1 }
+          , i1_ph { photon.i1 }
+          , tag_ph { photon.tag }
+          , dx1_ph { photon.dx1 }
+          , n_steps { n_steps_ } {}    
+        ~PayloadUpdate() = default;
+
+        Inline void operator()(index_t p) const{
+          if (tag_ph(p) != ParticleTag::alive){
+            if (tag_ph(p) != ParticleTag::dead){
+              raise::KernelError(HERE, "Invalid particle tag in pusher");
+            }
+            return;
+          }
+          pld_ph(p, 1) += coeff1 * integrate(p, n_steps);
+          pld_ph(p, 2) += dt * ux1_ph(p) / rho;
+        }
+    };// class PayloadUpdate
+
+    template <Dimension D, Coord::type C>
     class PairCreation_kernel{
         static_assert(D == Dim::_1D, "Pair creation is only implemented in 1D");
         static_assert(C == Coord::Cart, "Pair creation is only implemented in cartesian coordinates"); 
@@ -295,7 +357,7 @@ namespace kernel::QED{
         array_t<real_t*>                   ux1_p, ux2_p, ux3_p;
         array_t<real_t*>                   weight_p;
         array_t<short*>                    tag_p;
-        array_t<int*>                      i1_p;
+        array_t<int*>                      i1_p; 
         array_t<prtldx_t*>                 dx1_p;
         const size_t                       npart_p;
 
@@ -306,58 +368,12 @@ namespace kernel::QED{
         array_t<prtldx_t*>                 dx1_e;
         const size_t                       npart_e;
 
-        const real_t                              coeff1;
-        const real_t                              coeff2;
-        const real_t                              rho0;
-        const real_t                              L;
-
-        const real_t                              dt;
-        const size_t                              n_steps;
-
         array_t<size_t>               n_inj { "n_inj" };
-
-        auto num_injected() const -> size_t{
-            auto n_inj_h = Kokkos::create_mirror_view(n_inj);
-            Kokkos::deep_copy(n_inj_h, n_inj);
-            return n_inj_h();
-        }
-        
-        Inline auto Rho(const real_t x) const -> real_t{
-            // return rho0 * (ONE + 0.8 * x / L);
-            return rho0;
-        }
-    
-
-        Inline auto integrate(const index_t p, const size_t n_steps) const -> real_t{
-            const real_t dx { ux1_ph(p) * dt / n_steps };
-
-            const real_t rho { Rho(static_cast<real_t>(i1_ph(p)) + static_cast<real_t>(dx1_ph(p))) };
-
-            real_t sum { pld_ph(p, 2) * exp(-coeff2 / (pld_ph(p, 2) * pld_ph(p, 0)))
-                         + (pld_ph(p, 2) + ux1_ph(p) * dt / rho) * exp(-coeff2 / ((pld_ph(p, 2) + ux1_ph(p) * dt / rho) * pld_ph(p, 0))) };
-            
-            for (size_t i = 1; i < n_steps; i += 2){
-                sum += FOUR * (pld_ph(p, 2) + i * dx / rho) * exp(-coeff2 / ((pld_ph(p, 2)+ i * dx / rho) * pld_ph(p, 0)));
-            }
-
-            for (size_t i = 2; i < n_steps; i += 2){
-                sum += TWO * (pld_ph(p, 2) + i * dx / rho) * exp(-coeff2 / ((pld_ph(p, 2) + i * dx / rho) * pld_ph(p, 0)));
-            }
-
-            return dx / THREE * sum;
-
-        }
 
         public:
             PairCreation_kernel(Particles<D, C>&          photons,
                                 Particles<D, C>&          positrons,
-                                Particles<D, C>&          electrons,
-                                const real_t              coeff1_,
-                                const real_t              coeff2_,
-                                const real_t              rho0_,
-                                const real_t              L_,
-                                const real_t              dt_,
-                                const size_t              n_steps_)
+                                Particles<D, C>&          electrons)
                 : ux1_ph { photons.ux1 }
                 , ux2_ph { photons.ux2 }
                 , ux3_ph { photons.ux3 }
@@ -392,6 +408,13 @@ namespace kernel::QED{
                 }
             ~PairCreation_kernel() = default;
 
+            auto num_injected() const -> size_t{
+                auto n_inj_h = Kokkos::create_mirror_view(n_inj);
+                Kokkos::deep_copy(n_inj_h, n_inj);
+                return n_inj_h();
+            }
+            
+
             Inline void operator()(index_t p) const{
                 if (tag_ph(p) != ParticleTag::alive){
                     if (tag_ph(p) != ParticleTag::dead){
@@ -399,8 +422,6 @@ namespace kernel::QED{
                     }
                     return;
                 }
-                pld_ph(p, 1) += coeff1 * integrate(p, n_steps); // optical depth
-                pld_ph(p, 2) += dt * ux1_ph(p) / Rho(static_cast<real_t>(i1_ph(p)) + static_cast<real_t>(dx1_ph(p))); // angle
                 if (pld_ph(p, 0) * math::sin(pld_ph(p, 2)) < TWO){
                     tag_ph(p) = ParticleTag::dead;
                     return;

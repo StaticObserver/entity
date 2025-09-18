@@ -328,6 +328,11 @@ namespace ntt {
                                         "scales.omegaB0") /
                                       (SQR(sync_grad) * species.mass())
                                        : ZERO;
+        const auto has_curvature = (cooling == Cooling::CURVATURE);
+        const auto cur_coeff      = has_curvature
+                                       ? m_params.template get<real_t>(
+                                         "algorithms.curvature.coeff")
+                                       : ZERO;
 
         // toggle to indicate whether pgen defines the external force
         bool has_extforce = false;
@@ -345,6 +350,9 @@ namespace ntt {
         kernel::sr::CoolingTags cooling_tags = 0;
         if (cooling == Cooling::SYNCHROTRON) {
           cooling_tags = kernel::sr::Cooling::Synchrotron;
+        }
+        if (cooling == Cooling::CURVATURE) {
+          cooling_tags = kernel::sr::Cooling::Curvature;
         }
         // clang-format off
         if (not has_atmosphere and not has_extforce) {
@@ -368,7 +376,7 @@ namespace ntt {
                 domain.mesh.n_active(in::x2),
                 domain.mesh.n_active(in::x3),
                 domain.mesh.prtl_bc(),
-                gca_larmor_max, gca_eovrb_max, sync_coeff
+                gca_larmor_max, gca_eovrb_max, sync_coeff, cur_coeff
             ));
         } else if (has_atmosphere and not has_extforce) {
           const auto force =
@@ -398,7 +406,7 @@ namespace ntt {
                 domain.mesh.n_active(in::x2),
                 domain.mesh.n_active(in::x3),
                 domain.mesh.prtl_bc(),
-                gca_larmor_max, gca_eovrb_max, sync_coeff
+                gca_larmor_max, gca_eovrb_max, sync_coeff, cur_coeff
             ));
         } else if (not has_atmosphere and has_extforce) {
           if constexpr (traits::has_member<traits::pgen::ext_force_t, pgen_t>::value) {
@@ -427,7 +435,7 @@ namespace ntt {
                   domain.mesh.n_active(in::x2),
                   domain.mesh.n_active(in::x3),
                   domain.mesh.prtl_bc(),
-                  gca_larmor_max, gca_eovrb_max, sync_coeff
+                  gca_larmor_max, gca_eovrb_max, sync_coeff, cur_coeff
               ));
           } else {
             raise::Error("External force not implemented", HERE);
@@ -459,7 +467,7 @@ namespace ntt {
                   domain.mesh.n_active(in::x2),
                   domain.mesh.n_active(in::x3),
                   domain.mesh.prtl_bc(),
-                  gca_larmor_max, gca_eovrb_max, sync_coeff
+                  gca_larmor_max, gca_eovrb_max, sync_coeff, cur_coeff
               ));
           } else {
             raise::Error("External force not implemented", HERE);

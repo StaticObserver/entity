@@ -49,7 +49,7 @@ auto main(int argc, char* argv[]) -> int {
       i1(p) = 0;
       dx1(p) = ZERO;
     });
-
+    
     const real_t e_min { 2.0 };
     const real_t gamma_emit { 1e4 };
     const real_t gamma_rad  { 6.7e5 };
@@ -66,18 +66,18 @@ auto main(int argc, char* argv[]) -> int {
     
     cdfTable cdf("cdf_table.txt", "inverse_cdf_table.txt" );
     // std::cout << "Begin curvature emission number." << std::endl;
-    Curvature_Emission_Number<Dim::_1D, Coord::Cart> curvature_emission(electron, 
+    CurvatureEmission_kernel<Dim::_1D, Coord::Cart> curvature_emission(electron, 
                                                                       photon,
                                                                       e_min, 
                                                                       gamma_emit, 
-                                                                      coeff * 1e9, 
+                                                                      coeff * 1e10, 
                                                                       rho, 
-                                                                      1e5,
+                                                                      100,
                                                                       random_pool,
                                                                       cdf);
     
 
-    Kokkos::parallel_for("CurvatureEmissionNumber", electron.rangeActiveParticles(), curvature_number);
+    Kokkos::parallel_for("CurvatureEmission", electron.rangeActiveParticles(), curvature_emission);
 
     Kokkos::fence();
 
@@ -92,9 +92,9 @@ auto main(int argc, char* argv[]) -> int {
     std::chrono::duration<double> elapsed = end - start;
     std::cout << "Time: " << elapsed.count() << " s" << std::endl;
 
-    size_t num_bins { 100 };
+    size_t num_bins { 300 };
     real_t min { e_min / e_ph };
-    real_t max { 20.0 };
+    real_t max { 3.0 };
     auto dx = (max - min) / num_bins;
 
     auto e_bins = Kokkos::View<real_t*>("e_bins", num_bins);
@@ -139,10 +139,11 @@ auto main(int argc, char* argv[]) -> int {
 
     std::cout << "PairCreation" << std::endl;
     auto start_pair = std::chrono::high_resolution_clock::now();
+    Particles<Dim::_1D, Coord::Cart> positron(1, "e+", 1.0, 1.0, N_e, PrtlPusher::BORIS, false, Cooling::NONE, 0);
 
     PairCreation_kernel<Dim::_1D, Coord::Cart> pair_creation(photon, 
                                                               electron, 
-                                                              electron, 
+                                                              positron, 
                                                               1.0, 
                                                               1.0, 
                                                               1.0, 
@@ -200,7 +201,7 @@ auto main(int argc, char* argv[]) -> int {
     auto ebins_e_h = Kokkos::create_mirror_view(e_bins_e);
     Kokkos::deep_copy(ebins_e_h, e_bins_e);
 
-    if (n_injected_e > 0) {
+    if (n_pairs > 0) {
       std::ofstream file("pdf_e.dat");
       for (size_t i = 0; i < num_bins; ++i) {
         file << bin_centers_e[i] << " " << ebins_e_h(i) << std::endl;
@@ -238,7 +239,7 @@ auto main(int argc, char* argv[]) -> int {
     auto ebins_p_h = Kokkos::create_mirror_view(e_bins_p);
     Kokkos::deep_copy(ebins_p_h, e_bins_p);
 
-    if (n_injected_e > 0) {
+    if (n_pairs > 0) {
       std::ofstream file("pdf_p.dat");
       for (size_t i = 0; i < num_bins; ++i) {
         file << bin_centers_e[i] << " " << ebins_p_h(i) << std::endl;

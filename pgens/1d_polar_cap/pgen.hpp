@@ -13,6 +13,7 @@
 #include "archetypes/particle_injector.h"
 #include "archetypes/problem_generator.h"
 #include "framework/domain/metadomain.h"
+#include "kernels/QED_process.hpp"
 
 namespace user {
   using namespace ntt;
@@ -141,7 +142,8 @@ namespace user {
     private:
       const real_t J0; 
   };
-   
+
+
   template <SimEngine::type S, class M>
   struct PGen : public arch::ProblemGenerator<S, M> {
     // compatibility traits for the problem generator
@@ -156,12 +158,17 @@ namespace user {
     using arch::ProblemGenerator<S, M>::C;
     using arch::ProblemGenerator<S, M>::params;
 
+
     const real_t  b0, skindepth0, larmor0;
     const real_t  temp;
     const real_t  j0;
     const real_t  xsurf, ds;
     InitFields<D> init_flds;
     MagnetosphericCurrent<D> ext_current;
+
+    const kernel::QED::cdfTable cdf;
+    random_number_pool_t random_pool(12345);
+    const real_t e_min, gamma_emit, coeff, rho, N_max, dt;
     
 
     inline PGen(const SimulationParams& p, const Metadomain<S, M>& m)
@@ -172,6 +179,15 @@ namespace user {
       , temp { p.template get<real_t>("setup.temp") }
       , j0 { p.template get<real_t>("setup.j0") / p.template get<real_t>("scales.V0")}
       , ds { p.template get<real_t>("grid.boundaries.atmosphere.ds") }
+      , dt { p.template get<real_t>("algorithms.timestep.dt") }
+      , cdf { "cdf_table.txt", "inverse_cdf_table.txt" }
+      , e_min { p.template get<real_t>("setup.e_min") }
+      , gamma_emit { p.template get<real_t>("setup.gamma_emit") }
+      , coeff { p.template get<real_t>("setup.coeff") }
+      , rho { p.template get<real_t>("setup.rho") }
+      , N_max { p.template get<real_t>("setup.N_max") }
+      , coeff1 { coeff * 0.23 * constant::PI * b0 * constant::SQRT3 }
+      , coeff2 { FOUR * TWO / THREE / b0 }
       , xsurf([&m, this]() {
           const auto min_buff = params.template get<unsigned short>("algorithms.current_filters") + 2;
           const auto buffer_ncells = min_buff > 5 ? min_buff : 5;
@@ -199,17 +215,6 @@ namespace user {
       const auto energy_dist = arch::Maxwellian<S, M>(local_domain.mesh.metric,
                                                         local_domain.random_pool,
                                                         temp);
-      // const auto injector = arch::UniformInjector<S, M, arch::Maxwellian>(
-      //   energy_dist,
-      //   { 1, 2 }
-      // );
-
-      // arch::InjectUniform<S, M, decltype(injector)>(
-      //   params,
-      //   local_domain,
-      //   injector,
-      //   ONE
-      // );
       const auto spatial_dist = TargetDensityProfile<S, M>(
           local_domain.mesh.metric,
           params.template get<real_t>("grid.boundaries.atmosphere.density"),
@@ -243,6 +248,61 @@ namespace user {
         injector_extra_charge,
         TWO);
     }
+
+    void CustomPostStep(std::size_t, long double time, Domain<S, M>& local_domain) {
+      kernel::QED::CurvatureEmission_kernel<D, C> curvature_emission1(local_domain.species[0], 
+                                                                      local_domain.species[2],
+                                                                      e_min,
+                                                                      gamma_emit,
+                                                                      coeff * dt / skindepth0,
+                                                                      rho,
+                                                                      N_max,
+                                                                      random_pool,
+                                                                      cdf);
+      Kokkos::parallel_for("CurvatureEmission", 
+                            local_domain.species[0].rangeActiveParticles(), 
+                            curvature_emission1);
+      Kokkos::fence();
+      auto n_injected = curvature_emission1.num_injected();
+      local_domain.species[2].set_npart(local_domain.species[2].npart() + n_injected);
+      kernel::QED::CurvatureEmission_kernel<D, C> curvature_emission2(local_domain.species[1], 
+                                                                      local_domain.species[2],
+                                                                      e_min,
+                                                                      gamma_emit,
+                                                                      coeff * dt / skindepth0,
+                                                                      rho,
+                                                                      N_max,
+                                                                      random_pool,
+                                                                      cdf);
+      Kokkos::parallel_for("CurvatureEmission", 
+                            local_domain.species[1].rangeActiveParticles(), 
+                            curvature_emission2);
+      Kokkos::fence();
+      n_injected = curvature_emission2.num_injected();
+      local_domain.species[2].set_npart(local_domain.species[2].npart() + n_injected);
+      
+      kernel::QED::PairCreation_kernel<D, C> pair_creation(local_domain.species[2], 
+                                                            local_domain.species[1], 
+                                                            local_domain.species[0]);
+
+      Kokkos::fence();
+
+      n_injected = pair_creation.num_injected();
+      local_domain.species[1].set_npart(local_domain.species[1].npart() + n_injected);
+      local_domain.species[0].set_npart(local_domain.species[0].npart() + n_injected);
+
+      Kokkos::parallel_for("PayloadUpdate", 
+                            local_domain.species[2].rangeActiveParticles(), 
+                            PayloadUpdate<D, C>(local_domain.species[2], 
+                                                coeff1 / skindepth0, 
+                                                coeff2, 
+                                                dt,
+                                                rho, 
+                                                5));
+                      
+    }
+
+
   }; // PGen  
 
 
