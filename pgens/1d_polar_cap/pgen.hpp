@@ -31,16 +31,12 @@ namespace user {
     }
 
     Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
-          if (x_Ph[0] <  xsurf + ds ){
+          if (x_Ph[0] <  xsurf ){
               return ZERO;
-          }else if (x_Ph[0] > xsurf + 1.33 * ds){
-               return -coeff * (x_Ph[0] - xsurf - ds * (ONE + 0.03 * math::log(1.01) - 0.33 * math::log(0.01 + math::exp(-11.0 / ds))));
-               
           }else{
-               return -coeff * (x_Ph[0] - xsurf - ds
+               return -coeff * (x_Ph[0] - xsurf 
                                      + 0.03 * ds * math::log(0.01 + math::exp((xsurf + 1.0 * ds - x_Ph[0]) / 0.03 / ds))
-                                     - 0.03 * ds * math::log(0.01 + ONE));
-              //return -coeff * (x_Ph[0] - xsurf - ds);
+                                     - 0.03 * ds * math::log(0.01 + math::exp(1.0/0.03)));
           }
     }
 
@@ -109,14 +105,10 @@ namespace user {
           , ds { ds_ } {}  
 
         Inline auto operator()(const coord_t<M::Dim>& x_Ph) const -> real_t {
-               if ( x_Ph[0] < xsurf or x_Ph[0] > 1.33 * ds + xsurf){
+               if ( x_Ph[0] < xsurf){
                   return ZERO;
                }else{
-                   if (x_Ph[0] < ds + xsurf){
-                       return ONE;
-                   }else{
-                       return ONE - 0.01 / (0.01 + math::exp(-(x_Ph[0] - xsurf - 1.0 * ds) / 0.03 / ds));
-                   }
+                  return ONE - 0.01 / (0.01 + math::exp(-(x_Ph[0] - xsurf - 1.0 * ds) / 0.03 / ds));
                }
           }
       }; // ExtraCharge
@@ -167,8 +159,11 @@ namespace user {
     MagnetosphericCurrent<D> ext_current;
 
     const kernel::QED::cdfTable cdf;
-    random_number_pool_t random_pool(12345);
-    const real_t e_min, gamma_emit, coeff, rho, N_max, dt;
+    random_number_pool_t random_pool;
+    const real_t e_min, gamma_emit, coeff, rho, dt, coeff1, coeff2;
+    const size_t N_max;
+
+    const bool QED_on;
     
 
     inline PGen(const SimulationParams& p, const Metadomain<S, M>& m)
@@ -185,18 +180,18 @@ namespace user {
       , gamma_emit { p.template get<real_t>("setup.gamma_emit") }
       , coeff { p.template get<real_t>("setup.coeff") }
       , rho { p.template get<real_t>("setup.rho") }
-      , N_max { p.template get<real_t>("setup.N_max") }
+      , N_max { static_cast<size_t>(p.template get<int>("setup.N_max")) }
       , coeff1 { coeff * 0.23 * constant::PI * b0 * constant::SQRT3 }
       , coeff2 { FOUR * TWO / THREE / b0 }
+      , random_pool { 12345 }
       , xsurf([&m, this]() {
           const auto min_buff = params.template get<unsigned short>("algorithms.current_filters") + 2;
           const auto buffer_ncells = min_buff > 5 ? min_buff : 5;
           return m.mesh().metric.template convert<1, Crd::Cd, Crd::Ph>(static_cast<real_t>(buffer_ncells));
         }())
-      //, l_atm { ZERO } 
-      // , init_flds(b0, TWO * FOUR * constant::PI * b0 * Omega * SQR(skindepth0) / larmor0, l_atm, ds)
       , init_flds(b0, larmor0 / SQR(skindepth0), xsurf, ds)
       , ext_current(j0)
+      , QED_on { p.template get<bool>("setup.QED") }
     {}
 
     inline PGen() {}
@@ -230,7 +225,8 @@ namespace user {
         params,
         local_domain,
         injector,
-        ONE);
+        ONE,
+        true);
 
       const auto extra_charge = ExtraCharge<S, M>(
         local_domain.mesh.metric,
@@ -246,61 +242,64 @@ namespace user {
         params,
         local_domain,
         injector_extra_charge,
-        TWO);
+        TWO,
+        true);
     }
 
     void CustomPostStep(std::size_t, long double time, Domain<S, M>& local_domain) {
-      kernel::QED::CurvatureEmission_kernel<D, C> curvature_emission1(local_domain.species[0], 
-                                                                      local_domain.species[2],
-                                                                      e_min,
-                                                                      gamma_emit,
-                                                                      coeff * dt / skindepth0,
-                                                                      rho,
-                                                                      N_max,
-                                                                      random_pool,
-                                                                      cdf);
-      Kokkos::parallel_for("CurvatureEmission", 
-                            local_domain.species[0].rangeActiveParticles(), 
-                            curvature_emission1);
-      Kokkos::fence();
-      auto n_injected = curvature_emission1.num_injected();
-      local_domain.species[2].set_npart(local_domain.species[2].npart() + n_injected);
-      kernel::QED::CurvatureEmission_kernel<D, C> curvature_emission2(local_domain.species[1], 
-                                                                      local_domain.species[2],
-                                                                      e_min,
-                                                                      gamma_emit,
-                                                                      coeff * dt / skindepth0,
-                                                                      rho,
-                                                                      N_max,
-                                                                      random_pool,
-                                                                      cdf);
-      Kokkos::parallel_for("CurvatureEmission", 
-                            local_domain.species[1].rangeActiveParticles(), 
-                            curvature_emission2);
-      Kokkos::fence();
-      n_injected = curvature_emission2.num_injected();
-      local_domain.species[2].set_npart(local_domain.species[2].npart() + n_injected);
-      
-      kernel::QED::PairCreation_kernel<D, C> pair_creation(local_domain.species[2], 
-                                                            local_domain.species[1], 
-                                                            local_domain.species[0]);
+      if (QED_on) {
+          kernel::QED::CurvatureEmission_kernel<D, M::CoordType> curvature_emission1(local_domain.species[0], 
+                                                                          local_domain.species[2],
+                                                                          e_min,
+                                                                          gamma_emit,
+                                                                          coeff * dt / skindepth0,
+                                                                          rho,
+                                                                          N_max,
+                                                                          random_pool,
+                                                                          cdf);
+          Kokkos::parallel_for("CurvatureEmission", 
+                                local_domain.species[0].rangeActiveParticles(), 
+                                curvature_emission1);
+          Kokkos::fence();
+          auto n_injected = curvature_emission1.num_injected();
+          local_domain.species[2].set_npart(local_domain.species[2].npart() + n_injected);
+          kernel::QED::CurvatureEmission_kernel<D, M::CoordType> curvature_emission2(local_domain.species[1], 
+                                                                          local_domain.species[2],
+                                                                          e_min,
+                                                                          gamma_emit,
+                                                                          coeff * dt / skindepth0,
+                                                                          rho,
+                                                                          N_max,
+                                                                          random_pool,
+                                                                          cdf);
+          Kokkos::parallel_for("CurvatureEmission", 
+                                local_domain.species[1].rangeActiveParticles(), 
+                                curvature_emission2);
+          Kokkos::fence();
+          n_injected = curvature_emission2.num_injected();
+          local_domain.species[2].set_npart(local_domain.species[2].npart() + n_injected);
+          
+          kernel::QED::PairCreation_kernel<D, M::CoordType> pair_creation(local_domain.species[2], 
+                                                                local_domain.species[1], 
+                                                                local_domain.species[0]);
 
-      Kokkos::fence();
+          Kokkos::fence();
 
-      n_injected = pair_creation.num_injected();
-      local_domain.species[1].set_npart(local_domain.species[1].npart() + n_injected);
-      local_domain.species[0].set_npart(local_domain.species[0].npart() + n_injected);
+          n_injected = pair_creation.num_injected();
+          local_domain.species[1].set_npart(local_domain.species[1].npart() + n_injected);
+          local_domain.species[0].set_npart(local_domain.species[0].npart() + n_injected);
 
-      Kokkos::parallel_for("PayloadUpdate", 
-                            local_domain.species[2].rangeActiveParticles(), 
-                            PayloadUpdate<D, C>(local_domain.species[2], 
-                                                coeff1 / skindepth0, 
-                                                coeff2, 
-                                                dt,
-                                                rho, 
-                                                5));
+          Kokkos::parallel_for("PayloadUpdate", 
+                                local_domain.species[2].rangeActiveParticles(), 
+                                kernel::QED::PayloadUpdate<D, M::CoordType>(local_domain.species[2], 
+                                                    coeff1 / skindepth0, 
+                                                    coeff2, 
+                                                    dt,
+                                                    rho, 
+                                                    5));
                       
     }
+  }
 
 
   }; // PGen  

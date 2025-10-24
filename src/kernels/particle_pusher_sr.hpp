@@ -461,12 +461,12 @@ namespace kernel::sr {
 
     Inline void curvatureDrag(index_t&               p,
                               vec_t<Dim::_3D>&       u_prime) const {
-      real_t gamma_prime_sqr = ONE / (ONE + NORM_SQR(u_prime[0],
-                                                    u_prime[1],
-                                                    u_prime[2]));
-      ux1(p) += coeff_cur * SQR(gamma_prime_sqr) * u_prime[0];
-      ux2(p) += coeff_cur * SQR(gamma_prime_sqr) * u_prime[1];
-      ux3(p) += coeff_cur * SQR(gamma_prime_sqr) * u_prime[2];
+      real_t gamma_prime_sqr = math::sqrt(ONE + NORM_SQR(u_prime[0],
+                                              u_prime[1],
+                                              u_prime[2]));
+      ux1(p) += coeff_cur * CUBE(gamma_prime_sqr) * u_prime[0];
+      ux2(p) += coeff_cur * CUBE(gamma_prime_sqr) * u_prime[1];
+      ux3(p) += coeff_cur * CUBE(gamma_prime_sqr) * u_prime[2];
     }
 
     Inline void operator()(index_t p) const {

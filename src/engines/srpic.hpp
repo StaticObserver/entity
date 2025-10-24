@@ -330,8 +330,9 @@ namespace ntt {
                                        : ZERO;
         const auto has_curvature = (cooling == Cooling::CURVATURE);
         const auto cur_coeff      = has_curvature
-                                       ? m_params.template get<real_t>(
-                                         "algorithms.curvature.coeff")
+                                       ? -m_params.template get<real_t>(
+                                         "scales.q0") * dt / real_t(6.0) / constant::PI
+                                         / SQR(m_params.template get<real_t>("setup.rho0"))
                                        : ZERO;
 
         // toggle to indicate whether pgen defines the external force
@@ -1196,7 +1197,7 @@ namespace ntt {
       Kokkos::deep_copy(domain.fields.bckp, ZERO);
       auto scatter_bckp = Kokkos::Experimental::create_scatter_view(
         domain.fields.bckp);
-      const auto use_weights = M::CoordType != Coord::Cart;
+      const auto use_weights = true;
       const auto ni2         = domain.mesh.n_active(in::x2);
       const auto inv_n0      = ONE / m_params.template get<real_t>("scales.n0");
 

@@ -219,7 +219,7 @@ namespace kernel::QED{
                 , dx1_ph { photons.dx1 }
                 , e_min { e_min_ }
                 , gamma_emit { gamma_emit_ }
-                , coeff { coeff_ }
+                , coeff { coeff_ * 5.236}
                 , rho { rho_ }
                 , N_max { N_max }
                 , npart_ph { photons.npart() }
@@ -245,7 +245,7 @@ namespace kernel::QED{
                 }
                 const real_t pp = math::sqrt(ONE + NORM_SQR(ux1(p), ux2(p), ux3(p)));   
                 const real_t zeta = e_min * rho * CUBE(gamma_emit / pp);
-                auto N_ph = static_cast<size_t>(coeff * cdf.CDF(zeta) / SQR(pp));
+                auto N_ph = static_cast<size_t>(coeff * cdf.CDF(zeta) * pp / CUBE(gamma_emit) / rho);
 
                 if (N_ph < 1){
                     return;
@@ -397,13 +397,7 @@ namespace kernel::QED{
                 , dx1_e { electrons.dx1 }
                 , tag_e { electrons.tag }
                 , weight_e { electrons.weight }
-                , npart_e { electrons.npart() }
-                , coeff1 { coeff1_ }
-                , coeff2 { coeff2_ }
-                , rho0 { rho0_ }
-                , L { L_ }
-                , dt { dt_ }
-                , n_steps { n_steps_ }{
+                , npart_e { electrons.npart() }{
                     Kokkos::deep_copy(n_inj, 0);
                 }
             ~PairCreation_kernel() = default;
@@ -426,11 +420,10 @@ namespace kernel::QED{
                     tag_ph(p) = ParticleTag::dead;
                     return;
                 }
-                auto offset_p = Kokkos::atomic_fetch_add(&n_inj(), 1);
-                auto offset_e = Kokkos::atomic_fetch_add(&n_inj(), 1);
+                auto offset = Kokkos::atomic_fetch_add(&n_inj(), 1);
 
-                offset_p += npart_p;
-                offset_e += npart_e;
+                auto offset_p = offset + npart_p;
+                auto offset_e = offset + npart_e;
 
                 if (pld_ph(p, 1) > ONE){
                     const real_t u = math::sqrt((SQR(pld_ph(p, 0)) - FOUR) / (SQR(pld_ph(p, 0) * pld_ph(p, 2)) + FOUR));

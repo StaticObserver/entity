@@ -265,14 +265,15 @@ namespace ntt {
     enum type : uint8_t {
       INVALID     = 0,
       SYNCHROTRON = 1,
-      NONE        = 2,
+      CURVATURE   = 2,
+      NONE        = 3,
     };
 
     constexpr Cooling(uint8_t c) : enums_hidden::BaseEnum<Cooling> { c } {}
 
-    static constexpr type        variants[] = { SYNCHROTRON, NONE };
-    static constexpr const char* lookup[]   = { "synchrotron", "none" };
-    static constexpr std::size_t total = sizeof(variants) / sizeof(variants[0]);
+    static constexpr type        variants[] = { SYNCHROTRON, CURVATURE, NONE };
+    static constexpr const char* lookup[]   = { "synchrotron", "curvature", "none" };
+    static constexpr std::size_t total = sizeof(variants) / sizeof(variants[0]);  
   };
 
   struct FldsID : public enums_hidden::BaseEnum<FldsID> {

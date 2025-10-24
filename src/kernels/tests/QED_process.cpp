@@ -51,7 +51,7 @@ auto main(int argc, char* argv[]) -> int {
     });
     
     const real_t e_min { 2.0 };
-    const real_t gamma_emit { 1e4 };
+    const real_t gamma_emit { 3e4 };
     const real_t gamma_rad  { 6.7e5 };
     const real_t gamma_pc { 7.2e7 };
     const real_t coeff { SQR(THREE / TWO) * constant::SQRT3 / constant::SQRT2 / constant::PI
@@ -70,7 +70,7 @@ auto main(int argc, char* argv[]) -> int {
                                                                       photon,
                                                                       e_min, 
                                                                       gamma_emit, 
-                                                                      coeff * 1e10, 
+                                                                      coeff, 
                                                                       rho, 
                                                                       100,
                                                                       random_pool,
@@ -139,17 +139,22 @@ auto main(int argc, char* argv[]) -> int {
 
     std::cout << "PairCreation" << std::endl;
     auto start_pair = std::chrono::high_resolution_clock::now();
+
+    PayloadUpdate<Dim::_1D, Coord::Cart> payload_update(photon, 
+                                                        1.0,
+                                                        1.0,
+                                                        1.0,
+                                                        1.0,
+                                                        10);
+    Kokkos::parallel_for("PayloadUpdate", photon.rangeActiveParticles(), payload_update);
+
+    Kokkos::fence();
+
     Particles<Dim::_1D, Coord::Cart> positron(1, "e+", 1.0, 1.0, N_e, PrtlPusher::BORIS, false, Cooling::NONE, 0);
 
     PairCreation_kernel<Dim::_1D, Coord::Cart> pair_creation(photon, 
                                                               electron, 
-                                                              positron, 
-                                                              1.0, 
-                                                              1.0, 
-                                                              1.0, 
-                                                              1.0, 
-                                                              1.0, 
-                                                              10);
+                                                              positron);
     Kokkos::parallel_for("PairCreation", photon.rangeActiveParticles(), pair_creation);
 
     Kokkos::fence();

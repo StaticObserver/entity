@@ -447,9 +447,9 @@ namespace arch {
     raise::ErrorIf((M::CoordType != Coord::Cart) && (not use_weights),
                    "Weights must be used for non-Cartesian coordinates",
                    HERE);
-    raise::ErrorIf((M::CoordType == Coord::Cart) && use_weights,
-                   "Weights should not be used for Cartesian coordinates",
-                   HERE);
+    // raise::ErrorIf((M::CoordType == Coord::Cart) && use_weights,
+    //                "Weights should not be used for Cartesian coordinates",
+    //                HERE);
     raise::ErrorIf(params.template get<bool>("particles.use_weights") != use_weights,
                    "Weights must be enabled from the input file to use them in "
                    "the injector",
@@ -558,9 +558,9 @@ namespace arch {
       raise::ErrorIf((M::CoordType != Coord::Cart) && (not use_weights),
                      "Weights must be used for non-Cartesian coordinates",
                      HERE);
-      raise::ErrorIf((M::CoordType == Coord::Cart) && use_weights,
-                     "Weights should not be used for Cartesian coordinates",
-                     HERE);
+      // raise::ErrorIf((M::CoordType == Coord::Cart) && use_weights,
+      //                "Weights should not be used for Cartesian coordinates",
+      //                HERE);
       raise::ErrorIf(
         params.template get<bool>("particles.use_weights") != use_weights,
         "Weights must be enabled from the input file to use them in "
@@ -671,9 +671,9 @@ namespace arch {
     raise::ErrorIf((M::CoordType != Coord::Cart) && (not use_weights),
                    "Weights must be used for non-Cartesian coordinates",
                    HERE);
-    raise::ErrorIf((M::CoordType == Coord::Cart) && use_weights,
-                   "Weights should not be used for Cartesian coordinates",
-                   HERE);
+    // raise::ErrorIf((M::CoordType == Coord::Cart) && use_weights,
+    //                "Weights should not be used for Cartesian coordinates",
+    //                HERE);
     raise::ErrorIf(
       params.template get<bool>("particles.use_weights") and not use_weights,
       "Weights are enabled in the input but not enabled in the injector",
