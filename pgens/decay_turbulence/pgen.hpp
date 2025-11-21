@@ -59,7 +59,7 @@ namespace user {
       real_t value { ZERO };
       for (size_t i = 0; i < n2 - n1 + 1; ++i) {
         for (size_t j = 0; j < n2 - n1 + 1; ++j) {
-          value += 2.0 * b_rms * (n1 + i) / (n2 - n1) / math::sqrt(SQR(n1 + i) + SQR(n1 + j))
+          value += 2.0 * b_rms * (n1 + i) / (n2 - n1 + ONE) / math::sqrt(SQR(n1 + i) + SQR(n1 + j))
                   * math::sin(constant::TWO_PI * (n1 + j) * x_Ph[0] / lx + phases(i, j, 0))
                   * math::cos(constant::TWO_PI * (n1 + i) * x_Ph[1] / lx + phases(i, j, 1));
         }
@@ -75,7 +75,7 @@ namespace user {
       real_t value { ZERO };
       for (size_t i = 0; i < n2 - n1 + 1; ++i) {
         for (size_t j = 0; j < n2 - n1 + 1; ++j) {
-          value += - 2.0 * b_rms * (n1 + j) / (n2 - n1) / math::sqrt(SQR(n1 + i) + SQR(n1 + j))
+          value += - 2.0 * b_rms * (n1 + j) / (n2 - n1 + ONE) / math::sqrt(SQR(n1 + i) + SQR(n1 + j))
                   * math::cos(constant::TWO_PI * (n1 + j) * x_Ph[0] / lx + phases(i, j, 0))
                   * math::sin(constant::TWO_PI * (n1 + i) * x_Ph[1] / lx + phases(i, j, 1));
         }
