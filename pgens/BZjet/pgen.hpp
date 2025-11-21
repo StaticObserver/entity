@@ -17,6 +17,8 @@
 #include "framework/domain/domain.h"
 #include "framework/domain/metadomain.h"
 
+#include "kernels/particle_moments.hpp"
+
 #include <vector>
 
 namespace user {
@@ -445,20 +447,25 @@ namespace user {
       if (is_weight) {
         coord_t<M::Dim> xi { ZERO };
         metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
-        const auto i1 = static_cast<int>(xi[0]) + static_cast<int>(N_GHOSTS);
-        const auto i2 = static_cast<int>(xi[1]) + static_cast<int>(N_GHOSTS);
-        const vec_t<Dim::_3D> B_cntrv { EM(i1, i2, em::bx1),
-                                        EM(i1, i2, em::bx2),
-                                        EM(i1, i2, em::bx3) };
-        const vec_t<Dim::_3D> D_cntrv { EM(i1, i2, em::dx1),
-                                        EM(i1, i2, em::dx2),
-                                        EM(i1, i2, em::dx3) };
-        vec_t<Dim::_3D>       B_cov { ZERO };
-        metric.template transform<Idx::U, Idx::D>(xi, B_cntrv, B_cov);
-        const auto bsqr =
-          DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
-        const auto db = DOT(D_cntrv[0], D_cntrv[1], D_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
-        const real_t inj_n = inj_coeff * db * SIGN(db) / math::sqrt(bsqr) * SQR(d0) / rho0;
+        // const auto i1 = static_cast<int>(xi[0]) + static_cast<int>(N_GHOSTS);
+        // const auto i2 = static_cast<int>(xi[1]) + static_cast<int>(N_GHOSTS);
+        // const vec_t<Dim::_3D> B_cntrv { EM(i1, i2, em::bx1),
+        //                                 EM(i1, i2, em::bx2),
+        //                                 EM(i1, i2, em::bx3) };
+        // const vec_t<Dim::_3D> D_cntrv { EM(i1, i2, em::dx1),
+        //                                 EM(i1, i2, em::dx2),
+        //                                 EM(i1, i2, em::dx3) };
+        // vec_t<Dim::_3D>       B_cov { ZERO };
+        // metric.template transform<Idx::U, Idx::D>(xi, B_cntrv, B_cov);
+        // const auto bsqr =
+        //   DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
+        // const auto db = DOT(D_cntrv[0], D_cntrv[1], D_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
+        // const real_t inj_n = inj_coeff * db * SIGN(db) / math::sqrt(bsqr) * SQR(d0) / rho0;
+        vec_t<Dim::_3D> x_cntrv { x_Ph[0], x_Ph[1], ZERO };
+        vec_t<Dim::_3D> x_cov { ZERO };
+        metric.template transform<Idx::U, Idx::D>(xi, x_cntrv, x_cov);
+        const auto rsqr = DOT(x_cntrv[0], x_cntrv[1], x_cntrv[2], x_cov[0], x_cov[1], x_cov[2]);
+        const auto inj_n = inj_coeff * SQR(d0) / rho0 / rsqr * math::sqrt(math::sqrt(rsqr));
       
         return fill ? inj_n * ppc0 : ZERO;
       } else {
@@ -480,6 +487,7 @@ namespace user {
     ndfield_t<M::Dim, 3>    density;
     ndfield_t<M::Dim, 6>    EM;
     const M                 metric;
+    const bool              is_weight;
   };
 
 
