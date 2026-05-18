@@ -1,0 +1,89 @@
+[simulation]
+  name    = "BZjet"
+  engine  = "grpic"
+  runtime = 150.0
+
+[grid]
+  resolution = [256, 256]
+  extent     = [[0.985, 8.0]]
+
+  [grid.metric]
+    metric  = "qkerr_schild"
+    qsph_r0 = 0.0
+    qsph_h  = 0.0
+    ks_a    = 0.999
+
+  [grid.boundaries]
+    fields    = [["MATCH"]]
+    particles = [["ABSORB"]]
+
+    [grid.boundaries.absorb]
+      ds = 1.0
+
+[scales]
+  larmor0    = 1e-3
+  skindepth0 = 0.05
+
+[algorithms]
+  current_filters = 8
+
+  [algorithms.gr]
+    pusher_niter = 10
+    pusher_eps   = 1e-2
+
+  [algorithms.timestep]
+    CFL        = 0.5
+    correction = 1.0
+
+  [algorithms.toggles]
+    deposit     = true
+    fieldsolver = true
+
+[particles]
+  ppc0           = 32.0
+  use_weights    = true
+  clear_interval = 100
+
+  [[particles.species]]
+    label    = "e-"
+    mass     = 1.0
+    charge   = -1.0
+    maxnpart = 4e8
+    pusher   = "Boris"
+
+  [[particles.species]]
+    label    = "e+"
+    mass     = 1.0
+    charge   = 1.0
+    maxnpart = 4e8
+    pusher   = "Boris"
+
+[setup]
+  sigma_max    = 125.0
+  temperature  = 0.5
+  xi_min       = [1.04, 0.0]
+  xi_max       = [6.0, 3.14159265]
+  m_eps        = 0.1
+  inj_coeff    = 0.5
+  db_thr       = 1e-2
+
+[output]
+  format = "hdf5"
+
+  [output.fields]
+    interval_time = 0.2
+    quantities    = ["D", "B", "H", "E", "J", "A",
+                     "N_1", "N_2", "Rho_1", "Rho_2",
+                     "T0i_1", "T0i_2", "T00_1", "T00_2"]
+    custom        = ["DB", "Gamma_1", "Gamma_2", "Vr_1", "Vr_2", "Ut_1", "Ut_2"]
+
+  [output.particles]
+    enable = false
+
+  [output.spectra]
+    enable = false
+
+[diagnostics]
+  interval        = 2
+  colored_stdout  = false
+  blocking_timers = true
