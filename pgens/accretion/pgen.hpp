@@ -142,22 +142,21 @@ namespace user {
         metric.template transform<Idx::U, Idx::PU>(x_Code, 
                                                    { metric.beta1(x_Code), 0, 0 }, 
                                                    beta_Phys);
-        coeff = u_Phys[comp] / gamma * metric.alpha(x_Code) 
-                - beta_Phys[0] * static_cast<real_t>(comp == 0);
+        coeff = u_Phys[comp] / gamma * metric.alpha(x_Code) - beta_Phys[comp];
       }
 
-      if constexpr (F == CustomField::Ut){
-        coord_t<D> x_Code { ZERO };
-        real_t gamma { ZERO };
-        x_Code[0] = static_cast<real_t>(i1(p)) + static_cast<real_t>(dx1(p));
-        x_Code[1] = static_cast<real_t>(i2(p)) + static_cast<real_t>(dx2(p));
-        vec_t<Dim::_3D> u_Cntrv { ZERO };
-        metric.template transform<Idx::D, Idx::U>(x_Code,
-                                                  { ux1(p), ux2(p), ux3(p) },
-                                                  u_Cntrv);
-        gamma = math::sqrt(ONE + u_Cntrv[0] * ux1(p) + u_Cntrv[1] * ux2(p) + u_Cntrv[2] * ux3(p));
-        coeff = -metric.alpha(x_Code) * gamma + metric.beta1(x_Code) * ux1(p);
-      }
+      // if constexpr (F == CustomField::Ut){
+      //   coord_t<D> x_Code { ZERO };
+      //   real_t gamma { ZERO };
+      //   x_Code[0] = static_cast<real_t>(i1(p)) + static_cast<real_t>(dx1(p));
+      //   x_Code[1] = static_cast<real_t>(i2(p)) + static_cast<real_t>(dx2(p));
+      //   vec_t<Dim::_3D> u_Cntrv { ZERO };
+      //   metric.template transform<Idx::D, Idx::U>(x_Code,
+      //                                             { ux1(p), ux2(p), ux3(p) },
+      //                                             u_Cntrv);
+      //   gamma = math::sqrt(ONE + u_Cntrv[0] * ux1(p) + u_Cntrv[1] * ux2(p) + u_Cntrv[2] * ux3(p));
+      //   coeff = -metric.alpha(x_Code) * gamma + metric.beta1(x_Code) * ux1(p);
+      // }
 
       coeff *= weight(p);
       coeff *= smooth / metric.sqrt_det_h({ static_cast<real_t>(i1(p)) + HALF,
@@ -492,7 +491,7 @@ namespace user {
                                               EM(i1, i2, em::dx3) };
               metric.template transform<Idx::U, Idx::D>(xi, B_cntrv, B_cov);
               buffer(i1, i2, index) = DOT(B_cov[0], B_cov[1], B_cov[2], D_cntrv[0], D_cntrv[1], D_cntrv[2])
-                                      / DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cntrv[0], B_cntrv[1], B_cntrv[2]);
+                                      / DOT(B_cov[0], B_cov[1], B_cov[2], B_cntrv[0], B_cntrv[1], B_cntrv[2]);
             });
           }
         } else if (name == "Gamma_1" || name == "Gamma_2"){
@@ -543,10 +542,10 @@ namespace user {
               });
             // clang-format on
           }         
-        } else if (name == "Vr_1" || name == "Vth_1" || name == "Vph_1"
-                   || name == "Vr_2" || name == "Vth_2" || name == "Vph_2"){
-          const auto comp = (name == "Vr_1" || name == "Vr_2") ? 0 : (name == "Vth_1" || name == "Vth_2") ? 1 : 2;
-          const auto sp_idx = (name == "Vr_1" || name == "Vth_1" || name == "Vph_1") ? 0 : 1;
+        } else if (name == "cVr_1" || name == "cVth_1" || name == "cVph_1"
+                   || name == "cVr_2" || name == "cVth_2" || name == "cVph_2"){
+          const auto comp = (name == "cVr_1" || name == "cVr_2") ? 0 : (name == "cVth_1" || name == "cVth_2") ? 1 : 2;
+          const auto sp_idx = (name == "cVr_1" || name == "cVth_1" || name == "cVph_1") ? 0 : 1;
           auto& sp = domain.species[sp_idx];
 
           

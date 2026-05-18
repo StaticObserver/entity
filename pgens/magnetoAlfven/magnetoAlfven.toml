@@ -1,7 +1,7 @@
 [simulation]
-  name    = "magnetosphere"
+  name    = "alfven"
   engine  = "srpic"
-  runtime = 60.0
+  runtime = 50.0
 
 [grid]
   resolution = [2048, 1024]
@@ -19,8 +19,8 @@
 
     [grid.boundaries.atmosphere]
       temperature = 0.1
-      density     = 10.0
-      height      = 0.1
+      density     = 0.0
+      height      = 0.02
       species     = [1, 2]
       ds          = 2.0
 
@@ -29,7 +29,7 @@
   skindepth0 = 0.01
 
 [algorithms]
-  current_filters = 4
+  current_filters = 16
 
   [algorithms.timestep]
     CFL = 0.5
@@ -39,7 +39,7 @@
     larmor_max  = 1.0
 
 [particles]
-  ppc0           = 10.0
+  ppc0           = 12.0
   use_weights    = true
   clear_interval = 100
 
@@ -58,21 +58,24 @@
     pusher   = "Boris,GCA"
 
 [setup]
-  Bsurf  = 1.0
-  period = 60.0
+  Bsurf          = 1.0
+  field_geometry = "dipole" # can be "dipole" or "monopole" (default: dipole)
+  N0            = 1.0
+  Omega         = 0.0
+  Omega_0       = 0.1
+  temperature   = 0.1
+  t_stop        = 10.0
+  num_cycles    = 20
 
 [output]
-  format = "hdf5"
+  format = "BPFile"
 
   [output.fields]
-    interval_time = 0.1
-    quantities    = ["N_1", "N_2", "E", "B", "T00"]
+    interval_time = 0.2
+    quantities    = ["N_1", "N_2", "E", "B"]
 
   [output.particles]
     enable = false
 
   [output.spectra]
     enable = false
-
-[diagnostics]
-  interval = 50

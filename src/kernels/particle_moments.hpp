@@ -173,8 +173,12 @@ namespace kernel {
           coord_t<D> x_Code { ZERO };
           x_Code[0] = static_cast<real_t>(i1(p)) + static_cast<real_t>(dx1(p));
           x_Code[1] = static_cast<real_t>(i2(p)) + static_cast<real_t>(dx2(p));
+          coord_t<D> x_trans { ZERO };
+          x_trans[0] = static_cast<real_t>(i1(p)) + HALF;
+          x_trans[1] = static_cast<real_t>(i2(p)) + HALF;
           if constexpr (D == Dim::_3D) {
             x_Code[2] = static_cast<real_t>(i3(p)) + static_cast<real_t>(dx3(p));
+            x_trans[2] = static_cast<real_t>(i3(p)) + HALF;
           }
           vec_t<Dim::_3D> u_Cntrv { ZERO };
           // compute u_i u^i for energy
@@ -182,6 +186,8 @@ namespace kernel {
                                                     { ux1(p), ux2(p), ux3(p) },
                                                     u_Cntrv);
           energy = u_Cntrv[0] * ux1(p) + u_Cntrv[1] * ux2(p) + u_Cntrv[2] * ux3(p);
+          energy /= metric.alpha(x_trans);
+          u_Cntrv[1] -= metric.beta1(x_trans) * energy;
           if (mass == ZERO) {
             energy = math::sqrt(energy);
           } else {
@@ -197,6 +203,18 @@ namespace kernel {
             coeff *= energy;
           } else {
             coeff *= u_Phys[c - 1];
+          }
+        }
+        if constexpr (S == SimEngine::GRPIC) {
+          if constexpr (D == Dim::_1D) {
+            coeff /= metric.alpha({ static_cast<real_t>(i1(p)) + HALF });
+          } else if constexpr (D == Dim::_2D) {
+            coeff /= metric.alpha({ static_cast<real_t>(i1(p)) + HALF, 
+                                    static_cast<real_t>(i2(p)) + HALF });
+          } else if constexpr (D == Dim::_3D) {
+            coeff /= metric.alpha({ static_cast<real_t>(i1(p)) + HALF, 
+                                    static_cast<real_t>(i2(p)) + HALF, 
+                                    static_cast<real_t>(i3(p)) + HALF });
           }
         }
       } else if constexpr (F == FldsID::V) {
@@ -310,6 +328,7 @@ namespace kernel {
           coeff *= weight(p);
         }
       }
+
       auto buff_access = Buff.access();
       if constexpr (D == Dim::_1D) {
         for (auto di1 { -window }; di1 <= window; ++di1) {

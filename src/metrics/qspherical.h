@@ -129,7 +129,7 @@ namespace metric {
       } else if constexpr (i == 3 && j == 3) {
         if constexpr (D == Dim::_2D) {
           return SQR((r0 + math::exp(x[0] * dchi + chi_min)) *
-                     math::sin(eta2theta(x[1] * deta + eta_min)));
+                       math::sin(eta2theta(x[1] * deta + eta_min)));
         } else {
           return SQR(dphi) * SQR((r0 + math::exp(x[0] * dchi + chi_min)) *
                                  math::sin(eta2theta(x[1] * deta + eta_min)));
@@ -137,7 +137,7 @@ namespace metric {
       } else {
         return ZERO;
       }
-    }
+     }
 
     /**
      * sqrt(h_ij)

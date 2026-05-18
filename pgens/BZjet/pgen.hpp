@@ -29,6 +29,7 @@ namespace user {
     Gamma = 1,
     V = 2,
     Ut = 3,
+    N = 4,
   };
 
   template <class M, CustomField F>
@@ -147,8 +148,15 @@ namespace user {
         metric.template transform<Idx::U, Idx::PU>(x_Code, 
                                                    { metric.beta1(x_Code), 0, 0 }, 
                                                    beta_Phys);
-        coeff = u_Phys[comp] / gamma * metric.alpha(x_Code) 
-                - beta_Phys[0] * static_cast<real_t>(comp == 0);
+        coeff = u_Phys[comp] / gamma - beta_Phys[comp] / metric.alpha(x_Code);
+      }
+
+      if constexpr (F == CustomField::N){
+        coord_t<D> x_Code { ZERO };
+        x_Code[0] = static_cast<real_t>(i1(p)) + static_cast<real_t>(dx1(p));
+        x_Code[1] = static_cast<real_t>(i2(p)) + static_cast<real_t>(dx2(p));
+
+        coeff = ONE /  metric.alpha(x_Code);
       }
 
       if constexpr (F == CustomField::Ut){
@@ -445,8 +453,8 @@ namespace user {
         fill &= x_Ph[d] > x_min[d] and x_Ph[d] < x_max[d] and sigma_crit(x_Ph);
       }
       if (is_weight) {
-        coord_t<M::Dim> xi { ZERO };
-        metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
+        //coord_t<M::Dim> xi { ZERO };
+        //metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
         // const auto i1 = static_cast<int>(xi[0]) + static_cast<int>(N_GHOSTS);
         // const auto i2 = static_cast<int>(xi[1]) + static_cast<int>(N_GHOSTS);
         // const vec_t<Dim::_3D> B_cntrv { EM(i1, i2, em::bx1),
@@ -461,15 +469,15 @@ namespace user {
         //   DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
         // const auto db = DOT(D_cntrv[0], D_cntrv[1], D_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
         // const real_t inj_n = inj_coeff * db * SIGN(db) / math::sqrt(bsqr) * SQR(d0) / rho0;
-        vec_t<Dim::_3D> x_cntrv { x_Ph[0], x_Ph[1], ZERO };
-        vec_t<Dim::_3D> x_cov { ZERO };
-        metric.template transform<Idx::U, Idx::D>(xi, x_cntrv, x_cov);
-        const auto rsqr = DOT(x_cntrv[0], x_cntrv[1], x_cntrv[2], x_cov[0], x_cov[1], x_cov[2]);
-        const auto inj_n = inj_coeff * SQR(d0) / rho0 / rsqr * math::sqrt(math::sqrt(rsqr));
+        //vec_t<Dim::_3D> x_cntrv { x_Ph[0], x_Ph[1], ZERO };
+        //vec_t<Dim::_3D> x_cov { ZERO };
+        //metric.template transform<Idx::U, Idx::D>(xi, x_cntrv, x_cov);
+        //const auto rsqr = DOT(x_cntrv[0], x_cntrv[1], x_cntrv[2], x_cov[0], x_cov[1], x_cov[2]);
+        const auto inj_n = inj_coeff * SQR(d0) / rho0 / x_Ph[0] * math::sqrt(x_Ph[0]);
       
-        return fill ? inj_n * ppc0 : ZERO;
+        return fill ? inj_n : ZERO;
       } else {
-        return fill ? TWO / ppc0 * 1.01 : ZERO;
+        return fill ? ONE : ZERO;
       }
     }
 
@@ -586,7 +594,7 @@ namespace user {
                                               EM(i1, i2, em::dx3) };
               metric.template transform<Idx::U, Idx::D>(xi, B_cntrv, B_cov);
               buffer(i1, i2, index) = DOT(B_cov[0], B_cov[1], B_cov[2], D_cntrv[0], D_cntrv[1], D_cntrv[2])
-                                      / DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cntrv[0], B_cntrv[1], B_cntrv[2]);
+                                      / DOT(B_cov[0], B_cov[1], B_cov[2], B_cntrv[0], B_cntrv[1], B_cntrv[2]);
             });
           }
         } else if (name == "Gamma_1" || name == "Gamma_2"){
@@ -637,10 +645,10 @@ namespace user {
               });
             // clang-format on
           }         
-        } else if (name == "Vr_1" || name == "Vth_1" || name == "Vph_1"
-                   || name == "Vr_2" || name == "Vth_2" || name == "Vph_2"){
-          const auto comp = (name == "Vr_1" || name == "Vr_2") ? 0 : (name == "Vth_1" || name == "Vth_2") ? 1 : 2;
-          const auto sp_idx = (name == "Vr_1" || name == "Vth_1" || name == "Vph_1") ? 0 : 1;
+        } else if (name == "vr_1" || name == "vse_1" || name == "vph_1"
+                   || name == "vr_2" || name == "vse_2" || name == "vph_2"){
+          const auto comp = (name == "vr_1" || name == "vr_2") ? 0 : (name == "vse_1" || name == "vse_2") ? 1 : 2;
+          const auto sp_idx = (name == "vr_1" || name == "vse_1" || name == "vph_1") ? 0 : 1;
           auto& sp = domain.species[sp_idx];
 
           
@@ -662,30 +670,26 @@ namespace user {
 
             Kokkos::Experimental::contribute(buffer, scatter_buff);
 
-            auto n_buffer = domain.fields.buff;
-            auto scatter_buff_n = Kokkos::Experimental::create_scatter_view(n_buffer);
             Kokkos::parallel_for(
               "ComputeMoments",
               sp.rangeActiveParticles(),
-              kernel::ParticleMoments_kernel<S, M, FldsID::N, 3>({}, scatter_buff_n, 0u,
-                                                                   sp.i1, sp.i2, sp.i3,
-                                                                   sp.dx1, sp.dx2, sp.dx3,
-                                                                   sp.ux1, sp.ux2, sp.ux3,
-                                                                   sp.phi, sp.weight, sp.tag,
-                                                                   sp.mass(), sp.charge(),
-                                                                   true,
-                                                                   metric, mesh.flds_bc(),
-                                                                   ni2, inv_n0, ZERO));
-            Kokkos::Experimental::contribute(n_buffer, scatter_buff_n);
+              CustomMoments_kernel<M, CustomField::N>(0, scatter_buff, 3,
+                                                          sp.i1, sp.i2, sp.i3,
+                                                          sp.dx1, sp.dx2, sp.dx3,
+                                                          sp.ux1, sp.ux2, sp.ux3,
+                                                          sp.phi, sp.weight, sp.tag,
+                                                          sp.mass(), sp.charge(),
+                                                          metric, mesh.flds_bc(), ni2, inv_n0, ZERO));
+            Kokkos::Experimental::contribute(buffer, scatter_buff);
 
             Kokkos::parallel_for(
               "ComputeMoments",
               mesh.rangeActiveCells(),
               Lambda(index_t i1, index_t i2) {
-                if (cmp::AlmostZero(n_buffer(i1, i2, 0))) {
+                if (cmp::AlmostZero(buffer(i1, i2, 3))) {
                   buffer(i1, i2, index) = ZERO;
                 } else {
-                  buffer(i1, i2, index) /= n_buffer(i1, i2, 0);
+                  buffer(i1, i2, index) /= buffer(i1, i2, 3);
                 }
               });
             // clang-format on
@@ -723,18 +727,18 @@ namespace user {
                                                                  true,
                                                                  metric, mesh.flds_bc(),
                                                                  ni2, inv_n0, ZERO));
-            Kokkos::Experimental::contribute(n_buffer, scatter_buff_n);
+          Kokkos::Experimental::contribute(n_buffer, scatter_buff_n);
 
-            Kokkos::parallel_for(
-              "ComputeMoments",
-              mesh.rangeActiveCells(),
-              Lambda(index_t i1, index_t i2) {
-                if (cmp::AlmostZero(n_buffer(i1, i2, 0))) {
-                  buffer(i1, i2, index) = ZERO;
-                } else {
-                  buffer(i1, i2, index) /= n_buffer(i1, i2, 0);
-                }
-              });
+          Kokkos::parallel_for(
+            "ComputeMoments",
+            mesh.rangeActiveCells(),
+            Lambda(index_t i1, index_t i2) {
+              if (cmp::AlmostZero(n_buffer(i1, i2, 0))) {
+                buffer(i1, i2, index) = ZERO;
+              } else {
+                buffer(i1, i2, index) /= n_buffer(i1, i2, 0);
+              }
+            });
             // clang-format on
         } else {
           raise::Error("Custom output not provided", HERE);
