@@ -33,13 +33,13 @@ namespace metric {
 
     const real_t dr, dtheta, dphi;
     const real_t dr_inv, dtheta_inv, dphi_inv;
-    const bool   small_angle;
+    const bool   small_angle { false };
 
   public:
-    static constexpr const char*       Label { "spherical" };
-    static constexpr Dimension         PrtlDim { Dim::_3D };
-    static constexpr ntt::Metric::type MetricType { ntt::Metric::Spherical };
-    static constexpr ntt::Coord::type  CoordType { ntt::Coord::Sph };
+    static constexpr const char*      Label { "spherical" };
+    static constexpr Dimension        PrtlDim { Dim::_3D };
+    static constexpr ntt::Metric      MetricType { ntt::Metric::Spherical };
+    static constexpr ntt::Coord::type CoordType { ntt::Coord::type::Spherical };
     using MetricBase<D>::x1_min;
     using MetricBase<D>::x1_max;
     using MetricBase<D>::x2_min;
@@ -65,24 +65,20 @@ namespace metric {
       set_dxMin(find_dxMin());
     }
 
-    ~Spherical() = default;
-
     /**
      * minimum effective cell size for a given metric (in physical units)
      */
     [[nodiscard]]
-    auto find_dxMin() const -> real_t override {
+    auto find_dxMin() const -> real_t {
       // for 2D
-      auto dx1 { dr };
-      auto dx2 { x1_min * dtheta };
-      return ONE / math::sqrt(ONE / SQR(dx1) + ONE / SQR(dx2));
+      return ONE / math::sqrt(ONE / SQR(dr) + ONE / SQR(x1_min * dtheta));
     }
 
     /**
      * total volume of the region described by the metric (in physical units)
      */
     [[nodiscard]]
-    auto totVolume() const -> real_t override {
+    auto totVolume() const -> real_t {
       if constexpr (D == Dim::_1D) {
         raise::Error("1D spherical metric not applicable", HERE);
       } else if constexpr (D == Dim::_2D) {
@@ -170,7 +166,7 @@ namespace metric {
      * @param x1 radial coordinate along the axis (code units)
      * @note uses small-angle approximation when the resolution is too high
      */
-    Inline auto polar_area(const real_t& x1) const -> real_t {
+    Inline auto polar_area(real_t x1) const -> real_t {
       if (small_angle) {
         return dr * SQR(x1 * dr + x1_min) *
                (static_cast<real_t>(48) - SQR(dtheta)) * SQR(dtheta) /
@@ -184,7 +180,7 @@ namespace metric {
      * component-wise coordinate conversions
      */
     template <idx_t i, Crd in, Crd out>
-    Inline auto convert(const real_t& x_in) const -> real_t {
+    Inline auto convert(real_t x_in) const -> real_t {
       static_assert(in != out, "Invalid coordinate conversion");
       static_assert(i > 0 && i <= 3, "Invalid index i");
       static_assert((in == Crd::Cd && (out == Crd::Sph || out == Crd::Ph)) ||
@@ -275,26 +271,23 @@ namespace metric {
      * @note tetrad/sph <-> cntrv <-> cov
      */
     template <idx_t i, Idx in, Idx out>
-    Inline auto transform(const coord_t<D>& xi, const real_t& v_in) const
-      -> real_t {
+    Inline auto transform(const coord_t<D>& xi, real_t v_in) const -> real_t {
       static_assert(i > 0 && i <= 3, "Invalid index i");
       static_assert(in != out, "Invalid vector transformation");
       if constexpr ((in == Idx::T && out == Idx::Sph) ||
                     (in == Idx::Sph && out == Idx::T)) {
         // tetrad <-> sph
         return v_in;
-      } else if constexpr ((in == Idx::T || in == Idx::Sph) && out == Idx::U) {
-        // tetrad/sph -> cntrv
+      } else if constexpr (
+        ((in == Idx::T || in == Idx::Sph) && out == Idx::U) or // tetrad/sph -> cntrv
+        (in == Idx::D && (out == Idx::T || out == Idx::Sph)) // cov -> tetrad/sph
+      ) {
         return v_in / sqrt_h_<i, i>(xi);
-      } else if constexpr (in == Idx::U && (out == Idx::T || out == Idx::Sph)) {
-        // cntrv -> tetrad/sph
+      } else if constexpr (
+        (in == Idx::U && (out == Idx::T || out == Idx::Sph)) or // cntrv -> tetrad/sph
+        ((in == Idx::T || in == Idx::Sph) && out == Idx::D) // tetrad/sph -> cov
+      ) {
         return v_in * sqrt_h_<i, i>(xi);
-      } else if constexpr ((in == Idx::T || in == Idx::Sph) && out == Idx::D) {
-        // tetrad/sph -> cov
-        return v_in * sqrt_h_<i, i>(xi);
-      } else if constexpr (in == Idx::D && (out == Idx::T || out == Idx::Sph)) {
-        // cov -> tetrad/sph
-        return v_in / sqrt_h_<i, i>(xi);
       } else if constexpr (in == Idx::U && out == Idx::D) {
         // cntrv -> cov
         return v_in * h_<i, i>(xi);

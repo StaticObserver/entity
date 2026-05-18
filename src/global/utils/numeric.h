@@ -26,40 +26,46 @@
 #ifndef GLOBAL_UTILS_NUMERIC_H
 #define GLOBAL_UTILS_NUMERIC_H
 
-#include "arch/kokkos_aliases.h"
-
 #include <cstdint>
 
 #if defined(SINGLE_PRECISION)
-inline constexpr float ONE    = 1.0f;
-inline constexpr float TWO    = 2.0f;
-inline constexpr float THREE  = 3.0f;
-inline constexpr float FOUR   = 4.0f;
-inline constexpr float FIVE   = 5.0f;
-inline constexpr float TWELVE = 12.0f;
-inline constexpr float ZERO   = 0.0f;
-inline constexpr float HALF   = 0.5f;
-inline constexpr float INV_2  = 0.5f;
-inline constexpr float INV_4  = 0.25f;
-inline constexpr float INV_8  = 0.125f;
-inline constexpr float INV_16 = 0.0625f;
-inline constexpr float INV_32 = 0.03125f;
-inline constexpr float INV_64 = 0.015625f;
+inline constexpr float ONE           = 1.0f;
+inline constexpr float TWO           = 2.0f;
+inline constexpr float THREE         = 3.0f;
+inline constexpr float FOUR          = 4.0f;
+inline constexpr float FIVE          = 5.0f;
+inline constexpr float SIX           = 6.0f;
+inline constexpr float TWELVE        = 12.0f;
+inline constexpr float ZERO          = 0.0f;
+inline constexpr float HALF          = 0.5f;
+inline constexpr float THIRD         = 0.333333f;
+inline constexpr float THREE_FOURTHS = 0.75f;
+inline constexpr float THREE_HALFS   = 1.5f;
+inline constexpr float INV_2         = 0.5f;
+inline constexpr float INV_4         = 0.25f;
+inline constexpr float INV_8         = 0.125f;
+inline constexpr float INV_16        = 0.0625f;
+inline constexpr float INV_32        = 0.03125f;
+inline constexpr float INV_64        = 0.015625f;
 #else
-inline constexpr double ONE    = 1.0;
-inline constexpr double TWO    = 2.0;
-inline constexpr double THREE  = 3.0;
-inline constexpr double FOUR   = 4.0;
-inline constexpr double FIVE   = 5.0;
-inline constexpr double TWELVE = 12.0;
-inline constexpr double ZERO   = 0.0;
-inline constexpr double HALF   = 0.5;
-inline constexpr double INV_2  = 0.5;
-inline constexpr double INV_4  = 0.25;
-inline constexpr double INV_8  = 0.125;
-inline constexpr double INV_16 = 0.0625;
-inline constexpr double INV_32 = 0.03125;
-inline constexpr double INV_64 = 0.015625;
+inline constexpr double ONE           = 1.0;
+inline constexpr double TWO           = 2.0;
+inline constexpr double THREE         = 3.0;
+inline constexpr double FOUR          = 4.0;
+inline constexpr double FIVE          = 5.0;
+inline constexpr double SIX           = 6.0;
+inline constexpr double TWELVE        = 12.0;
+inline constexpr double ZERO          = 0.0;
+inline constexpr double HALF          = 0.5;
+inline constexpr double THIRD         = 0.3333333333333333;
+inline constexpr double THREE_FOURTHS = 0.75;
+inline constexpr double THREE_HALFS   = 1.5;
+inline constexpr double INV_2         = 0.5;
+inline constexpr double INV_4         = 0.25;
+inline constexpr double INV_8         = 0.125;
+inline constexpr double INV_16        = 0.0625;
+inline constexpr double INV_32        = 0.03125;
+inline constexpr double INV_64        = 0.015625;
 #endif
 
 #define IMIN(a, b)   ((a) < (b) ? (a) : (b))
@@ -68,6 +74,8 @@ inline constexpr double INV_64 = 0.015625;
 #define HEAVISIDE(x) (((x) <= ZERO) ? ZERO : ONE)
 #define SQR(x)       ((x) * (x))
 #define CUBE(x)      ((x) * (x) * (x))
+#define POW4(x)      ((x) * (x) * (x) * (x))
+#define POW5(x)      ((x) * (x) * (x) * (x) * (x))
 
 #define DOT(ax1, ax2, ax3, bx1, bx2, bx3)                                      \
   ((ax1) * (bx1) + (ax2) * (bx2) + (ax3) * (bx3))
@@ -80,18 +88,19 @@ inline constexpr double INV_64 = 0.015625;
 #define CROSS_x3(ax1, ax2, ax3, bx1, bx2, bx3) ((ax1) * (bx2) - (ax2) * (bx1))
 
 namespace constant {
-  inline constexpr std::uint64_t RandomSeed  = 0x123456789abcdef0;
-  inline constexpr double        HALF_PI     = 1.57079632679489661923;
-  inline constexpr double        PI          = 3.14159265358979323846;
-  inline constexpr double        INV_PI      = 0.31830988618379067154;
-  inline constexpr double        PI_SQR      = 9.86960440108935861882;
-  inline constexpr double        INV_PI_SQR  = 0.10132118364233777144;
-  inline constexpr double        TWO_PI      = 6.28318530717958647692;
-  inline constexpr double        E           = 2.71828182845904523536;
-  inline constexpr double        SQRT2       = 1.41421356237309504880;
-  inline constexpr double        INV_SQRT2   = 0.70710678118654752440;
-  inline constexpr double        SQRT3       = 1.73205080756887729352;
-  inline constexpr double        SMALL_ANGLE = 1e-3;
+  inline constexpr std::uint64_t RandomSeed     = 0x123456789abcdef0;
+  inline constexpr double        HALF_PI        = 1.57079632679489661923;
+  inline constexpr double        PI             = 3.14159265358979323846;
+  inline constexpr double        INV_PI         = 0.31830988618379067154;
+  inline constexpr double        PI_SQR         = 9.86960440108935861882;
+  inline constexpr double        INV_PI_SQR     = 0.10132118364233777144;
+  inline constexpr double        TWO_PI         = 6.28318530717958647692;
+  inline constexpr double        E              = 2.71828182845904523536;
+  inline constexpr double        SQRT2          = 1.41421356237309504880;
+  inline constexpr double        INV_SQRT2      = 0.70710678118654752440;
+  inline constexpr double        SQRT3          = 1.73205080756887729352;
+  inline constexpr double        SMALL_ANGLE    = 1e-3;
+  inline constexpr double        SMALL_ANGLE_GR = 1e-5;
 } // namespace constant
 
 namespace convert {

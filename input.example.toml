@@ -107,7 +107,7 @@
 
     [grid.boundaries.match]
       # Size of the matching layer in each direction for fields in physical (code) units
-      #   @type: float | array<tuple<float>> 
+      #   @type: float | array<tuple<float>>
       #   @default: 1% of the domain size (in shortest dimension)
       #   @note: In spherical, this is the size of the layer in `r` from the outer wall
       #   @example: `ds = 1.5` (will set the same for all directions)
@@ -195,21 +195,88 @@
   #     @from: `scales.larmor0`
   #     @value: `1 / larmor0`
 
+[radiation]
+  [radiation.drag]
+    [radiation.drag.synchrotron]
+      # Radiation reaction limit gamma-factor for synchrotron
+      #   @type: float [> 0.0]
+      #   @default: 1.0
+      #   @note: [required] if one of the species has `radiative_drag = "synchrotron"`
+      gamma_rad = ""
+
+    [radiation.drag.compton]
+      # Radiation reaction limit gamma-factor for Compton drag
+      #   @type: float [> 0.0]
+      #   @default: 1.0
+      #   @note: [required] if one of the species has `radiative_drag = "compton"`
+      gamma_rad = ""
+
+  [radiation.emission]
+    [radiation.emission.synchrotron]
+      # Gamma-factor of a particle emitting synchrotron photons at energy `m0 c^2` in fiducial magnetic field `B0`
+      #   @type: float [> 1.0]
+      #   @default: 10.0
+      gamma_qed = ""
+      # Minimum photon energy for synchrotron emission (units of `m0 c^2`)
+      #   @type: float [> 0.0]
+      #   @default: 1e-4
+      photon_energy_min = ""
+      # Weights for the emitted synchrotron photons
+      #   @type: float [> 0.0]
+      #   @default: 1.0
+      photon_weight = ""
+      # Index of species for the emitted photon
+      #   @type: ushort [> 0]
+      #   @required
+      photon_species = ""
+
+      # @inferred:
+      # - nominal_probability
+      #     @brief: Nominal probability of the emission for a particle with `gamma * beta = 1`, charge-to-mass = `q0 / m0`
+      #     @type: float
+      #     @from: `.gamma_qed`, `.photon_weight`, `...drag.synchrotron.gamma_rad`, `scales.omegaB0`, `algorithms.timestep.dt`
+      #     @value: `0.1 * omegaB0 * dt * (gamma_qed / gamma_rad)^2 / photon_weight`
+      # - nominal_photon_energy
+      #     @brief: Nominal energy of the emitted photon for a particle with `gamma * beta = 1`, mass = `m0`
+      #     @type: float
+      #     @from: `.gamma_qed`
+      #     @value: `(1 / gamma_qed)^2`
+
+    [radiation.emission.compton]
+      # Gamma-factor of a particle emitting inverse Compton photons at energy `m0 c^2` in fiducial magnetic field `B0`
+      #   @type: float [> 1.0]
+      #   @default: 10.0
+      gamma_qed = ""
+      # Minimum photon energy for inverse Compton emission (units of `m0 c^2`)
+      #   @type: float [> 0.0]
+      #   @default: 1e-4
+      photon_energy_min = ""
+      # Weights for the emitted inverse Compton photons
+      #   @type: float [> 0.0]
+      #   @default: 1.0
+      photon_weight = ""
+      # Index of species for the emitted photon
+      #   @type: ushort [> 0]
+      #   @required
+      photon_species = ""
+
+      # @inferred:
+      # - nominal_probability
+      #     @brief: Nominal probability of the emission for a particle with `gamma * beta = 1`, charge-to-mass = `q0 / m0`
+      #     @type: float
+      #     @from: `.gamma_qed`, `.photon_weight`, `...drag.compton.gamma_rad`, `scales.omegaB0`, `algorithms.timestep.dt`
+      #     @value: `0.1 * omegaB0 * dt * (gamma_qed / gamma_rad)^2 / photon_weight`
+      # - nominal_photon_energy
+      #     @brief: Nominal energy of the emitted photon for a particle with `gamma * beta = 1`, mass = `m0`
+      #     @type: float
+      #     @from: `.gamma_qed`
+      #     @value: `(1 / gamma_qed)^2`
+
 [algorithms]
   # Number of current smoothing passes
   #   @type: ushort [>= 0]
   #   @default: 0
   current_filters = ""
-
-  [algorithms.toggles]
-    # Toggle for the field solver
-    #   @type: bool
-    #   @default: true
-    fieldsolver = ""
-    # Toggle for the current deposition
-    #   @type: bool
-    #   @default: true
-    deposit = ""
 
   [algorithms.timestep]
     # Courant-Friedrichs-Lewy number
@@ -228,6 +295,18 @@
     #     @type: float
     #     @from: `algorithms.timestep.CFL`, `scales.dx0`
     #     @value: `CFL * dx0`
+
+  [algorithms.deposit]
+    # Enable the current deposition
+    #   @type: bool
+    #   @default: true
+    enable = ""
+
+    # @inferred:
+    # - order
+    #     @brief: order of the particle shape function
+    #     @from: compile-time definition `shape_order`
+    #     @type: ushort [0 -> 10]
 
   [algorithms.gr]
     # Stepsize for numerical differentiation in GR pusher
@@ -250,12 +329,57 @@
     #   @note: When `larmor_max` == 0, the limit is disabled
     larmor_max = ""
 
-  [algorithms.synchrotron]
-    # Radiation reaction limit gamma-factor for synchrotron
-    #   @type: float [> 0.0]
-    #   @default: 1.0
-    #   @note: [required] if one of the species has `cooling = "synchrotron"`
-    gamma_rad = ""
+  # Stencil coefficients for the field solver [notation as in Blinne+ (2018)]
+  #   @note: Standard Yee solver: `delta_i = beta_ij = 0.0`
+  [algorithms.fieldsolver]
+    # Enable the fieldsolver
+    #   @type: bool
+    #   @default: true
+    enable = ""
+    # delta_x coefficient (for `F_{i +/- 3/2, j, k}`)
+    #   @type: float
+    #   @default: 0.0
+    delta_x = ""
+    # delta_y coefficient (for `F_{i, j +/- 3/2, k}`)
+    #   @type: float
+    #   @default: 0.0
+    #   @note: Used only for 2D and 3D
+    delta_y = ""
+    # delta_z coefficient (for `F_{i, j, k +/- 3/2}`)
+    #   @type: float
+    #   @default: 0.0
+    #   @note: Used only for 3D
+    delta_z = ""
+    # beta_xy coefficient (for `F_{i +/- 1/2, j +/- 1, k}`)
+    #   @type: float
+    #   @default: 0.0
+    #   @note: Used only for 2D and 3D
+    beta_xy = ""
+    # beta_yx coefficient (for `F_{i +/- 1, j +/- 1/2, k}`)
+    #   @type: float
+    #   @default: 0.0
+    #   @note: Used only for 2D and 3D
+    beta_yx = ""
+    # beta_xz coefficient (for `F_{i +/- 1/2, j, k +/- 1}`)
+    #   @type: float
+    #   @default: 0.0
+    #   @note: Used only for 3D
+    beta_xz = ""
+    # beta_zx coefficient (for `F_{i +/- 1, j, k +/- 1/2}`)
+    #   @type: float
+    #   @default: 0.0
+    #   @note: Used only for 3D
+    beta_zx = ""
+    # beta_yz coefficient (for `F_{i, j +/- 1/2, k +/- 1}`)
+    #   @type: float
+    #   @default: 0.0
+    #   @note: Used only for 3D
+    beta_yz = ""
+    # beta_zy coefficient (for `F_{i, j +/- 1, k +/- 1/2}`)
+    #   @type: float
+    #   @default: 0.0
+    #   @note: Used only for 3D
+    beta_zy = ""
 
 [particles]
   # Fiducial number of particles per cell
@@ -266,11 +390,16 @@
   #   @type: bool
   #   @default: false
   use_weights = ""
-  # Timesteps between particle re-sorting (removing dead particles)
+  # Timesteps between particle re-sorting by tags (removing dead particles)
   #   @type: uint
   #   @default: 100
   #   @note: Set to 0 to disable re-sorting
   clear_interval = ""
+  # Timesteps between spatial sorting of particles (for better cache performance)
+  #   @type: uint
+  #   @default: 0
+  #   @note: Set to 0 to disable spatial sorting
+  spatial_sorting_interval = ""
 
   # @inferred:
   # - nspec
@@ -302,15 +431,45 @@
     #   @default: "Boris" [massive]; "Photon" [massless]
     #   @enum: "Boris", "Vay", "Boris,GCA", "Vay,GCA", "Photon", "None"
     pusher = ""
-    # Number of additional (payload) variables for each particle of the given species
+    # Number of additional real-valued variables (payloads) for each particle of the given species
     #   @type: ushort
     #   @default: 0
-    n_payloads = ""
+    n_payloads_real = ""
+    # Number of additional integer-valued variables (payloads) for each particle of the given species
+    #   @type: ushort
+    #   @default: 0
+    #   @note: If tracking is enabled, one or two extra integer payloads are reserved (depending on whether MPI is enabled)
+    n_payloads_int = ""
+    # Enable tracking of particles using indices for the given species
+    #   @type: bool
+    #   @default: false
+    tracking = ""
     # Radiation reaction to use for the species
     #   @type: string
     #   @default: "None"
-    #   @enum: "None", "Synchrotron"
-    cooling = ""
+    #   @enum: "None", "Synchrotron", "Compton"
+    #   @note: Can also be coma-separated combination, e.g., "Synchrotron,Compton"
+    #   @note: Relevant radiation.drag parameters should also be provided
+    radiative_drag = ""
+    # Particle emission policy for the species
+    #   @type: string
+    #   @default: "None"
+    #   @enum: "None", "Synchrotron", "Compton"
+    #   @note: Only one emission mechanism allowed
+    #   @note: Appropriate radiation drag flag will be applied automatically (unless explicitly set to "None")
+    emission = ""
+    # Timesteps between spatial sorting of particles for given species
+    #   @type: uint
+    #   @default: 0
+    #   @note: Set to 0 to disable spatial sorting
+    #   @note: Overrides `particles.spatial_sorting_interval` for the given species
+    spatial_sorting_interval = ""
+    # Timesteps between particle re-sorting by tags (removing dead particles)
+    #   @type: uint
+    #   @default: 100
+    #   @note: Set to 0 to disable re-sorting
+    #   @note: Overrides `particles.clear_interval` for the given species
+    clear_interval = ""
 
 # Parameters for specific problem generators and setups
 [setup]
@@ -467,8 +626,9 @@
     # Field quantities to output
     #   @type: array<string>
     #   @default: ["B^2", "E^2", "ExB", "Rho", "T00"]
-    #   @enum: "B^2", "E^2", "ExB", "N", "Charge", "Rho", "T00", "T0i", "Tij"
-    #   @note: Same notation as for `output.fields.quantities`
+    #   @enum: "B^2", "E^2", "ExB", "N", "Npart", "Charge", "Rho", "T00", "T0i", "Tij"
+    #   @note: For particle moments, ...
+    #   @note: ... same notation is used as for `output.fields.quantities`
     quantities = ""
     # Custom (user-defined) stats
     #   @type: array<string>
@@ -491,7 +651,7 @@
   #   @note: 0 = disable checkpointing
   #   @note: -1 = keep all checkpoints
   keep = ""
-  # Write a checkpoint once after a fixed walltime 
+  # Write a checkpoint once after a fixed walltime
   #   @type: string
   #   @default: "00:00:00"
   #   @note: The format is "HH:MM:SS"

@@ -32,10 +32,10 @@ namespace metric {
     const real_t dx, dx_inv;
 
   public:
-    static constexpr const char*       Label { "minkowski" };
-    static constexpr Dimension         PrtlDim { D };
-    static constexpr ntt::Metric::type MetricType { ntt::Metric::Minkowski };
-    static constexpr ntt::Coord::type  CoordType { ntt::Coord::Cart };
+    static constexpr const char*      Label { "minkowski" };
+    static constexpr Dimension        PrtlDim { D };
+    static constexpr ntt::Metric      MetricType { ntt::Metric::Minkowski };
+    static constexpr ntt::Coord::type CoordType { ntt::Coord::type::Cartesian };
     using MetricBase<D>::x1_min;
     using MetricBase<D>::x1_max;
     using MetricBase<D>::x2_min;
@@ -70,13 +70,16 @@ namespace metric {
       }
     }
 
-    ~Minkowski() = default;
+    [[nodiscard]]
+    auto get_dx() const -> real_t {
+      return dx;
+    }
 
     /**
      * minimum effective cell size for a given metric (in physical units)
      */
     [[nodiscard]]
-    auto find_dxMin() const -> real_t override {
+    auto find_dxMin() const -> real_t {
       return dx / math::sqrt(static_cast<real_t>(D));
     }
 
@@ -84,7 +87,7 @@ namespace metric {
      * total volume of the region described by the metric (in physical units)
      */
     [[nodiscard]]
-    auto totVolume() const -> real_t override {
+    auto totVolume() const -> real_t {
       if constexpr (D == Dim::_1D) {
         return x1_max - x1_min;
       } else if constexpr (D == Dim::_2D) {
@@ -152,7 +155,7 @@ namespace metric {
      * component-wise coordinate conversions
      */
     template <idx_t i, Crd in, Crd out>
-    Inline auto convert(const real_t& x_in) const -> real_t {
+    Inline auto convert(real_t x_in) const -> real_t {
       static_assert(in != out, "Invalid coordinate conversion");
       static_assert(i > 0 && i <= static_cast<idx_t>(D), "Invalid index i");
       static_assert((in == Crd::Cd && (out == Crd::XYZ || out == Crd::Ph)) ||
@@ -258,28 +261,24 @@ namespace metric {
      * @note tetrad/cart <-> cntrv <-> cov
      */
     template <idx_t i, Idx in, Idx out>
-    Inline auto transform(const coord_t<D>& xi, const real_t& v_in) const
-      -> real_t {
+    Inline auto transform(const coord_t<D>& xi, real_t v_in) const -> real_t {
       static_assert(i > 0 && i <= 3, "Invalid index i");
       static_assert(in != out, "Invalid vector transformation");
-      if constexpr (i > static_cast<idx_t>(D)) {
+      if constexpr ((i > static_cast<idx_t>(D)) or
+                    ((in == Idx::T && out == Idx::XYZ) or
+                     (in == Idx::XYZ && out == Idx::T)) // tetrad <-> cart
+      ) {
         return v_in;
-      } else if constexpr ((in == Idx::T && out == Idx::XYZ) ||
-                           (in == Idx::XYZ && out == Idx::T)) {
-        // tetrad <-> cart
-        return v_in;
-      } else if constexpr ((in == Idx::T || in == Idx::XYZ) && out == Idx::U) {
-        // tetrad/cart -> cntrv
+      } else if constexpr (
+        ((in == Idx::T || in == Idx::XYZ) && out == Idx::U) or // tetrad/cart -> cntrv
+        (in == Idx::D && (out == Idx::T || out == Idx::XYZ)) // cov -> tetrad/cart
+      ) {
         return v_in / sqrt_h_<i, i>(xi);
-      } else if constexpr (in == Idx::U && (out == Idx::T || out == Idx::XYZ)) {
-        // cntrv -> tetrad/cart
+      } else if constexpr (
+        (in == Idx::U && (out == Idx::T || out == Idx::XYZ)) or // cntrv -> tetrad/cart
+        ((in == Idx::T || in == Idx::XYZ) && out == Idx::D) // tetrad/cart -> cov
+      ) {
         return v_in * sqrt_h_<i, i>(xi);
-      } else if constexpr ((in == Idx::T || in == Idx::XYZ) && out == Idx::D) {
-        // tetrad/cart -> cov
-        return v_in * sqrt_h_<i, i>(xi);
-      } else if constexpr (in == Idx::D && (out == Idx::T || out == Idx::XYZ)) {
-        // cov -> tetrad/cart
-        return v_in / sqrt_h_<i, i>(xi);
       } else if constexpr (in == Idx::U && out == Idx::D) {
         // cntrv -> cov
         return v_in * h_<i, i>(xi);

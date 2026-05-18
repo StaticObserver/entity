@@ -6,9 +6,9 @@
 
 let
   name = "adios2";
-  version = "2.10.2";
+  version = "2.11.0";
   cmakeFlags = {
-    CMAKE_CXX_STANDARD = "17";
+    CMAKE_CXX_STANDARD = "20";
     CMAKE_CXX_EXTENSIONS = "OFF";
     CMAKE_POSITION_INDEPENDENT_CODE = "TRUE";
     BUILD_SHARED_LIBS = "ON";
@@ -19,7 +19,7 @@ let
     BUILD_TESTING = "OFF";
     ADIOS2_BUILD_EXAMPLES = "OFF";
     ADIOS2_USE_MPI = if mpi then "ON" else "OFF";
-    ADIOS2_HAVE_HDF5_VOL = if mpi then "ON" else "OFF";
+    ADIOS2_HAVE_HDF5_VOL = if (mpi && hdf5) then "ON" else "OFF";
     CMAKE_BUILD_TYPE = "Release";
   };
   stdenv = pkgs.gcc13Stdenv;
@@ -30,7 +30,7 @@ stdenv.mkDerivation {
   src = pkgs.fetchgit {
     url = "https://github.com/ornladios/ADIOS2/";
     rev = "v${version}";
-    sha256 = "sha256-NVyw7xoPutXeUS87jjVv1YxJnwNGZAT4QfkBLzvQbwg=";
+    sha256 = "sha256-yHPI///17poiCEb7Luu5qfqxTWm9Nh+o9r57mZT26U0=";
   };
 
   nativeBuildInputs = with pkgs; [
@@ -40,8 +40,27 @@ stdenv.mkDerivation {
 
   propagatedBuildInputs = [
     pkgs.gcc13
-  ] ++ (if hdf5 then (if mpi then [ pkgs.hdf5-mpi ] else [ pkgs.hdf5-cpp ]) else [ ]);
-  # ++ (if mpi then [ pkgs.openmpi ] else [ ]);
+  ]
+  ++ (
+    if hdf5 then
+      (
+        if mpi then
+          [
+            pkgs.hdf5-mpi
+          ]
+        else
+          [ pkgs.hdf5-cpp ]
+      )
+    else
+      (
+        if mpi then
+          [
+            pkgs.mpi
+          ]
+        else
+          [ ]
+      )
+  );
 
   configurePhase = ''
     cmake -B build $src ${

@@ -16,6 +16,7 @@
 #include "global.h"
 
 #include "arch/kokkos_aliases.h"
+#include "traits/metric.h"
 #include "utils/error.h"
 #include "utils/numeric.h"
 
@@ -26,9 +27,8 @@ namespace kernel::gr {
    * @brief Kernel for computing E
    * @tparam M Metric
    */
-  template <class M>
+  template <GRMetricClass M>
   class ComputeAuxE_kernel {
-    static_assert(M::is_metric, "M must be a metric class");
     static constexpr auto D = M::Dim;
 
     const ndfield_t<D, 6> Df;
@@ -46,7 +46,7 @@ namespace kernel::gr {
       , Ef { Ef }
       , metric { metric } {}
 
-    Inline void operator()(index_t i1, index_t i2) const {
+    Inline void operator()(cellidx_t i1, cellidx_t i2) const {
       if constexpr (D == Dim::_2D) {
         const real_t i1_ { COORD(i1) };
         const real_t i2_ { COORD(i2) };
@@ -58,18 +58,19 @@ namespace kernel::gr {
         const real_t alpha_pH0 { metric.alpha({ i1_ + HALF, i2_ }) };
         const real_t alpha_0pH { metric.alpha({ i1_, i2_ + HALF }) };
 
-        real_t w1, w2;
+        real_t w1, w2, ww;
         real_t h_13_ij1, h_13_ij2;
         real_t sqrt_detH_ij1, sqrt_detH_ij2;
         real_t beta_ij1, beta_ij2;
 
         w1       = metric.sqrt_det_h_tilde({ i1_ - HALF, i2_ });
         w2       = metric.sqrt_det_h_tilde({ i1_ + HALF, i2_ });
+        ww       = TWO * metric.sqrt_det_h_tilde({ i1_, i2_ });
         h_13_ij1 = metric.template h_<1, 3>({ i1_ - HALF, i2_ });
         h_13_ij2 = metric.template h_<1, 3>({ i1_ + HALF, i2_ });
         const real_t D1_half { (w1 * h_13_ij1 * Df(i1 - 1, i2, em::dx1) +
                                 w2 * h_13_ij2 * Df(i1, i2, em::dx1)) /
-                               (w1 + w2) };
+                               (ww) };
 
         sqrt_detH_ij1 = metric.sqrt_det_h({ i1_ - HALF, i2_ });
         sqrt_detH_ij2 = metric.sqrt_det_h({ i1_ + HALF, i2_ });
@@ -78,11 +79,12 @@ namespace kernel::gr {
         const real_t B2_half {
           (w1 * sqrt_detH_ij1 * beta_ij1 * Bf(i1 - 1, i2, em::bx2) +
            w2 * sqrt_detH_ij2 * beta_ij2 * Bf(i1, i2, em::bx2)) /
-          (w1 + w2)
+          (ww)
         };
 
         w1            = metric.sqrt_det_h_tilde({ i1_ - HALF, i2_ + HALF });
         w2            = metric.sqrt_det_h_tilde({ i1_ + HALF, i2_ + HALF });
+        ww            = TWO * metric.sqrt_det_h_tilde({ i1_, i2_ + HALF });
         sqrt_detH_ij1 = metric.sqrt_det_h({ i1_ - HALF, i2_ + HALF });
         sqrt_detH_ij2 = metric.sqrt_det_h({ i1_ + HALF, i2_ + HALF });
         beta_ij1      = metric.beta1({ i1_ - HALF, i2_ + HALF });
@@ -90,16 +92,17 @@ namespace kernel::gr {
         const real_t B3_half {
           (w1 * sqrt_detH_ij1 * beta_ij1 * Bf(i1 - 1, i2, em::bx3) +
            w2 * sqrt_detH_ij2 * beta_ij2 * Bf(i1, i2, em::bx3)) /
-          (w1 + w2)
+          (ww)
         };
 
         w1       = metric.sqrt_det_h_tilde({ i1_, i2_ });
         w2       = metric.sqrt_det_h_tilde({ i1_ + ONE, i2_ });
+        ww       = TWO * metric.sqrt_det_h_tilde({ i1_ + HALF, i2_ });
         h_13_ij1 = metric.template h_<1, 3>({ i1_, i2_ });
         h_13_ij2 = metric.template h_<1, 3>({ i1_ + ONE, i2_ });
         const real_t D3_half { (w1 * h_13_ij1 * Df(i1, i2, em::dx3) +
                                 w2 * h_13_ij2 * Df(i1 + 1, i2, em::dx3)) /
-                               (w1 + w2) };
+                               (ww) };
 
         const real_t D1_cov { h_11_pH0 * Df(i1, i2, em::dx1) + D3_half };
         const real_t D2_cov { h_22_0pH * Df(i1, i2, em::dx2) };
@@ -115,7 +118,7 @@ namespace kernel::gr {
       }
     }
 
-    Inline void operator()(index_t, index_t, index_t) const {
+    Inline void operator()(cellidx_t, cellidx_t, cellidx_t) const {
       if constexpr (D == Dim::_3D) {
         raise::KernelNotImplementedError(HERE);
       } else {
@@ -130,9 +133,8 @@ namespace kernel::gr {
    * @brief Kernel for computing H
    * @tparam M Metric
    */
-  template <class M>
+  template <GRMetricClass M>
   class ComputeAuxH_kernel {
-    static_assert(M::is_metric, "M must be a metric class");
     static constexpr auto D = M::Dim;
 
     const ndfield_t<D, 6> Df;
@@ -150,7 +152,7 @@ namespace kernel::gr {
       , Hf { Hf }
       , metric { metric } {}
 
-    Inline void operator()(index_t i1, index_t i2) const {
+    Inline void operator()(cellidx_t i1, cellidx_t i2) const {
       if constexpr (D == Dim::_2D) {
         const real_t i1_ { COORD(i1) };
         const real_t i2_ { COORD(i2) };
@@ -163,18 +165,19 @@ namespace kernel::gr {
         const real_t alpha_pH0 { metric.alpha({ i1_ + HALF, i2_ }) };
         const real_t alpha_pHpH { metric.alpha({ i1_ + HALF, i2_ + HALF }) };
 
-        real_t w1, w2;
+        real_t w1, w2, ww;
         real_t h_13_ij1, h_13_ij2;
         real_t sqrt_detH_ij1, sqrt_detH_ij2;
         real_t beta_ij1, beta_ij2;
 
         w1       = metric.sqrt_det_h_tilde({ i1_, i2_ + HALF });
         w2       = metric.sqrt_det_h_tilde({ i1_ + ONE, i2_ + HALF });
+        ww       = TWO * metric.sqrt_det_h_tilde({ i1_ + HALF, i2_ + HALF });
         h_13_ij1 = metric.template h_<1, 3>({ i1_, i2_ + HALF });
         h_13_ij2 = metric.template h_<1, 3>({ i1_ + ONE, i2_ + HALF });
         const real_t B1_half { (w1 * h_13_ij1 * Bf(i1, i2, em::bx1) +
                                 w2 * h_13_ij2 * Bf(i1 + 1, i2, em::bx1)) /
-                               (w1 + w2) };
+                               (ww) };
 
         sqrt_detH_ij1 = metric.sqrt_det_h({ i1_, i2_ + HALF });
         sqrt_detH_ij2 = metric.sqrt_det_h({ i1_ + ONE, i2_ + HALF });
@@ -183,11 +186,12 @@ namespace kernel::gr {
         const real_t D2_half {
           (w1 * sqrt_detH_ij1 * beta_ij1 * Df(i1, i2, em::dx2) +
            w2 * sqrt_detH_ij2 * beta_ij2 * Df(i1 + 1, i2, em::dx2)) /
-          (w1 + w2)
+          (ww)
         };
 
         w1            = metric.sqrt_det_h_tilde({ i1_, i2_ });
         w2            = metric.sqrt_det_h_tilde({ i1_ + ONE, i2_ });
+        ww            = TWO * metric.sqrt_det_h_tilde({ i1_ + HALF, i2_ });
         sqrt_detH_ij1 = metric.sqrt_det_h({ i1_, i2_ });
         sqrt_detH_ij2 = metric.sqrt_det_h({ i1_ + ONE, i2_ });
         beta_ij1      = metric.beta1({ i1_, i2_ });
@@ -195,16 +199,17 @@ namespace kernel::gr {
         const real_t D3_half {
           (w1 * sqrt_detH_ij1 * beta_ij1 * Df(i1, i2, em::dx3) +
            w2 * sqrt_detH_ij2 * beta_ij2 * Df(i1 + 1, i2, em::dx3)) /
-          (w1 + w2)
+          (ww)
         };
 
         w1       = metric.sqrt_det_h_tilde({ i1_ - HALF, i2_ + HALF });
         w2       = metric.sqrt_det_h_tilde({ i1_ + HALF, i2_ + HALF });
+        ww       = TWO * metric.sqrt_det_h_tilde({ i1_, i2_ + HALF });
         h_13_ij1 = metric.template h_<1, 3>({ i1_ - HALF, i2_ + HALF });
         h_13_ij2 = metric.template h_<1, 3>({ i1_ + HALF, i2_ + HALF });
         const real_t B3_half { (w1 * h_13_ij1 * Bf(i1 - 1, i2, em::bx3) +
                                 w2 * h_13_ij2 * Bf(i1, i2, em::bx3)) /
-                               (w1 + w2) };
+                               (ww) };
 
         const real_t B1_cov { h_11_0pH * Bf(i1, i2, em::bx1) + B3_half };
         const real_t B2_cov { h_22_pH0 * Bf(i1, i2, em::bx2) };
@@ -220,7 +225,7 @@ namespace kernel::gr {
       }
     }
 
-    Inline void operator()(index_t, index_t, index_t) const {
+    Inline void operator()(cellidx_t, cellidx_t, cellidx_t) const {
       if constexpr (D == Dim::_3D) {
         raise::KernelNotImplementedError(HERE);
       } else {
@@ -235,31 +240,30 @@ namespace kernel::gr {
    * @brief Kernel for computing time average of B and D
    * @tparam M Metric
    */
-  template <class M>
+  template <Dimension D>
   class TimeAverageDB_kernel {
-    static_assert(M::is_metric, "M must be a metric class");
-    static constexpr auto D = M::Dim;
-
     const ndfield_t<D, 6> BDf;
     ndfield_t<D, 6>       BDf0;
-    const M               metric;
 
   public:
-    TimeAverageDB_kernel(const ndfield_t<D, 6>& BDf,
-                         const ndfield_t<D, 6>& BDf0,
-                         const M&               metric)
-      : BDf  { BDf }
-      , BDf0 { BDf0 }
-      , metric { metric } {}
+    TimeAverageDB_kernel(const ndfield_t<D, 6>& BDf, const ndfield_t<D, 6>& BDf0)
+      : BDf { BDf }
+      , BDf0 { BDf0 } {}
 
-    Inline void operator()(index_t i1, index_t i2) const {
+    Inline void operator()(cellidx_t i1, cellidx_t i2) const {
       if constexpr (D == Dim::_2D) {
-        BDf0(i1, i2, em::bx1) = HALF * (BDf0(i1, i2, em::bx1) + BDf(i1, i2, em::bx1)); 
-        BDf0(i1, i2, em::bx2) = HALF * (BDf0(i1, i2, em::bx2) + BDf(i1, i2, em::bx2)); 
-        BDf0(i1, i2, em::bx3) = HALF * (BDf0(i1, i2, em::bx3) + BDf(i1, i2, em::bx3)); 
-        BDf0(i1, i2, em::ex1) = HALF * (BDf0(i1, i2, em::ex1) + BDf(i1, i2, em::ex1)); 
-        BDf0(i1, i2, em::ex2) = HALF * (BDf0(i1, i2, em::ex2) + BDf(i1, i2, em::ex2)); 
-        BDf0(i1, i2, em::ex3) = HALF * (BDf0(i1, i2, em::ex3) + BDf(i1, i2, em::ex3)); 
+        BDf0(i1, i2, em::bx1) = HALF *
+                                (BDf0(i1, i2, em::bx1) + BDf(i1, i2, em::bx1));
+        BDf0(i1, i2, em::bx2) = HALF *
+                                (BDf0(i1, i2, em::bx2) + BDf(i1, i2, em::bx2));
+        BDf0(i1, i2, em::bx3) = HALF *
+                                (BDf0(i1, i2, em::bx3) + BDf(i1, i2, em::bx3));
+        BDf0(i1, i2, em::ex1) = HALF *
+                                (BDf0(i1, i2, em::ex1) + BDf(i1, i2, em::ex1));
+        BDf0(i1, i2, em::ex2) = HALF *
+                                (BDf0(i1, i2, em::ex2) + BDf(i1, i2, em::ex2));
+        BDf0(i1, i2, em::ex3) = HALF *
+                                (BDf0(i1, i2, em::ex3) + BDf(i1, i2, em::ex3));
       } else {
         raise::KernelError(
           HERE,
@@ -272,28 +276,24 @@ namespace kernel::gr {
    * @brief Kernel for computing time average of J
    * @tparam M Metric
    */
-  template <class M>
+  template <Dimension D>
   class TimeAverageJ_kernel {
-    static_assert(M::is_metric, "M must be a metric class");
-    static constexpr auto D = M::Dim;
-
-    ndfield_t<D, 3> Jf;
-    const ndfield_t<D, 3>       Jf0;
-    const M               metric;
+    ndfield_t<D, 3>       Jf;
+    const ndfield_t<D, 3> Jf0;
 
   public:
-    TimeAverageJ_kernel(const ndfield_t<D, 3>& Jf,
-                        const ndfield_t<D, 3>& Jf0,
-                        const M&               metric)
-      : Jf  { Jf }
-      , Jf0 { Jf0 }
-      , metric { metric } {}
+    TimeAverageJ_kernel(const ndfield_t<D, 3>& Jf, const ndfield_t<D, 3>& Jf0)
+      : Jf { Jf }
+      , Jf0 { Jf0 } {}
 
-    Inline void operator()(index_t i1, index_t i2) const {
+    Inline void operator()(cellidx_t i1, cellidx_t i2) const {
       if constexpr (D == Dim::_2D) {
-        Jf(i1, i2, cur::jx1) = HALF * (Jf0(i1, i2, cur::jx1) + Jf(i1, i2, cur::jx1)); 
-        Jf(i1, i2, cur::jx2) = HALF * (Jf0(i1, i2, cur::jx2) + Jf(i1, i2, cur::jx2)); 
-        Jf(i1, i2, cur::jx3) = HALF * (Jf0(i1, i2, cur::jx3) + Jf(i1, i2, cur::jx3)); 
+        Jf(i1, i2, cur::jx1) = HALF *
+                               (Jf0(i1, i2, cur::jx1) + Jf(i1, i2, cur::jx1));
+        Jf(i1, i2, cur::jx2) = HALF *
+                               (Jf0(i1, i2, cur::jx2) + Jf(i1, i2, cur::jx2));
+        Jf(i1, i2, cur::jx3) = HALF *
+                               (Jf0(i1, i2, cur::jx3) + Jf(i1, i2, cur::jx3));
       } else {
         raise::KernelError(
           HERE,

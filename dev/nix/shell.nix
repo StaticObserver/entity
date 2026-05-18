@@ -5,14 +5,14 @@
   },
   gpu ? "NONE",
   arch ? "NATIVE",
-  hdf5 ? true,
+  hdf5 ? false,
   mpi ? false,
 }:
 
 let
   gpuUpper = pkgs.lib.toUpper gpu;
   archUpper = pkgs.lib.toUpper arch;
-  name = "entity-dev";
+  name = "nt2";
   adios2Pkg = (pkgs.callPackage ./adios2.nix { inherit pkgs mpi hdf5; });
   kokkosPkg = (
     pkgs.callPackage ./kokkos.nix {
@@ -29,27 +29,26 @@ let
         CC = "gcc";
       };
       HIP = {
-        CXX = "hipcc";
-        CC = "hipcc";
+        CXX = "clang++";
+        CC = "clang";
       };
       CUDA = { };
     };
   };
 in
 pkgs.mkShell {
-  name = "${name}-env";
+  name =
+    "${name}"
+    + (if gpu != "NONE" then "-${pkgs.lib.toLower gpu}" else "")
+    + (if mpi then "-mpi" else "");
   nativeBuildInputs = with pkgs; [
     zlib
     cmake
 
-    llvmPackages_18.clang-tools
-    libgcc
-
     adios2Pkg
     kokkosPkg
 
-    python312
-    python312Packages.jupyter
+    python314
 
     cmake-format
     cmake-lint
@@ -65,27 +64,26 @@ pkgs.mkShell {
     pkgs.zlib
   ]);
 
-  shellHook =
-    ''
-      BLUE='\033[0;34m'
-      NC='\033[0m'
+  shellHook = ''
+    BLUE='\033[0;34m'
+    NC='\033[0m'
 
-      echo "following environment variables are set:"
-    ''
-    + pkgs.lib.concatStringsSep "" (
-      pkgs.lib.mapAttrsToList (
-        category: vars:
-        pkgs.lib.concatStringsSep "" (
-          pkgs.lib.mapAttrsToList (name: value: ''
-            export ${name}=${value}
-            echo -e "  ''\${BLUE}${name}''\${NC}=${value}"
-          '') vars.${gpuUpper}
-        )
-      ) envVars
-    )
-    + ''
-      echo ""
-      echo -e "${name} nix-shell activated"
-    '';
+    echo "following environment variables are set:"
+  ''
+  + pkgs.lib.concatStringsSep "" (
+    pkgs.lib.mapAttrsToList (
+      category: vars:
+      pkgs.lib.concatStringsSep "" (
+        pkgs.lib.mapAttrsToList (name: value: ''
+          export ${name}=${value}
+          echo -e "  ''\${BLUE}${name}''\${NC}=${value}"
+        '') vars.${gpuUpper}
+      )
+    ) envVars
+  )
+  + ''
+    echo ""
+    echo -e "${name} nix-shell activated"
+  '';
 
 }

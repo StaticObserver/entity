@@ -30,13 +30,18 @@ set(SOURCES ${SRC_DIR}/stats.cpp ${SRC_DIR}/fields.cpp
             ${SRC_DIR}/utils/interpret_prompt.cpp)
 if(${output})
   list(APPEND SOURCES ${SRC_DIR}/writer.cpp)
+  list(APPEND SOURCES ${SRC_DIR}/checkpoint.cpp)
+  list(APPEND SOURCES ${SRC_DIR}/utils/writers.cpp)
+  list(APPEND SOURCES ${SRC_DIR}/utils/readers.cpp)
 endif()
 add_library(ntt_output ${SOURCES})
 
 set(libs ntt_global)
 add_dependencies(ntt_output ${libs})
 target_link_libraries(ntt_output PUBLIC ${libs})
-target_link_libraries(ntt_output PRIVATE stdc++fs)
+if(NOT "${CMAKE_CXX_COMPILER_ID}" MATCHES "AppleClang")
+  target_link_libraries(ntt_output PRIVATE stdc++fs)
+endif()
 
 target_include_directories(
   ntt_output

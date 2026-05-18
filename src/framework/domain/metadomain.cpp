@@ -3,24 +3,25 @@
 #include "enums.h"
 #include "global.h"
 
-#include "arch/mpi_aliases.h"
+#if defined(MPI_ENABLED)
+  #include "arch/mpi_aliases.h"
+#endif
+
+#include "arch/directions.h"
+#include "traits/metric.h"
 #include "utils/comparators.h"
 #include "utils/error.h"
+#include "utils/numeric.h"
 #include "utils/tools.h"
 
-#include "metrics/kerr_schild.h"
-#include "metrics/kerr_schild_0.h"
-#include "metrics/minkowski.h"
-#include "metrics/qkerr_schild.h"
-#include "metrics/qspherical.h"
-#include "metrics/spherical.h"
-
-#include "framework/domain/domain.h"
+#include "framework/containers/species.h"
+#include "framework/specialization_registry.h"
 
 #if defined(MPI_ENABLED)
   #include <mpi.h>
 #endif
 
+#include <cstddef>
 #include <limits>
 #include <map>
 #include <string>
@@ -28,7 +29,7 @@
 
 namespace ntt {
 
-  template <SimEngine::type S, class M>
+  template <SimEngine::type S, MetricClass M>
   Metadomain<S, M>::Metadomain(unsigned int            global_ndomains,
                                const std::vector<int>& global_decomposition,
                                const std::vector<ncells_t>& global_ncells,
@@ -59,7 +60,7 @@ namespace ntt {
     metricCompatibilityCheck();
   }
 
-  template <SimEngine::type S, class M>
+  template <SimEngine::type S, MetricClass M>
   void Metadomain<S, M>::initialValidityCheck() const {
     // ensure everything has the correct shape
     raise::ErrorIf(g_decomposition.size() != (std::size_t)D,
@@ -96,7 +97,7 @@ namespace ntt {
 #endif // MPI_ENABLED
   }
 
-  template <SimEngine::type S, class M>
+  template <SimEngine::type S, MetricClass M>
   void Metadomain<S, M>::createEmptyDomains() {
     /* decompose and compute cell & domain offsets ------------------------ */
     auto d_ncells = tools::Decompose(g_ndomains, g_mesh.n_active(), g_decomposition);
@@ -191,7 +192,7 @@ namespace ntt {
     }
   }
 
-  template <SimEngine::type S, class M>
+  template <SimEngine::type S, MetricClass M>
   void Metadomain<S, M>::redefineNeighbors() {
     for (unsigned int idx { 0 }; idx < g_ndomains; ++idx) {
       // offset of the subdomain[idx]
@@ -231,7 +232,7 @@ namespace ntt {
     }
   }
 
-  template <SimEngine::type S, class M>
+  template <SimEngine::type S, MetricClass M>
   void Metadomain<S, M>::redefineBoundaries() {
     for (unsigned int idx { 0 }; idx < g_ndomains; ++idx) {
       // offset of the subdomain[idx]
@@ -280,7 +281,7 @@ namespace ntt {
         current_domain.mesh.set_prtl_bc(direction, prtl_bc);
       }
       // setting boundaries in non-orthogonal (corner) directions
-      for (auto direction : dir::Directions<D>::all) {
+      for (const auto& direction : dir::Directions<D>::all) {
         auto assoc_orth = direction.get_assoc_orth();
         if (assoc_orth.size() == 1) {
           // skip the orthogonal directions
@@ -289,7 +290,7 @@ namespace ntt {
         // if one of the boundaries is not periodic, then use it
         // otherwise, use periodic
         FldsBC flds_bc { FldsBC::INVALID };
-        for (auto dir : assoc_orth) {
+        for (const auto& dir : assoc_orth) {
           const auto fldsbc_in_dir = current_domain.mesh.flds_bc_in(dir);
           if (fldsbc_in_dir != FldsBC::PERIODIC) {
             flds_bc = fldsbc_in_dir;
@@ -299,7 +300,7 @@ namespace ntt {
           }
         }
         PrtlBC prtl_bc { PrtlBC::INVALID };
-        for (auto dir : assoc_orth) {
+        for (const auto& dir : assoc_orth) {
           const auto prtlbc_in_dir = current_domain.mesh.prtl_bc_in(dir);
           if (prtlbc_in_dir != PrtlBC::PERIODIC) {
             prtl_bc = prtlbc_in_dir;
@@ -320,7 +321,7 @@ namespace ntt {
     }
   }
 
-  template <SimEngine::type S, class M>
+  template <SimEngine::type S, MetricClass M>
   void Metadomain<S, M>::finalValidityCheck() const {
     for (unsigned int idx { 0 }; idx < g_ndomains; ++idx) {
       const auto& current_domain = g_subdomains[idx];
@@ -365,7 +366,7 @@ namespace ntt {
     }
   }
 
-  template <SimEngine::type S, class M>
+  template <SimEngine::type S, MetricClass M>
   void Metadomain<S, M>::metricCompatibilityCheck() const {
     const auto epsilon = std::numeric_limits<real_t>::epsilon() *
                          static_cast<real_t>(100.0);
@@ -399,7 +400,7 @@ namespace ntt {
 #endif
   }
 
-  template <SimEngine::type S, class M>
+  template <SimEngine::type S, MetricClass M>
   void Metadomain<S, M>::setFldsBC(const bc_in& dir, const FldsBC& new_bcs) {
     if (dir == bc_in::Mx1) {
       if constexpr (M::Dim == Dim::_1D) {
@@ -467,7 +468,7 @@ namespace ntt {
     redefineBoundaries();
   }
 
-  template <SimEngine::type S, class M>
+  template <SimEngine::type S, MetricClass M>
   void Metadomain<S, M>::setPrtlBC(const bc_in& dir, const PrtlBC& new_bcs) {
     if (dir == bc_in::Mx1) {
       if constexpr (M::Dim == Dim::_1D) {
@@ -535,13 +536,10 @@ namespace ntt {
     redefineBoundaries();
   }
 
-  template struct Metadomain<SimEngine::SRPIC, metric::Minkowski<Dim::_1D>>;
-  template struct Metadomain<SimEngine::SRPIC, metric::Minkowski<Dim::_2D>>;
-  template struct Metadomain<SimEngine::SRPIC, metric::Minkowski<Dim::_3D>>;
-  template struct Metadomain<SimEngine::SRPIC, metric::Spherical<Dim::_2D>>;
-  template struct Metadomain<SimEngine::SRPIC, metric::QSpherical<Dim::_2D>>;
-  template struct Metadomain<SimEngine::GRPIC, metric::KerrSchild<Dim::_2D>>;
-  template struct Metadomain<SimEngine::GRPIC, metric::QKerrSchild<Dim::_2D>>;
-  template struct Metadomain<SimEngine::GRPIC, metric::KerrSchild0<Dim::_2D>>;
+  // NOLINTBEGIN(bugprone-macro-parentheses)
+#define METADOMAIN_STRUCT(S, M, D) template struct Metadomain<S, M<D>>;
+  NTT_FOREACH_SPECIALIZATION(METADOMAIN_STRUCT)
+#undef METADOMAIN_STRUCT
+  // NOLINTEND(bugprone-macro-parentheses)
 
 } // namespace ntt

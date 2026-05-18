@@ -4,31 +4,28 @@
 #include "enums.h"
 #include "global.h"
 
-#include "arch/directions.h"
 #include "arch/kokkos_aliases.h"
-#include "arch/traits.h"
+#include "traits/pgen.h"
 #include "utils/numeric.h"
 
 #include "archetypes/energy_dist.h"
 #include "archetypes/particle_injector.h"
-#include "archetypes/problem_generator.h"
 #include "archetypes/spatial_dist.h"
+#include "archetypes/utils.h"
 #include "framework/domain/metadomain.h"
-
 #include "kernels/particle_moments.hpp"
 
 namespace user {
   using namespace ntt;
 
-  template <SimEngine::type S, class M>
-  struct CurrentLayer : public arch::SpatialDistribution<S, M> {
-    CurrentLayer(const M& metric, real_t cs_width, real_t center_x, real_t cs_y)
-      : arch::SpatialDistribution<S, M> { metric }
-      , cs_width { cs_width }
+  template <Dimension D>
+  struct CurrentLayer {
+    CurrentLayer(real_t cs_width, real_t center_x, real_t cs_y)
+      : cs_width { cs_width }
       , center_x { center_x }
       , cs_y { cs_y } {}
 
-    Inline auto operator()(const coord_t<M::Dim>& x_Ph) const -> real_t {
+    Inline auto operator()(const coord_t<D>& x_Ph) const -> real_t {
       return ONE / SQR(math::cosh((x_Ph[1] - cs_y) / cs_width)) *
              (ONE - math::exp(-SQR((x_Ph[0] - center_x) / cs_width)));
     }
@@ -139,27 +136,21 @@ namespace user {
 
   // constant particle density for particle boundaries
   template <SimEngine::type S, class M>
-  struct ConstDens {
-    Inline auto operator()(const coord_t<M::Dim>& x_Ph) const -> real_t {
-      return ONE;
-    }
-  };
-  template <SimEngine::type S, class M>
-  using spatial_dist_t = arch::Replenish<S, M, ConstDens<S, M>>;
-
-  template <SimEngine::type S, class M>
-  struct PGen : public arch::ProblemGenerator<S, M> {
+  struct PGen {
+    static constexpr auto D { M::Dim };
     // compatibility traits for the problem generator
-    static constexpr auto engines { traits::compatible_with<SimEngine::SRPIC>::value };
-    static constexpr auto metrics { traits::compatible_with<Metric::Minkowski>::value };
+    static constexpr auto engines {
+      ::traits::pgen::compatible_with<SimEngine::SRPIC> {}
+    };
+    static constexpr auto metrics {
+      ::traits::pgen::compatible_with<Metric::Minkowski> {}
+    };
     static constexpr auto dimensions {
-      traits::compatible_with<Dim::_2D, Dim::_3D>::value
+      ::traits::pgen::compatible_with<Dim::_2D, Dim::_3D> {}
     };
 
-    // for easy access to variables in the child class
-    using arch::ProblemGenerator<S, M>::D;
-    using arch::ProblemGenerator<S, M>::C;
-    using arch::ProblemGenerator<S, M>::params;
+    const SimulationParams& params;
+    Metadomain<S, M>&       metadomain;
 
     const real_t    bg_B, bg_Bguide, bg_temperature, inj_ypad;
     const real_t    cs_width, cs_overdensity, cs_x, cs_y;
@@ -167,32 +158,28 @@ namespace user {
     const simtime_t t_open;
     bool            bc_opened { false };
 
-    Metadomain<S, M>& metadomain;
-
     InitFields<D> init_flds;
 
-    inline PGen(const SimulationParams& p, Metadomain<S, M>& m)
-      : arch::ProblemGenerator<S, M>(p)
-      , bg_B { p.template get<real_t>("setup.bg_B", 1.0) }
-      , bg_Bguide { p.template get<real_t>("setup.bg_Bguide", 0.0) }
-      , bg_temperature { p.template get<real_t>("setup.bg_temperature", 0.001) }
-      , inj_ypad { p.template get<real_t>("setup.inj_ypad", (real_t)0.05) }
-      , cs_width { p.template get<real_t>("setup.cs_width") }
-      , cs_overdensity { p.template get<real_t>("setup.cs_overdensity") }
+    PGen(const SimulationParams& p, Metadomain<S, M>& m)
+      : params { p }
+      , metadomain { m }
+      , bg_B { params.template get<real_t>("setup.bg_B", 1.0) }
+      , bg_Bguide { params.template get<real_t>("setup.bg_Bguide", 0.0) }
+      , bg_temperature { params.template get<real_t>("setup.bg_temperature", 0.001) }
+      , inj_ypad { params.template get<real_t>("setup.inj_ypad", (real_t)0.05) }
+      , cs_width { params.template get<real_t>("setup.cs_width") }
+      , cs_overdensity { params.template get<real_t>("setup.cs_overdensity") }
       , cs_x { INV_2 *
                (m.mesh().extent(in::x1).second + m.mesh().extent(in::x1).first) }
       , cs_y { INV_2 *
                (m.mesh().extent(in::x2).second + m.mesh().extent(in::x2).first) }
       , ymin { m.mesh().extent(in::x2).first }
       , ymax { m.mesh().extent(in::x2).second }
-      , t_open { p.template get<simtime_t>(
+      , t_open { params.template get<simtime_t>(
           "setup.t_open",
           1.5 * HALF *
             (m.mesh().extent(in::x1).second - m.mesh().extent(in::x1).first)) }
-      , metadomain { m }
       , init_flds { bg_B, bg_Bguide, cs_width, cs_y } {}
-
-    inline PGen() {}
 
     auto MatchFieldsInX1(simtime_t) const -> BoundaryFieldsInX1<D> {
       return BoundaryFieldsInX1<D> { bg_B,     bg_Bguide, (real_t)0.1,
@@ -203,19 +190,13 @@ namespace user {
       return BoundaryFieldsInX2<D> { bg_B, bg_Bguide, cs_width, cs_y };
     }
 
-    inline void InitPrtls(Domain<S, M>& local_domain) {
+    void InitPrtls(Domain<S, M>& local_domain) {
       // background
-      const auto energy_dist = arch::Maxwellian<S, M>(local_domain.mesh.metric,
-                                                      local_domain.random_pool,
-                                                      bg_temperature);
-      const auto injector    = arch::UniformInjector<S, M, arch::Maxwellian>(
-        energy_dist,
-        { 1, 2 });
-      arch::InjectUniform<S, M, arch::UniformInjector<S, M, arch::Maxwellian>>(
-        params,
-        local_domain,
-        injector,
-        ONE);
+      arch::InjectUniformMaxwellian<S, M>(params,
+                                          local_domain,
+                                          ONE,
+                                          bg_temperature,
+                                          { 1, 2 });
 
       const auto sigma = params.template get<real_t>("scales.sigma0");
       const auto c_omp = params.template get<real_t>("scales.skindepth0");
@@ -226,24 +207,17 @@ namespace user {
       const auto cs_temperature = HALF * sigma / cs_overdensity;
 
       // current layer
-      auto       edist_cs = arch::Maxwellian<S, M>(local_domain.mesh.metric,
-                                             local_domain.random_pool,
-                                             cs_temperature,
-                                             cs_drift_u,
-                                             in::x3,
-                                             false);
-      const auto sdist_cs = CurrentLayer<S, M>(local_domain.mesh.metric,
-                                               cs_width,
-                                               cs_x,
-                                               cs_y);
-      const auto inj_cs = arch::NonUniformInjector<S, M, arch::Maxwellian, CurrentLayer>(
-        edist_cs,
+      auto edist_cs = arch::energy_dist::Maxwellian<M::Dim, M::CoordType>(
+        local_domain.random_pool(),
+        cs_temperature);
+      const auto sdist_cs = CurrentLayer<M::Dim>(cs_width, cs_x, cs_y);
+      arch::InjectNonUniform<S, M, decltype(edist_cs), decltype(edist_cs), decltype(sdist_cs)>(
+        params,
+        local_domain,
+        { 1, 2 },
+        { edist_cs, edist_cs },
         sdist_cs,
-        { 1, 2 });
-      arch::InjectNonUniform<S, M, decltype(inj_cs)>(params,
-                                                     local_domain,
-                                                     inj_cs,
-                                                     cs_overdensity);
+        cs_overdensity);
     }
 
     void CustomPostStep(timestep_t, simtime_t time, Domain<S, M>& domain) {
@@ -256,22 +230,17 @@ namespace user {
         metadomain.setPrtlBC(bc_in::Px1, PrtlBC::ABSORB);
       }
 
-      const auto energy_dist = arch::Maxwellian<S, M>(domain.mesh.metric,
-                                                      domain.random_pool,
-                                                      bg_temperature);
+      const auto energy_dist = arch::energy_dist::Maxwellian<M::Dim, M::CoordType>(
+        domain.random_pool(),
+        bg_temperature);
 
       const auto dx = domain.mesh.metric.template sqrt_h_<1, 1>({});
 
       boundaries_t<real_t> inj_box_up, inj_box_down;
-      boundaries_t<real_t> probe_box_up, probe_box_down;
       inj_box_up.push_back(Range::All);
       inj_box_down.push_back(Range::All);
-      probe_box_up.push_back(Range::All);
-      probe_box_down.push_back(Range::All);
       inj_box_up.push_back({ ymax - inj_ypad - 10 * dx, ymax - inj_ypad });
       inj_box_down.push_back({ ymin + inj_ypad, ymin + inj_ypad + 10 * dx });
-      probe_box_up.push_back({ ymax - inj_ypad - 10 * dx, ymax - inj_ypad });
-      probe_box_down.push_back({ ymin + inj_ypad, ymin + inj_ypad + 10 * dx });
 
       if constexpr (M::Dim == Dim::_3D) {
         inj_box_up.push_back(Range::All);
@@ -308,28 +277,26 @@ namespace user {
         Kokkos::Experimental::contribute(domain.fields.buff, scatter_buff);
       }
 
-      const auto injector_up = arch::KeepConstantInjector<S, M, arch::Maxwellian>(
-        energy_dist,
-        { 1, 2 },
+      const auto replenish_sdist = arch::spatial_dist::ReplenishUniform<M, 3>(
+        domain.mesh.metric,
+        domain.fields.buff,
         0u,
-        probe_box_up);
-      const auto injector_down = arch::KeepConstantInjector<S, M, arch::Maxwellian>(
-        energy_dist,
-        { 1, 2 },
-        0u,
-        probe_box_down);
-
-      arch::InjectUniform<S, M, decltype(injector_up)>(
+        ONE);
+      arch::InjectNonUniform<S, M, decltype(energy_dist), decltype(energy_dist), decltype(replenish_sdist)>(
         params,
         domain,
-        injector_up,
+        { 1, 2 },
+        { energy_dist, energy_dist },
+        replenish_sdist,
         ONE,
         params.template get<bool>("particles.use_weights"),
         inj_box_up);
-      arch::InjectUniform<S, M, decltype(injector_down)>(
+      arch::InjectNonUniform<S, M, decltype(energy_dist), decltype(energy_dist), decltype(replenish_sdist)>(
         params,
         domain,
-        injector_down,
+        { 1, 2 },
+        { energy_dist, energy_dist },
+        replenish_sdist,
         ONE,
         params.template get<bool>("particles.use_weights"),
         inj_box_down);

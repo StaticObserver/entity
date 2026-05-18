@@ -7,22 +7,26 @@
 
 let
   name = "kokkos";
-  pversion = "4.6.01";
+  pversion = "5.0.1";
   compilerPkgs = {
     "HIP" = with pkgs.rocmPackages; [
+      clang
       rocm-core
       clr
       rocthrust
       rocprim
       rocminfo
       rocm-smi
+      pkgs.clang-tools
     ];
     "CUDA" = with pkgs.cudaPackages; [
+      pkgs.clang-tools
       cudatoolkit
       cuda_cudart
       pkgs.gcc13
     ];
     "NONE" = [
+      pkgs.clang-tools
       pkgs.gcc13
     ];
   };
@@ -36,10 +40,8 @@ let
     "HIP" = [
       "-D Kokkos_ENABLE_HIP=ON"
       "-D Kokkos_ARCH_${getArch { }}=ON"
-      # remove leading AMD_
-      "-D AMDGPU_TARGETS=${builtins.replaceStrings [ "amd_" ] [ "" ] (pkgs.lib.toLower (getArch { }))}"
-      "-D CMAKE_C_COMPILER=hipcc"
-      "-D CMAKE_CXX_COMPILER=hipcc"
+      "-D GPU_TARGETS=${builtins.replaceStrings [ "amd_" ] [ "" ] (pkgs.lib.toLower (getArch { }))}"
+      "-D CMAKE_CXX_COMPILER=clang++"
     ];
     "CUDA" = [
       "-D Kokkos_ENABLE_CUDA=ON"
@@ -55,7 +57,7 @@ pkgs.stdenv.mkDerivation rec {
   src = pkgs.fetchgit {
     url = "https://github.com/kokkos/kokkos/";
     rev = "${pversion}";
-    sha256 = "sha256-+yszUbdHqhIkJZiGLZ9Ln4DYUosuJWKhO8FkbrY0/tY=";
+    sha256 = "sha256-ChpwGBwE7sNovjdAM/iCeOqqwGufKxAh5vQ3qK6aFBU=";
   };
 
   nativeBuildInputs = with pkgs; [
@@ -77,7 +79,7 @@ pkgs.stdenv.mkDerivation rec {
 
   configurePhase = ''
     cmake -B build -D CMAKE_BUILD_TYPE=Release \
-      -D CMAKE_CXX_STANDARD=17 \
+      -D CMAKE_CXX_STANDARD=20 \
       -D CMAKE_CXX_EXTENSIONS=OFF \
       -D CMAKE_POSITION_INDEPENDENT_CODE=TRUE \
       ${pkgs.lib.concatStringsSep " " cmakeExtraFlags.${gpu}} \
@@ -91,15 +93,4 @@ pkgs.stdenv.mkDerivation rec {
   installPhase = ''
     cmake --install build
   '';
-
-  # cmakeFlags = [
-  #   "-D CMAKE_CXX_STANDARD=17"
-  #   "-D CMAKE_CXX_EXTENSIONS=OFF"
-  #   "-D CMAKE_POSITION_INDEPENDENT_CODE=TRUE"
-  #   "-D Kokkos_ARCH_${getArch { }}=ON"
-  #   (if gpu != "none" then "-D Kokkos_ENABLE_${gpu}=ON" else "")
-  #   "-D CMAKE_BUILD_TYPE=Release"
-  # ] ++ (cmakeExtraFlags.${gpu} src);
-
-  # enableParallelBuilding = true;
 }
