@@ -1,0 +1,60 @@
+# Vacuum test: no plasma, axion field only
+[simulation]
+  name    = "vacuum"
+  engine  = "srpic"
+  runtime = 20.0
+
+[grid]
+  resolution = [1024]
+  extent     = [[0.0, 62.831853]]
+
+  [grid.metric]
+    metric = "minkowski"
+
+  [grid.boundaries]
+    fields    = [["PERIODIC"]]
+    particles = [["PERIODIC"]]
+
+[scales]
+  larmor0    = 1.0
+  skindepth0 = 1.0
+
+[algorithms]
+  current_filters = 0
+
+  [algorithms.timestep]
+    CFL = 0.5
+
+[particles]
+  ppc0 = 1.0
+
+  [[particles.species]]
+    label    = "e-"
+    mass     = 1.0
+    charge   = -1.0
+    maxnpart = 100.0
+
+  [[particles.species]]
+    label    = "e+"
+    mass     = 1.0
+    charge   = 1.0
+    maxnpart = 100.0
+
+[setup]
+  epsilon     = 5.0
+  omega       = 0.5
+  k           = 0.1
+  B0          = 1.0
+  theta       = 0.0
+  temperature = 0.0
+  density     = 0.0
+
+[output]
+  interval_time = 0.1
+  format        = "BPFile"
+
+  [output.fields]
+    quantities = ["E", "B", "divE"]
+
+[diagnostics]
+  log_level = "INFO"

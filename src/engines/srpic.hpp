@@ -570,6 +570,7 @@ namespace ntt {
         const auto V0    = m_params.template get<real_t>("scales.V0");
         const auto ppc0  = m_params.template get<real_t>("particles.ppc0");
         const auto coeff = -dt * q0 / (B0 * V0);
+        const auto source_time = time + HALF * dt;
         if constexpr (
           traits::has_member<traits::pgen::ext_current_t, pgen_t>::value) {
           const std::vector<real_t> xmin { domain.mesh.extent(in::x1).first,
@@ -583,7 +584,7 @@ namespace ntt {
             domain.mesh.rangeActiveCells(),
             kernel::mink::CurrentsAmpere_kernel<M::Dim, decltype(ext_current)>(
               domain.fields.em, domain.fields.cur,
-              coeff, ppc0, ext_current, xmin, dx));
+              coeff, ppc0, ext_current, xmin, dx, source_time));
           // clang-format on
         } else {
           Kokkos::parallel_for(
