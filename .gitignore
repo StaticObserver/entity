@@ -4,7 +4,12 @@
 # Compilation junk
 *.o
 build*/
+build_*/
 bin/
+
+# Vendored deps: use submodules or system packages, do not commit sources
+extern/Kokkos/
+extern/plog/
 compile_commands.json
 .cache/
 

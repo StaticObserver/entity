@@ -22,6 +22,8 @@
 #include "framework/containers/particles.h"
 #include "framework/domain/domain.h"
 
+#include <type_traits>
+
 namespace kernel {
   using namespace ntt;
 
@@ -615,15 +617,30 @@ namespace kernel {
       return idx_h();
     }
 
-    Inline auto injected_ppc(const coord_t<M::Dim>& x_Ph) const -> npart_t {
-      const auto ppc_real = ppc0 * spatial_dist(x_Ph);
-      auto       ppc      = static_cast<npart_t>(ppc_real);
-      auto       rand_gen = random_pool.get_state();
+    // Returns the number of particles to inject in a cell together with a
+    // per-particle weight multiplier. Spatial distributions whose `operator()`
+    // returns a plain `real_t` only affect the particle count (weight = 1).
+    // Distributions returning a `Kokkos::pair` additionally set a
+    // position-dependent weight via the second element of the pair.
+    Inline auto injected_ppc(const coord_t<M::Dim>& x_Ph) const
+      -> Kokkos::pair<npart_t, real_t> {
+      real_t ppc_real = ppc0;
+      real_t weight   = ONE;
+      using sd_ret_t  = decltype(spatial_dist(x_Ph));
+      if constexpr (std::is_same<sd_ret_t, real_t>::value) {
+        ppc_real *= spatial_dist(x_Ph);
+      } else {
+        const auto sp_dist  = spatial_dist(x_Ph);
+        ppc_real           *= sp_dist.first;
+        weight              = sp_dist.second;
+      }
+      auto ppc      = static_cast<npart_t>(ppc_real);
+      auto rand_gen = random_pool.get_state();
       if (Random<real_t>(rand_gen) < (ppc_real - static_cast<real_t>(ppc))) {
         ppc += 1;
       }
       random_pool.free_state(rand_gen);
-      return ppc;
+      return { ppc, weight };
     }
 
     Inline void inject1(const index_t                    index,
@@ -683,14 +700,15 @@ namespace kernel {
         coord_t<Dim::_1D> x_Ph { ZERO };
         metric.template convert<Crd::Cd, Crd::Ph>(x_Cd, x_Ph);
 
-        const auto ppc = injected_ppc(x_Ph);
+        const auto ppc_w = injected_ppc(x_Ph);
+        const auto ppc   = ppc_w.first;
         if (ppc == 0) {
           return;
         }
 
-        auto weight = ONE;
+        auto weight = ppc_w.second;
         if constexpr (M::CoordType != Coord::Cart) {
-          weight = metric.sqrt_det_h({ i1_ + HALF }) * inv_V0;
+          weight *= metric.sqrt_det_h({ i1_ + HALF }) * inv_V0;
         }
         for (auto p { 0u }; p < ppc; ++p) {
           const auto index = Kokkos::atomic_fetch_add(&idx(), 1);
@@ -733,14 +751,15 @@ namespace kernel {
         }
         metric.template convert<Crd::Cd, Crd::Ph>(x_Cd, x_Ph);
 
-        const auto ppc = injected_ppc(x_Ph);
+        const auto ppc_w = injected_ppc(x_Ph);
+        const auto ppc   = ppc_w.first;
         if (ppc == 0) {
           return;
         }
 
-        auto weight = ONE;
+        auto weight = ppc_w.second;
         if constexpr (M::CoordType != Coord::Cart) {
-          weight = metric.sqrt_det_h({ i1_ + HALF, i2_ + HALF }) * inv_V0;
+          weight *= metric.sqrt_det_h({ i1_ + HALF, i2_ + HALF }) * inv_V0;
         }
         for (auto p { 0u }; p < ppc; ++p) {
           const auto index = Kokkos::atomic_fetch_add(&idx(), 1);
@@ -797,15 +816,16 @@ namespace kernel {
         coord_t<Dim::_3D> x_Ph { ZERO };
         metric.template convert<Crd::Cd, Crd::Ph>(x_Cd, x_Ph);
 
-        const auto ppc = injected_ppc(x_Ph);
+        const auto ppc_w = injected_ppc(x_Ph);
+        const auto ppc   = ppc_w.first;
         if (ppc == 0) {
           return;
         }
 
-        auto weight = ONE;
+        auto weight = ppc_w.second;
         if constexpr (M::CoordType != Coord::Cart) {
-          weight = metric.sqrt_det_h({ i1_ + HALF, i2_ + HALF, i3_ + HALF }) *
-                   inv_V0;
+          weight *= metric.sqrt_det_h({ i1_ + HALF, i2_ + HALF, i3_ + HALF }) *
+                    inv_V0;
         }
         for (auto p { 0u }; p < ppc; ++p) {
           const auto index = Kokkos::atomic_fetch_add(&idx(), 1);
