@@ -63,7 +63,7 @@
   format        = "BPFile"
 
   [output.fields]
-    quantities = ["E", "B", "J", "divE", "T00"]
+    quantities = ["E", "B", "J", "divE", "Charge", "T00"]
 
     [output.fields.smoothing]
       order  = 1
