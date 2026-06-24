@@ -6,9 +6,9 @@
 # =============================================================================
 
 [simulation]
-  name    = "plasma_larmor1e-2"
+  name    = "plasma_larmor1e-2_or0.5"
   engine  = "SRPIC"
-  runtime = 1200.0
+  runtime = 100.0
 
 [grid]
   resolution = [3072]         # ~1024 per wavelength
@@ -48,7 +48,7 @@
 
 [setup]
   epsilon     = 0.01        # g_agamma * a0
-  omega_ratio = 0.01        # omega_a / omega_p
+  omega_ratio = 0.5         # omega_a / omega_p
   k           = 0.1
   B0          = 1.0
   theta       = 0.0         # B || k
@@ -56,7 +56,7 @@
   density     = 1.0
 
 [output]
-  interval_time = 2.0
+  interval_time = 0.2
   format        = "BPFile"
 
   [output.fields]
