@@ -57,19 +57,17 @@ namespace user {
   template <Dimension D>
   struct AxionExternalCurrent {
     const real_t epsilon, omega, k;
-    const real_t coef;  // skindepth0^2 / larmor0
 
-    AxionExternalCurrent(real_t eps, real_t omega_in, real_t k_in, real_t c)
+    AxionExternalCurrent(real_t eps, real_t omega_in, real_t k_in)
       : epsilon { eps }
       , omega { omega_in }
-      , k { k_in }
-      , coef { c } {}
+      , k { k_in } {}
 
     template <class Context>
     Inline auto jx1(const Context& ctx) const
       -> decltype(ctx.em, static_cast<real_t>(ZERO)) {
       const auto phase = k * ctx.x_Ph[0] - omega * ctx.time;
-      const auto adot  = coef * epsilon * omega * math::sin(phase);
+      const auto adot  = epsilon * omega * math::sin(phase);
       return adot * ctx.em(ctx.i1, em::bx1);
     }
 
@@ -77,7 +75,7 @@ namespace user {
     Inline auto jx2(const Context& ctx) const
       -> decltype(ctx.em, static_cast<real_t>(ZERO)) {
       const auto phase = k * ctx.x_Ph[0] - omega * ctx.time;
-      const auto adot  = coef * epsilon * omega * math::sin(phase);
+      const auto adot  = epsilon * omega * math::sin(phase);
       return adot * ctx.em(ctx.i1, em::bx2);
     }
 
@@ -85,7 +83,7 @@ namespace user {
     Inline auto jx3(const Context& ctx) const
       -> decltype(ctx.em, static_cast<real_t>(ZERO)) {
       const auto phase = k * ctx.x_Ph[0] - omega * ctx.time;
-      const auto adot  = coef * epsilon * omega * math::sin(phase);
+      const auto adot  = epsilon * omega * math::sin(phase);
       return adot * ctx.em(ctx.i1, em::bx3);
     }
   };
@@ -131,9 +129,7 @@ namespace user {
       , theta { p.template get<real_t>("setup.theta", ZERO) }
       , temperature { p.template get<real_t>("setup.temperature", ZERO) }
       , density { p.template get<real_t>("setup.density", ONE) }
-      , ext_current { epsilon, omega, k,
-          SQR(p.template get<real_t>("scales.skindepth0", ONE))
-          / p.template get<real_t>("scales.larmor0", ONE) }
+      , ext_current { epsilon, omega, k }
       , init_flds { B0, theta, epsilon, k,
           p.template get<real_t>("scales.larmor0", ONE) } {
       raise::ErrorIf(omega * dt >= ONE,
