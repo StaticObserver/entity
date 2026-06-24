@@ -155,6 +155,8 @@ namespace ntt {
         const auto V0    = params.template get<real_t>("scales.V0");
         const auto ppc0  = params.template get<real_t>("particles.ppc0");
         const auto coeff = -dt * q0 / (B0 * V0);
+        const auto source_time = engine_params.get<simtime_t>("time") + HALF * dt;
+
         if constexpr (::traits::pgen::HasExtCurrent<PG>) {
           const std::vector<real_t> xmin { domain.mesh.extent(in::x1).first,
                                            domain.mesh.extent(in::x2).first,
@@ -171,7 +173,8 @@ namespace ntt {
               ppc0,
               ext_current,
               xmin,
-              dx));
+              dx,
+              source_time));
         } else {
           Kokkos::parallel_for(
             "Ampere",
