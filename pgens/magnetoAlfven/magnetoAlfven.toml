@@ -60,12 +60,9 @@
 [setup]
   Bsurf          = 1.0
   field_geometry = "dipole" # can be "dipole" or "monopole" (default: dipole)
-  N0            = 1.0
-  Omega         = 0.0
-  Omega_0       = 0.1
-  temperature   = 0.1
-  t_stop        = 10.0
-  num_cycles    = 20
+  N0             = 1.0
+  Omega          = 0.0
+  temperature    = 0.1
 
 [output]
   format = "BPFile"

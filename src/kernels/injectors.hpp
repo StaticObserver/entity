@@ -949,7 +949,7 @@ namespace experimental {
       return idx_h();
     }
 
-    Inline void operator()(index_t i1) const {
+    Inline void operator()(cellidx_t i1) const {
       if constexpr (M::Dim == Dim::_1D) {
         const auto        i1_ = COORD(i1);
         coord_t<Dim::_1D> x_Cd { i1_ + HALF };
@@ -983,7 +983,7 @@ namespace experimental {
 
           tags_1(index + offset1) = ParticleTag::alive;
           tags_2(index + offset2) = ParticleTag::alive;
-          if (M::CoordType == Coord::Cart) {
+          if (M::CoordType == Coord::Cartesian) {
             weights_1(index + offset1) = ONE * spatial_dist2(x_Ph);
             weights_2(index + offset2) = ONE * spatial_dist2(x_Ph);
           } else {
@@ -998,7 +998,7 @@ namespace experimental {
       }
     }
 
-    Inline void operator()(index_t i1, index_t i2) const {
+    Inline void operator()(cellidx_t i1, cellidx_t i2) const {
       if constexpr (M::Dim == Dim::_2D) {
         const auto          i1_ = COORD(i1);
         const auto          i2_ = COORD(i2);
@@ -1007,7 +1007,7 @@ namespace experimental {
         coord_t<M::PrtlDim> x_Cd_ { ZERO };
         x_Cd_[0] = x_Cd[0];
         x_Cd_[1] = x_Cd[1];
-        if constexpr (S == SimEngine::SRPIC and M::CoordType != Coord::Cart) {
+        if constexpr (S == SimEngine::SRPIC and M::CoordType != Coord::Cartesian) {
           x_Cd_[2] = ZERO;
         }
         metric.template convert<Crd::Cd, Crd::Ph>(x_Cd, x_Ph);
@@ -1053,7 +1053,7 @@ namespace experimental {
 
           tags_1(index + offset1) = ParticleTag::alive;
           tags_2(index + offset2) = ParticleTag::alive;
-          if (M::CoordType == Coord::Cart) {
+          if (M::CoordType == Coord::Cartesian) {
             weights_1(index + offset1) = ONE * spatial_dist2(x_Ph);
             weights_2(index + offset2) = ONE * spatial_dist2(x_Ph);
           } else {
@@ -1070,7 +1070,7 @@ namespace experimental {
       }
     }
 
-    Inline void operator()(index_t i1, index_t i2, index_t i3) const {
+    Inline void operator()(cellidx_t i1, cellidx_t i2, cellidx_t i3) const {
       if constexpr (M::Dim == Dim::_3D) {
         const auto        i1_ = COORD(i1);
         const auto        i2_ = COORD(i2);
@@ -1126,7 +1126,7 @@ namespace experimental {
 
           tags_1(index + offset1) = ParticleTag::alive;
           tags_2(index + offset2) = ParticleTag::alive;
-          if (M::CoordType == Coord::Cart) {
+          if (M::CoordType == Coord::Cartesian) {
             weights_1(index + offset1) = ONE * spatial_dist2(x_Ph);
             weights_2(index + offset2) = ONE * spatial_dist2(x_Ph);
           } else {
