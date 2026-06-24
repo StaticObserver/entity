@@ -1,0 +1,82 @@
+# =============================================================================
+# Plasma Test — larmor0=1e-2, skindepth0=0.5, pair plasma screening
+# =============================================================================
+# omega_ratio = 0.01, epsilon = 0.01, k = 0.1
+# density = 1.0, temperature = 0.01, current_filters = 16
+# =============================================================================
+
+[simulation]
+  name    = "plasma_larmor1e-2"
+  engine  = "SRPIC"
+  runtime = 1200.0
+
+[grid]
+  resolution = [3072]         # ~1024 per wavelength
+  extent     = [[0.0, 188.495556]]   # 3 * 2*pi/k = 60*pi
+
+  [grid.metric]
+    metric = "Minkowski"
+
+  [grid.boundaries]
+    fields    = [["PERIODIC"]]
+    particles = [["PERIODIC"]]
+
+[scales]
+  larmor0    = 0.01
+  skindepth0 = 0.5
+
+[algorithms]
+  current_filters = 16
+
+  [algorithms.timestep]
+    CFL = 0.5
+
+[particles]
+  ppc0 = 128.0
+
+  [[particles.species]]
+    label    = "e-"
+    mass     = 1.0
+    charge   = -1.0
+    maxnpart = 600000.0
+
+  [[particles.species]]
+    label    = "e+"
+    mass     = 1.0
+    charge   = 1.0
+    maxnpart = 600000.0
+
+[setup]
+  epsilon     = 0.01        # g_agamma * a0
+  omega_ratio = 0.01        # omega_a / omega_p
+  k           = 0.1
+  B0          = 1.0
+  theta       = 0.0         # B || k
+  temperature = 0.01
+  density     = 1.0
+
+[output]
+  interval_time = 2.0
+  format        = "BPFile"
+
+  [output.fields]
+    quantities = ["E", "B", "J", "divE", "Charge", "T00"]
+
+    [output.fields.smoothing]
+      order  = 1
+      method = "spline"
+
+  [output.particles]
+    enable        = true
+    interval_time = 10.0
+
+  [output.spectra]
+    enable        = true
+    interval_time = 10.0
+
+  [output.stats]
+    enable        = true
+    interval_time = 1.0
+
+[diagnostics]
+  log_level = "VERBOSE"
