@@ -30,7 +30,7 @@
   skindepth0 = 1.0
 
 [algorithms]
-  current_filters = 0
+  current_filters = 8
 
   [algorithms.timestep]
     CFL = 0.5
