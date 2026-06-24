@@ -32,25 +32,23 @@ namespace user {
     const real_t b_para;   // B₀ cosθ — along x₁
     const real_t b_perp;   // B₀ sinθ — along x₃
     const real_t epsilon, k;
-    const real_t larmor0;
 
     InitFields(real_t Bmag, real_t theta_deg,
-               real_t eps, real_t k_in, real_t larmor)
+               real_t eps, real_t k_in)
       : B0 { Bmag }
       , b_para { Bmag * math::cos(theta_deg * static_cast<real_t>(convert::deg2rad)) }
       , b_perp { Bmag * math::sin(theta_deg * static_cast<real_t>(convert::deg2rad)) }
       , epsilon { eps }
-      , k { k_in }
-      , larmor0 { larmor } {}
+      , k { k_in } {}
 
     // B field — B = B₀ (cosθ, 0, sinθ) in xz plane
     Inline auto bx1(const coord_t<D>&) const -> real_t { return b_para; }
     Inline auto bx3(const coord_t<D>&) const -> real_t { return b_perp; }
 
-    // E field — axion-driven, divided by larmor0
+    // E field — axion-driven, matching ext_current normalization
     Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
       if (cmp::AlmostZero(k)) { return ZERO; }
-      return -epsilon * b_para * math::cos(k * x_Ph[0]) / larmor0;
+      return -epsilon * b_para * math::cos(k * x_Ph[0]);
     }
   };
 
@@ -130,8 +128,7 @@ namespace user {
       , temperature { p.template get<real_t>("setup.temperature", ZERO) }
       , density { p.template get<real_t>("setup.density", ONE) }
       , ext_current { epsilon, omega, k }
-      , init_flds { B0, theta, epsilon, k,
-          p.template get<real_t>("scales.larmor0", ONE) } {
+      , init_flds { B0, theta, epsilon, k } {
       raise::ErrorIf(omega * dt >= ONE,
         "omega*dt >= 1: cannot resolve axion oscillation", HERE);
     }
