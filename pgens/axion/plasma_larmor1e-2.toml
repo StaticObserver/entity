@@ -63,7 +63,7 @@
     quantities = ["E", "B", "J", "divE", "Charge", "T00"]
 
     [output.fields.smoothing]
-      order  = 1
+      order  = 3
       method = "spline"
 
   [output.particles]
