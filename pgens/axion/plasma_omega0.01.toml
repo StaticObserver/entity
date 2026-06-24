@@ -12,7 +12,7 @@
 [simulation]
   name    = "plasma_omega0.01"
   engine  = "SRPIC"
-  runtime = 31415.926535      # 50 * 2*pi / 0.01
+  runtime = 1200.0
 
 [grid]
   resolution = [3072]         # ~1024 per wavelength
@@ -60,7 +60,7 @@
   density     = 1.0
 
 [output]
-  interval_time = 1.0
+  interval_time = 2.0
   format        = "BPFile"
 
   [output.fields]
