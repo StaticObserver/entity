@@ -55,7 +55,7 @@
 
 [setup]
   epsilon     = 0.5       # eta_J = 0.5
-  omega       = 1.0       # A = 1.0
+  omega_ratio = 1.0       # A = 1.0
   k           = 0.2
   B0          = 1.0
   theta       = 0.0

@@ -123,7 +123,8 @@ namespace user {
       : params { p }
       , metadomain { m }
       , B0 { p.template get<real_t>("setup.B0", ONE) }
-      , omega { p.template get<real_t>("setup.omega") }
+      , omega { p.template get<real_t>("setup.omega_ratio")
+          / p.template get<real_t>("scales.skindepth0", ONE) }
       , k { p.template get<real_t>("setup.k", ZERO) }
       , epsilon { p.template get<real_t>("setup.epsilon") }
       , dt { p.template get<real_t>("algorithms.timestep.dt") }
@@ -131,7 +132,7 @@ namespace user {
       , temperature { p.template get<real_t>("setup.temperature", ZERO) }
       , density { p.template get<real_t>("setup.density", ONE) }
       , ext_current { epsilon, omega, k,
-          math::square(p.template get<real_t>("scales.skindepth0", ONE))
+          SQR(p.template get<real_t>("scales.skindepth0", ONE))
           / p.template get<real_t>("scales.larmor0", ONE) }
       , init_flds { B0, theta, epsilon, k,
           p.template get<real_t>("scales.larmor0", ONE) } {

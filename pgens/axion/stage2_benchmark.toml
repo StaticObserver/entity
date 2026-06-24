@@ -58,7 +58,7 @@
 
 [setup]
   epsilon     = 5.0       # g_agamma * a0,  eta_J = 2.5
-  omega       = 0.5       # A = omega_a/omega_p = 0.5
+  omega_ratio = 0.5       # A = omega_a/omega_p = 0.5
   k           = 0.1
   B0          = 1.0
   theta       = 0.0        # B ∥ k (most stringent charge-source test)

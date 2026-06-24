@@ -56,7 +56,7 @@
 
 [setup]
   epsilon     = 1.0e-3    # η_J = 0.05, η_ρ = 0.01
-  omega       = 0.5       # A = ω_a/ω_p = 0.5
+  omega_ratio = 0.5       # A = ω_a/ω_p = 0.5
   k           = 0.1
   B0          = 1.0
   theta       = 0.0       # B ∥ k
