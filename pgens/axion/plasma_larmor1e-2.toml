@@ -6,9 +6,9 @@
 # =============================================================================
 
 [simulation]
-  name    = "plasma_larmor1e-2_or0.5"
+  name    = "plasma_larmor1e-2_or0.5_t200"
   engine  = "SRPIC"
-  runtime = 100.0
+  runtime = 200.0
 
 [grid]
   resolution = [3072]         # ~1024 per wavelength
