@@ -38,13 +38,13 @@
     label    = "e-"
     mass     = 1.0
     charge   = -1.0
-    maxnpart = 600000.0
+    maxnpart = 2200000.0
 
   [[particles.species]]
     label    = "e+"
     mass     = 1.0
     charge   = 1.0
-    maxnpart = 600000.0
+    maxnpart = 2200000.0
 
 [setup]
   epsilon     = 0.01        # g_agamma * a0
