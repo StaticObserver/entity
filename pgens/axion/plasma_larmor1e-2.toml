@@ -6,12 +6,12 @@
 # =============================================================================
 
 [simulation]
-  name    = "plasma_larmor1e-2_or0.5_t2000"
+  name    = "plasma_larmor1e-2_or0.5_n16392"
   engine  = "SRPIC"
-  runtime = 2000.0
+  runtime = 1000.0
 
 [grid]
-  resolution = [3072]         # ~1024 per wavelength
+  resolution = [16392]         # 5.33x higher res
   extent     = [[0.0, 188.495556]]   # 3 * 2*pi/k = 60*pi
 
   [grid.metric]
