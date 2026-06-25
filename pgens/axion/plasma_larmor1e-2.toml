@@ -6,12 +6,12 @@
 # =============================================================================
 
 [simulation]
-  name    = "plasma_larmor1e-2_or0.5_n16392"
+  name    = "plasma_larmor1e-2_or2.0_n8196"
   engine  = "SRPIC"
-  runtime = 1000.0
+  runtime = 200.0
 
 [grid]
-  resolution = [16392]         # 5.33x higher res
+  resolution = [8196]
   extent     = [[0.0, 188.495556]]   # 3 * 2*pi/k = 60*pi
 
   [grid.metric]
@@ -38,17 +38,17 @@
     label    = "e-"
     mass     = 1.0
     charge   = -1.0
-    maxnpart = 2200000.0
+    maxnpart = 1300000.0
 
   [[particles.species]]
     label    = "e+"
     mass     = 1.0
     charge   = 1.0
-    maxnpart = 2200000.0
+    maxnpart = 1300000.0
 
 [setup]
-  epsilon     = 0.01        # g_agamma * a0
-  omega_ratio = 0.5         # omega_a / omega_p
+  epsilon     = 0.005       # g_agamma * a0
+  omega_ratio = 2.0         # omega_a / omega_p
   k           = 0.1
   B0          = 1.0
   theta       = 0.0         # B || k
@@ -56,7 +56,7 @@
   density     = 1.0
 
 [output]
-  interval_time = 0.5
+  interval_time = 0.2
   format        = "BPFile"
 
   [output.fields]
