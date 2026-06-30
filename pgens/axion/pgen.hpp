@@ -16,7 +16,6 @@
 #include "framework/parameters/parameters.h"
 #include "kernels/particle_shapes.hpp"
 
-#include <array>
 #include <vector>
 
 namespace user {
@@ -44,12 +43,10 @@ namespace user {
   struct InitFields {
     const real_t B0;
     const real_t epsilon, k;
-    // Non-const so the constructor body can fill them from the input vectors.
-    // The struct stays trivially copyable (POD members only) and the accessor
-    // methods are const, so device-side access remains read-only.
-    std::array<real_t, MAX_BX2_MODES> bx2_wavenumbers;
-    std::array<real_t, MAX_BX2_MODES> bx2_amplitudes;
-    const std::size_t                 nmodes;
+    // C-style arrays avoid std::array::operator[] device-availability issues.
+    real_t           bx2_wavenumbers[MAX_BX2_MODES];
+    real_t           bx2_amplitudes[MAX_BX2_MODES];
+    std::size_t      nmodes;
 
     InitFields(real_t Bmag,
                real_t eps,
@@ -201,15 +198,6 @@ namespace user {
       raise::ErrorIf(
         not p.template get<bool>("particles.use_weights", false),
         "axion pgen requires particles.use_weights = true", HERE);
-      auto bx2_wv = p.template get<std::vector<real_t>>("setup.bx2_wavenumbers",
-                                                          std::vector<real_t> {});
-      raise::ErrorIf(
-        init_flds.nmodes != bx2_wv.size(),
-        "init_flds.nmodes mismatch: " + std::to_string(init_flds.nmodes)
-        + " vs " + std::to_string(bx2_wv.size()), HERE);
-      raise::ErrorIf(
-        init_flds.nmodes > 0 && init_flds.bx2_amplitudes[0] == ZERO,
-        "bx2_amplitudes[0] is zero despite nmodes=" + std::to_string(init_flds.nmodes), HERE);
     }
 
     void InitPrtls(Domain<S, M>& domain) {
