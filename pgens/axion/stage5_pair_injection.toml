@@ -1,20 +1,21 @@
 # =============================================================================
-# Stage 2 - σ=1e4: Pair Plasma Screening (ε=1e-3, weak drive)
+# Stage 5 - Pair Injection: Dynamic e+e- Injection via Goldreich-Julian Density
 # =============================================================================
 # Neutral e+e- pair plasma, 1D periodic, B ∥ k ∥ x₁.
-# Only ∂_t a · B term in J_a (∇a × E removed).
+# Pairs are dynamically injected where E_parallel > threshold,
+# with density n_GJ = density_factor * |Omega_GJ| * sqrt(B^2) / (2*pi).
 #
 # Control parameters:
-#   ε = 1.0e-3, A = ω/ω_p = 0.5, K = k·d_e = 0.1, σ = 1.0e4
+#   ε = 1e-2, A = ω/ω_p = 0.5, K = k·d_e = 0.05, σ = 2500
 #
 # Supply ratios:
-#   η_J = ε·A·√σ = 1e-3 × 0.5 × 100 = 0.05
-#   η_ρ = ε·K·√σ = 1e-3 × 0.1 × 100 = 0.01
-# → plasma supply >> axion demand, stable screening expected
+#   η_J = ε·A·√σ = 0.5
+#   η_ρ = ε·K·√σ = 0.05
+# → both < 1: plasma can easily supply axion-required charge/current
 # =============================================================================
 
 [simulation]
-  name    = "stage2_s1e4_eps1e-3"
+  name    = "stage5_pair_injection"
   engine  = "SRPIC"
   runtime = 400.0
 
@@ -30,8 +31,8 @@
     particles = [["PERIODIC"]]
 
 [scales]
-  larmor0    = 0.01     # σ = (skindepth0/larmor0)² = 1e4
-  skindepth0 = 1.0
+  larmor0    = 1e-2     # σ = (skindepth0/larmor0)² = 2500
+  skindepth0 = 0.5
 
 [algorithms]
   current_filters = 0
@@ -40,7 +41,8 @@
     CFL = 0.5
 
 [particles]
-  ppc0 = 128.0
+  ppc0        = 128.0
+  use_weights = true     # required by axion PGen
 
   [[particles.species]]
     label    = "e-"
@@ -55,12 +57,19 @@
     maxnpart = 600000.0
 
 [setup]
-  epsilon     = 1.0e-3    # η_J = 0.05, η_ρ = 0.01
-  omega_ratio = 0.5       # A = ω_a/ω_p = 0.5
+  epsilon     = 1e-2      # η_J = 0.5, η_ρ = 0.05
+  omega_ratio = 0.5       # A = omega_a/omega_p = 0.5
   k           = 0.1
   B0          = 1.0
   theta       = 0.0       # B ∥ k
   temperature = 0.01
+
+  # Pair injection
+  pair_injection_enabled       = true
+  pair_injection_threshold     = 0.01     # E_∥ trigger (ε=5.0 → E∥ ~ ε)
+  pair_injection_pairs_per_cell = 4.0
+  Omega_GJ                     = 0.5      # ω_a = 0.5 in code units
+  pair_injection_density_factor = 1.0
 
 [output]
   interval_time = 0.2
@@ -74,7 +83,7 @@
       method = "spline"
 
   [output.particles]
-    enable = true
+    enable        = true
     interval_time = 10.0
 
   [output.spectra]

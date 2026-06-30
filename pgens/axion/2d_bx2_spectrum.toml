@@ -1,0 +1,91 @@
+# =============================================================================
+# 2D Axion-PIC — transverse bx2 spectrum, vacuum test (no dynamic pair injection)
+# =============================================================================
+# 2D Minkowski, periodic in x1 and x2.
+# Axion propagates along x1: a(t, x1) = cos(k*x1 - omega*t).
+#
+# B field:
+#   Bx1 = B0                              (constant)
+#   Bx2 = sum_i A_i * sin(k_i * x1)       (transverse spectrum, x1-dependent)
+#   Bx3 = 0
+#
+# E field (Gauss law at t=0):
+#   Ex1 = -epsilon * B0 * cos(k * x1),  Ex2 = Ex3 = 0
+#
+# setup.density = 0  -> vacuum run (no initial plasma).
+# Set density > 0 to load a neutral e+e- pair plasma.
+#
+# bx2_wavenumbers / bx2_amplitudes are placeholder values; adjust as needed.
+# =============================================================================
+
+[simulation]
+  name    = "2d_bx2_spectrum"
+  engine  = "SRPIC"
+  runtime = 200.0
+
+[grid]
+  resolution = [512, 512]
+  extent     = [[0.0, 62.831853], [0.0, 62.831853]]   # [0, 2*pi/k] x [0, 2*pi/k]
+
+  [grid.metric]
+    metric = "Minkowski"
+
+  [grid.boundaries]
+    fields    = [["PERIODIC", "PERIODIC"]]
+    particles = [["PERIODIC", "PERIODIC"]]
+
+[scales]
+  larmor0    = 1e-2     # sigma = (skindepth0/larmor0)^2 = 2500
+  skindepth0 = 0.5
+
+[algorithms]
+  current_filters = 0
+
+  [algorithms.timestep]
+    CFL = 0.5
+
+[particles]
+  ppc0        = 8.0
+  use_weights = true     # required by axion PGen
+
+  [[particles.species]]
+    label    = "e-"
+    mass     = 1.0
+    charge   = -1.0
+    maxnpart = 2000000.0
+
+  [[particles.species]]
+    label    = "e+"
+    mass     = 1.0
+    charge   = 1.0
+    maxnpart = 2000000.0
+
+[setup]
+  epsilon     = 1e-2
+  omega_ratio = 0.5       # A = omega_a / omega_p
+  k           = 0.1
+  B0          = 1.0
+  temperature = 0.01
+  density     = 0.0       # vacuum test; set > 0 to enable initial pair plasma
+
+  # bx2 transverse spectrum: Bx2 = sum_i A_i * sin(k_i * x1)
+  bx2_wavenumbers = [0.1, 0.2, 0.4]
+  bx2_amplitudes  = [0.3, 0.15, 0.075]
+
+[output]
+  interval_time = 0.2
+  format        = "BPFile"
+
+  [output.fields]
+    quantities = ["E", "B", "J", "divE", "T00"]
+
+    [output.fields.smoothing]
+      order  = 1
+      method = "spline"
+
+  [output.stats]
+    enable        = true
+    interval_time = 1.0
+
+[diagnostics]
+  log_level = "VERBOSE"
