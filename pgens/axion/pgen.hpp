@@ -201,6 +201,15 @@ namespace user {
       raise::ErrorIf(
         not p.template get<bool>("particles.use_weights", false),
         "axion pgen requires particles.use_weights = true", HERE);
+      auto bx2_wv = p.template get<std::vector<real_t>>("setup.bx2_wavenumbers",
+                                                          std::vector<real_t> {});
+      raise::ErrorIf(
+        init_flds.nmodes != bx2_wv.size(),
+        "init_flds.nmodes mismatch: " + std::to_string(init_flds.nmodes)
+        + " vs " + std::to_string(bx2_wv.size()), HERE);
+      raise::ErrorIf(
+        init_flds.nmodes > 0 && init_flds.bx2_amplitudes[0] == ZERO,
+        "bx2_amplitudes[0] is zero despite nmodes=" + std::to_string(init_flds.nmodes), HERE);
     }
 
     void InitPrtls(Domain<S, M>& domain) {
