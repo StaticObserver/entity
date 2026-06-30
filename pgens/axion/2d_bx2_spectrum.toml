@@ -25,7 +25,7 @@
 
 [grid]
   resolution = [512, 512]
-  extent     = [[0.0, 62.831853], [0.0, 62.831853]]   # [0, 2*pi/k] x [0, 2*pi/k]
+  extent     = [[0.0, 188.495559], [0.0, 188.495559]]   # [0, 6*pi/k] x [0, 6*pi/k]
 
   [grid.metric]
     metric = "Minkowski"
