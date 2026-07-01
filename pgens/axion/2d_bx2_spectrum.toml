@@ -1,12 +1,12 @@
 # =============================================================================
-# 2D Axion-PIC — transverse bx2 spectrum, vacuum test (no dynamic pair injection)
+# 2D Axion-PIC — uniform transverse B field, vacuum test (no dynamic pair injection)
 # =============================================================================
 # 2D Minkowski, periodic in x1 and x2.
 # Axion propagates along x1: a(t, x1) = cos(k*x1 - omega*t).
 #
-# B field:
-#   Bx1 = B0                              (constant)
-#   Bx2 = sum_i A_i * sin(k_i * x1)       (transverse spectrum, x1-dependent)
+# B field (uniform):
+#   Bx1 = B0        (along axion propagation)
+#   Bx2 = B0_perp   (in-plane transverse, constant)
 #   Bx3 = 0
 #
 # E field (Gauss law at t=0):
@@ -14,8 +14,6 @@
 #
 # setup.density = 0  -> vacuum run (no initial plasma).
 # Set density > 0 to load a neutral e+e- pair plasma.
-#
-# bx2_wavenumbers / bx2_amplitudes are placeholder values; adjust as needed.
 # =============================================================================
 
 [simulation]
@@ -31,8 +29,8 @@
     metric = "Minkowski"
 
   [grid.boundaries]
-    fields    = [["PERIODIC", "PERIODIC"]]
-    particles = [["PERIODIC", "PERIODIC"]]
+    fields    = [["PERIODIC"], ["PERIODIC"]]
+    particles = [["PERIODIC"], ["PERIODIC"]]
 
 [scales]
   larmor0    = 1e-2     # sigma = (skindepth0/larmor0)^2 = 2500
@@ -65,12 +63,9 @@
   omega_ratio = 0.5       # A = omega_a / omega_p
   k           = 0.1
   B0          = 1.0
+  B0_perp     = 0.05      # uniform transverse Bx2 (in-plane, perpendicular to x1)
   temperature = 0.01
   density     = 0.0       # vacuum test; set > 0 to enable initial pair plasma
-
-  # bx2 transverse spectrum: Bx2 = sum_i A_i * sin(k_i * x1)
-  bx2_wavenumbers = [0.1, 0.2, 0.4]
-  bx2_amplitudes  = [0.3, 0.15, 0.075]
 
 [output]
   interval_time = 0.2
@@ -80,7 +75,7 @@
     quantities = ["E", "B", "J", "divE", "T00"]
 
     [output.fields.smoothing]
-      order  = 1
+      order  = 3
       method = "spline"
 
   [output.stats]

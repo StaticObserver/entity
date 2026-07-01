@@ -16,24 +16,17 @@
 #include "framework/parameters/parameters.h"
 #include "kernels/particle_shapes.hpp"
 
-#include <vector>
-
 namespace user {
   using namespace ntt;
-
-  // Max number of sinusoidal modes in the bx2 spectrum.
-  // Kept as a fixed-size array so the struct stays trivially copyable
-  // and can be captured by value into Kokkos device kernels.
-  inline constexpr std::size_t MAX_BX2_MODES { 8 };
 
   /// InitFields — B + E satisfying ∇·E = ρ_a at t=0.
   ///
   /// Axion always propagates along x₁:  a(t, x₁) = cos(k·x₁ - ω·t)
   ///
-  /// B field (2D Minkowski, x₁-x₂ plane):
-  ///   Bx1 = B0                          (constant, along axion propagation)
-  ///   Bx2 = Σᵢ Aᵢ · sin(kᵢ · x₁)        (in-plane transverse spectrum)
-  ///   Bx3 = 0                           (out-of-plane)
+  /// B field (2D Minkowski, x₁-x₂ plane), uniform:
+  ///   Bx1 = B0        (along axion propagation)
+  ///   Bx2 = B0_perp   (in-plane transverse, constant)
+  ///   Bx3 = 0         (out-of-plane)
   ///
   /// Gauss law: ρ_a = -ε·B·∇a = ε·B0·k·sin(k·x₁)
   ///   (Bx2 does not contribute since ∂_x₂ a = 0)
@@ -42,43 +35,18 @@ namespace user {
   template <Dimension D>
   struct InitFields {
     const real_t B0;
+    const real_t B0_perp;
     const real_t epsilon, k;
-    // C-style arrays avoid std::array::operator[] device-availability issues.
-    real_t           bx2_wavenumbers[MAX_BX2_MODES];
-    real_t           bx2_amplitudes[MAX_BX2_MODES];
-    std::size_t      nmodes;
 
-    InitFields(real_t Bmag,
-               real_t eps,
-               real_t k_in,
-               const std::vector<real_t>& wavenumbers,
-               const std::vector<real_t>& amplitudes)
+    InitFields(real_t Bmag, real_t Bperp, real_t eps, real_t k_in)
       : B0 { Bmag }
+      , B0_perp { Bperp }
       , epsilon { eps }
-      , k { k_in }
-      , bx2_wavenumbers {}
-      , bx2_amplitudes {}
-      , nmodes { wavenumbers.size() } {
-      raise::ErrorIf(wavenumbers.size() != amplitudes.size(),
-        "bx2_wavenumbers and bx2_amplitudes must have the same length", HERE);
-      raise::ErrorIf(wavenumbers.size() > MAX_BX2_MODES,
-        "bx2 spectrum exceeds MAX_BX2_MODES", HERE);
-      for (std::size_t i = 0; i < nmodes; ++i) {
-        bx2_wavenumbers[i] = wavenumbers[i];
-        bx2_amplitudes[i]  = amplitudes[i];
-      }
-    }
+      , k { k_in } {}
 
     // B field
     Inline auto bx1(const coord_t<D>&) const -> real_t { return B0; }
-
-    Inline auto bx2(const coord_t<D>& x_Ph) const -> real_t {
-      real_t b { ZERO };
-      for (std::size_t i = 0; i < nmodes; ++i) {
-        b += bx2_amplitudes[i] * math::sin(bx2_wavenumbers[i] * x_Ph[0]);
-      }
-      return b;
-    }
+    Inline auto bx2(const coord_t<D>&) const -> real_t { return B0_perp; }
 
     // E field — axion-driven, matching ext_current normalization
     Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
@@ -139,7 +107,7 @@ namespace user {
     }
   };
 
-  /// PGen — 2D Axion-PIC with transverse bx2 spectrum.
+  /// PGen — 2D Axion-PIC with uniform transverse B field.
   ///
   /// Initial E satisfies the modified Gauss law. Evolution uses ext_current
   /// so the axion current is added through the same Ampere path as plasma
@@ -187,12 +155,9 @@ namespace user {
           / p.template get<real_t>("scales.larmor0", ONE) }
       , init_flds {
           B0,
+          p.template get<real_t>("setup.B0_perp", ZERO),
           epsilon,
-          k,
-          p.template get<std::vector<real_t>>("setup.bx2_wavenumbers",
-                                              std::vector<real_t> {}),
-          p.template get<std::vector<real_t>>("setup.bx2_amplitudes",
-                                              std::vector<real_t> {}) } {
+          k } {
       raise::ErrorIf(omega * dt >= ONE,
         "omega*dt >= 1: cannot resolve axion oscillation", HERE);
       raise::ErrorIf(
