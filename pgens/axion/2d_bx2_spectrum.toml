@@ -43,7 +43,7 @@
     CFL = 0.5
 
 [particles]
-  ppc0        = 8.0
+  ppc0        = 16.0
   use_weights = true     # required by axion PGen
 
   [[particles.species]]
@@ -65,7 +65,7 @@
   B0          = 1.0
   B0_perp     = 0.05      # uniform transverse Bx2 (in-plane, perpendicular to x1)
   temperature = 0.01
-  density     = 0.0       # vacuum test; set > 0 to enable initial pair plasma
+  density     = 1.0       # neutral e+e- pair plasma
 
 [output]
   interval_time = 0.2
