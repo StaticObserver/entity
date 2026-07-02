@@ -65,7 +65,7 @@
   B0          = 1.0
   B0_perp     = 0.0       # uniform transverse Bx2 (in-plane, perpendicular to x1)
   temperature = 0.01
-  density     = 1.0       # neutral e+e- pair plasma
+  density     = 0.0       # vacuum (no initial plasma)
 
 [output]
   interval_time = 0.2
