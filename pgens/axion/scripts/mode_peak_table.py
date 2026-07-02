@@ -16,6 +16,7 @@ ds = data.fields
 x1 = ds.x.values; x2 = ds.y.values
 t_all = ds.t.values.ravel()
 nt = len(t_all)
+nx1, nx2 = len(x1), len(x2)
 dx1, dx2 = x1[1]-x1[0], x2[1]-x2[0]
 dt_out = np.median(np.diff(t_all))
 T_total = t_all[-1] - t_all[0]
