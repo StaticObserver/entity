@@ -63,7 +63,7 @@
   omega_ratio = 0.5       # A = omega_a / omega_p
   k           = 0.1
   B0          = 1.0
-  B0_perp     = 0.05      # uniform transverse Bx2 (in-plane, perpendicular to x1)
+  B0_perp     = 0.0       # uniform transverse Bx2 (in-plane, perpendicular to x1)
   temperature = 0.01
   density     = 1.0       # neutral e+e- pair plasma
 
