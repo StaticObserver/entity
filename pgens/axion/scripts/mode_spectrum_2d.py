@@ -347,7 +347,7 @@ for (title, data_2d, w_arr, k_arr, label), ax in zip(kw_plots, axes.flat):
     # data_2d shape: (n_omega, nk)
     # Only show positive omega
     w_pos = slice(1, None)  # skip omega=0
-    im = ax.pcolormesh(k_arr, w_arr[w_pos], data_2d[w_pos, :].T,
+    im = ax.pcolormesh(k_arr, w_arr[w_pos], data_2d[w_pos, :],
                         shading='gouraud', cmap='inferno', norm=LogNorm())
     plt.colorbar(im, ax=ax, fraction=0.046)
     ax.axhline(OMEGA_A, color='cyan', ls='--', alpha=0.6, label=f'wa={OMEGA_A:.3f}')
@@ -363,7 +363,7 @@ print(f"Saved: {OUT}/05_k_omega_spectrum.png")
 fig, ax = plt.subplots(1, 1, figsize=(10, 8))
 data_ey = fields_3d['Ey'][:, :, ik2_z]  # (n_omega, nk1)
 w_zoom = slice(1, 60)  # zoom on low omega
-im = ax.pcolormesh(k1_sub, omega_arr[w_zoom], data_ey[w_zoom, :].T,
+im = ax.pcolormesh(k1_sub, omega_arr[w_zoom], data_ey[w_zoom, :],
                     shading='gouraud', cmap='inferno', norm=LogNorm())
 plt.colorbar(im, ax=ax, fraction=0.046)
 ax.axhline(OMEGA_A, color='cyan', ls='--', alpha=0.6, label=f'wa={OMEGA_A:.3f}')
@@ -377,7 +377,7 @@ print(f"Saved: {OUT}/05_k_omega_Ey_zoom.png")
 # k1-omega zoom on Bz
 fig, ax = plt.subplots(1, 1, figsize=(10, 8))
 data_bz = fields_3d['Bz'][:, :, ik2_z]
-im = ax.pcolormesh(k1_sub, omega_arr[w_zoom], data_bz[w_zoom, :].T,
+im = ax.pcolormesh(k1_sub, omega_arr[w_zoom], data_bz[w_zoom, :],
                     shading='gouraud', cmap='inferno', norm=LogNorm())
 plt.colorbar(im, ax=ax, fraction=0.046)
 ax.axhline(OMEGA_A, color='cyan', ls='--', alpha=0.6, label=f'wa={OMEGA_A:.3f}')
