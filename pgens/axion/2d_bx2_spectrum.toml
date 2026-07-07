@@ -75,11 +75,11 @@
   density     = 1.0       # neutral e+e- pair plasma
 
 [output]
-  interval_time = 0.2
+  interval_time = 0.1
   format        = "BPFile"
 
   [output.fields]
-    quantities = ["E", "B", "J", "divE", "T00"]
+    quantities = ["E", "B", "J", "divE", "T00", "Vi"]
 
     [output.fields.smoothing]
       order  = 3
