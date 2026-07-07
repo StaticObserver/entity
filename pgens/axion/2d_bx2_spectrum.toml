@@ -40,7 +40,14 @@
   current_filters = 0
 
   [algorithms.timestep]
-    CFL = 0.5
+    CFL = 1.413              # Cowan 2D: 0.999 * sqrt(2)
+
+  [algorithms.fieldsolver]
+    # Cowan 2D stencil (Blinne et al. 2018) — suppresses numerical dispersion
+    delta_x = 0.0
+    delta_y = 0.0
+    beta_xy = 0.125
+    beta_yx = 0.125
 
 [particles]
   ppc0        = 16.0
