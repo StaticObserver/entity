@@ -1,0 +1,55 @@
+[simulation]
+name = "drift_test"
+engine = "SRPIC"
+runtime = 0.006
+
+[grid]
+resolution = [64, 64]
+extent = [[0.0, 1.0], [0.0, 1.0]]
+
+[grid.metric]
+metric = "Minkowski"
+
+[grid.boundaries]
+fields = [["PERIODIC"], ["PERIODIC"]]
+particles = [["PERIODIC"], ["PERIODIC"]]
+
+[scales]
+larmor0 = 0.1
+skindepth0 = 0.1
+
+[algorithms]
+current_filters = 0
+
+[algorithms.timestep]
+CFL = 0.5
+
+[particles]
+ppc0 = 4.0
+
+[[particles.species]]
+label = "e-"
+mass = 1.0
+charge = -1.0
+maxnpart = 5e5
+
+[[particles.species]]
+label = "e+"
+mass = 1.0
+charge = 1.0
+maxnpart = 5e5
+
+[setup]
+temperature = 0.01
+density = 1.0
+drift_ux = 0.5
+drift_uy = 0.3
+drift_uz = 0.0
+use_spatial = true
+
+[output]
+format = "BPFile"
+
+[output.fields]
+interval = 1
+quantities = ["N", "V"]
