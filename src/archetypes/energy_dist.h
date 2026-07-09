@@ -173,38 +173,42 @@ namespace arch::energy_dist {
     }
   }
 
-  /// Position-independent constant drift (default DriftF for Maxwellian).
-  template <Dimension D>
-  struct ConstantDrift {
-    vec_t<Dim::_3D> drift;
-
-    ConstantDrift() { drift[0] = ZERO; drift[1] = ZERO; drift[2] = ZERO; }
-    explicit ConstantDrift(const std::vector<real_t>& v) {
-      drift[0] = v[0]; drift[1] = v[1]; drift[2] = v[2];
-    }
-
-    Inline void operator()(const coord_t<D>& /*x_Ph*/, vec_t<Dim::_3D>& d) const {
-      d[0] = drift[0]; d[1] = drift[1]; d[2] = drift[2];
-    }
-  };
-
-  template <Dimension D, Coord::type C, class DriftF = ConstantDrift<D>>
+  template <Dimension D, Coord::type C, class DriftF = void>
   struct Maxwellian {
-
-    /// Backward-compatible: constant drift as std::vector.
-    template <class DF = DriftF, std::enable_if_t<std::is_same_v<DF, ConstantDrift<D>>, int> = 0>
+    /// Constant drift via std::vector (default, backward compatible).
+    template <class DF = DriftF, std::enable_if_t<std::is_void_v<DF>, int> = 0>
     Maxwellian(random_number_pool_t&      pool,
                real_t                     temperature,
                const std::vector<real_t>& drift_four_vel = { ZERO, ZERO, ZERO })
-      : pool { pool }, temperature { temperature }, drift_f { drift_four_vel } {
+      : pool { pool }, temperature { temperature } {
       raise::ErrorIf(drift_four_vel.size() != 3,
                      "Maxwellian: Drift velocity must be a 3D vector", HERE);
       raise::ErrorIf(temperature < ZERO,
                      "Maxwellian: Temperature must be non-negative", HERE);
+      if constexpr (C == Coord::Cartesian) {
+        drift_4vel = NORM(drift_four_vel[0], drift_four_vel[1], drift_four_vel[2]);
+        if (not cmp::AlmostZero_host(drift_4vel)) {
+          drift_3vel   = drift_4vel / math::sqrt(ONE + SQR(drift_4vel));
+          drift_dir_x1 = drift_four_vel[0] / drift_4vel;
+          drift_dir_x2 = drift_four_vel[1] / drift_4vel;
+          drift_dir_x3 = drift_four_vel[2] / drift_4vel;
+          drift_dir = 4;
+          for (auto d { 0u }; d < 3u; ++d) {
+            const auto dprev = (d + 2) % 3;
+            const auto dnext = (d + 1) % 3;
+            if (cmp::AlmostZero_host(drift_four_vel[dprev]) and
+                cmp::AlmostZero_host(drift_four_vel[dnext])) {
+              drift_dir = static_cast<short>(
+                SIGN(drift_four_vel[d]) * static_cast<real_t>(d + 1));
+              break;
+            }
+          }
+        }
+      }
     }
 
     /// Custom (e.g. spatially-dependent) drift profile.
-    template <class DF = DriftF, std::enable_if_t<!std::is_same_v<DF, ConstantDrift<D>>, int> = 0>
+    template <class DF = DriftF, std::enable_if_t<!std::is_void_v<DF>, int> = 0>
     Maxwellian(random_number_pool_t& pool, real_t temperature, const DF& df)
       : pool { pool }, temperature { temperature }, drift_f { df } {
       raise::ErrorIf(temperature < ZERO,
@@ -217,61 +221,88 @@ namespace arch::energy_dist {
       } else {
         JuttnerSinge(v, temperature, pool);
       }
-      // @note: boost only when using cartesian coordinates
       if constexpr (C == Coord::Cartesian) {
-        // Get drift 4-velocity from drift profile (constant or position-dependent)
-        vec_t<Dim::_3D> drift_4v;
-        drift_f(x_Ph, drift_4v);
-        const auto drift_mag = NORM(drift_4v[0], drift_4v[1], drift_4v[2]);
-        if (not cmp::AlmostZero(drift_mag)) {
-          const auto drift_3v = drift_mag / math::sqrt(ONE + SQR(drift_mag));
-          // determine drift direction
-          short dir = 4;
-          for (auto d { 0u }; d < 3u; ++d) {
-            const auto dprev = (d + 2) % 3;
-            const auto dnext = (d + 1) % 3;
-            if (cmp::AlmostZero(drift_4v[dprev]) and
-                cmp::AlmostZero(drift_4v[dnext])) {
-              dir = static_cast<short>(
-                SIGN(drift_4v[d]) * static_cast<real_t>(d + 1));
-              break;
+        if constexpr (std::is_void_v<DriftF>) {
+          // Pre-computed constant drift (original, proven GPU-safe)
+          if (drift_dir != 0) {
+            const auto gamma { U2GAMMA(v[0], v[1], v[2]) };
+            auto       rand_gen = pool.get_state();
+            if (-drift_3vel * v[0] > gamma * Random<real_t>(rand_gen)) {
+              v[0] = -v[0];
+            }
+            pool.free_state(rand_gen);
+            v[0] = math::sqrt(ONE + SQR(drift_4vel)) * (v[0] + drift_3vel * gamma);
+            if (drift_dir == -1) {
+              v[0] = -v[0];
+            } else if (drift_dir == 2 || drift_dir == -2) {
+              const auto tmp = v[1];
+              v[1]           = drift_dir > 0 ? v[0] : -v[0];
+              v[0]           = tmp;
+            } else if (drift_dir == 3 || drift_dir == -3) {
+              const auto tmp = v[2];
+              v[2]           = drift_dir > 0 ? v[0] : -v[0];
+              v[0]           = tmp;
+            } else if (drift_dir == 4) {
+              vec_t<Dim::_3D> v_old;
+              v_old[0] = v[0]; v_old[1] = v[1]; v_old[2] = v[2];
+              v[0] = v_old[0] * drift_dir_x1 - v_old[1] * drift_dir_x2 - v_old[2] * drift_dir_x3;
+              v[1] = (v_old[0] * drift_dir_x2 * (drift_dir_x1 + ONE) +
+                      v_old[1] * (SQR(drift_dir_x1) + drift_dir_x1 + SQR(drift_dir_x3)) -
+                      v_old[2] * drift_dir_x2 * drift_dir_x3) / (drift_dir_x1 + ONE);
+              v[2] = (v_old[0] * drift_dir_x3 * (drift_dir_x1 + ONE) -
+                      v_old[1] * drift_dir_x2 * drift_dir_x3 -
+                      v_old[2] * (-drift_dir_x1 + SQR(drift_dir_x3) - ONE)) / (drift_dir_x1 + ONE);
             }
           }
-          // Boost an isotropic Maxwellian with a drift velocity using
-          // flipping method https://arxiv.org/pdf/1504.03910.pdf
-          // 1. apply drift in X1 direction
-          const auto gamma { U2GAMMA(v[0], v[1], v[2]) };
-          auto       rand_gen = pool.get_state();
-          if (-drift_3v * v[0] > gamma * Random<real_t>(rand_gen)) {
-            v[0] = -v[0];
-          }
-          pool.free_state(rand_gen);
-          v[0] = math::sqrt(ONE + SQR(drift_mag)) * (v[0] + drift_3v * gamma);
-          // 2. rotate to desired orientation
-          if (dir == -1) {
-            v[0] = -v[0];
-          } else if (dir == 2 || dir == -2) {
-            const auto tmp = v[1];
-            v[1]           = dir > 0 ? v[0] : -v[0];
-            v[0]           = tmp;
-          } else if (dir == 3 || dir == -3) {
-            const auto tmp = v[2];
-            v[2]           = dir > 0 ? v[0] : -v[0];
-            v[0]           = tmp;
-          } else if (dir == 4) {
-            const auto d1 = drift_4v[0] / drift_mag;
-            const auto d2 = drift_4v[1] / drift_mag;
-            const auto d3 = drift_4v[2] / drift_mag;
-            vec_t<Dim::_3D> v_old;
-            v_old[0] = v[0]; v_old[1] = v[1]; v_old[2] = v[2];
-
-            v[0] = v_old[0] * d1 - v_old[1] * d2 - v_old[2] * d3;
-            v[1] = (v_old[0] * d2 * (d1 + ONE) +
-                    v_old[1] * (SQR(d1) + d1 + SQR(d3)) -
-                    v_old[2] * d2 * d3) / (d1 + ONE);
-            v[2] = (v_old[0] * d3 * (d1 + ONE) -
-                    v_old[1] * d2 * d3 -
-                    v_old[2] * (-d1 + SQR(d3) - ONE)) / (d1 + ONE);
+        } else {
+          // Position-dependent drift via functor
+          vec_t<Dim::_3D> drift_4v;
+          drift_f(x_Ph, drift_4v);
+          const auto drift_mag = NORM(drift_4v[0], drift_4v[1], drift_4v[2]);
+          if (not cmp::AlmostZero(drift_mag)) {
+            const auto drift_3v = drift_mag / math::sqrt(ONE + SQR(drift_mag));
+            short dir = 4;
+            for (auto d { 0u }; d < 3u; ++d) {
+              const auto dprev = (d + 2) % 3;
+              const auto dnext = (d + 1) % 3;
+              if (cmp::AlmostZero(drift_4v[dprev]) and
+                  cmp::AlmostZero(drift_4v[dnext])) {
+                dir = static_cast<short>(
+                  SIGN(drift_4v[d]) * static_cast<real_t>(d + 1));
+                break;
+              }
+            }
+            const auto gamma { U2GAMMA(v[0], v[1], v[2]) };
+            auto       rand_gen = pool.get_state();
+            if (-drift_3v * v[0] > gamma * Random<real_t>(rand_gen)) {
+              v[0] = -v[0];
+            }
+            pool.free_state(rand_gen);
+            v[0] = math::sqrt(ONE + SQR(drift_mag)) * (v[0] + drift_3v * gamma);
+            if (dir == -1) {
+              v[0] = -v[0];
+            } else if (dir == 2 || dir == -2) {
+              const auto tmp = v[1];
+              v[1]           = dir > 0 ? v[0] : -v[0];
+              v[0]           = tmp;
+            } else if (dir == 3 || dir == -3) {
+              const auto tmp = v[2];
+              v[2]           = dir > 0 ? v[0] : -v[0];
+              v[0]           = tmp;
+            } else if (dir == 4) {
+              const auto d1 = drift_4v[0] / drift_mag;
+              const auto d2 = drift_4v[1] / drift_mag;
+              const auto d3 = drift_4v[2] / drift_mag;
+              vec_t<Dim::_3D> v_old;
+              v_old[0] = v[0]; v_old[1] = v[1]; v_old[2] = v[2];
+              v[0] = v_old[0] * d1 - v_old[1] * d2 - v_old[2] * d3;
+              v[1] = (v_old[0] * d2 * (d1 + ONE) +
+                      v_old[1] * (SQR(d1) + d1 + SQR(d3)) -
+                      v_old[2] * d2 * d3) / (d1 + ONE);
+              v[2] = (v_old[0] * d3 * (d1 + ONE) -
+                      v_old[1] * d2 * d3 -
+                      v_old[2] * (-d1 + SQR(d3) - ONE)) / (d1 + ONE);
+            }
           }
         }
       }
@@ -280,7 +311,17 @@ namespace arch::energy_dist {
   private:
     random_number_pool_t pool;
     const real_t         temperature;
-    DriftF               drift_f;
+
+    // Pre-computed constant drift (DriftF = void)
+    real_t drift_3vel   { ZERO };
+    real_t drift_4vel   { ZERO };
+    real_t drift_dir_x1 { ZERO };
+    real_t drift_dir_x2 { ZERO };
+    real_t drift_dir_x3 { ZERO };
+    short  drift_dir    { 0 };
+
+    // Custom drift functor (empty when DriftF = void)
+    [[no_unique_address]] std::conditional_t<std::is_void_v<DriftF>, char, DriftF> drift_f;
   };
 
 } // namespace arch::energy_dist
