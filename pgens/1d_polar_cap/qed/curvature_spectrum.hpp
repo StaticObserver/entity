@@ -103,11 +103,12 @@ namespace user::polar_cap {
         return ONE;
       }
       if (value <= m_x(0)) {
-        // Small-x asymptote of the normalized curvature number spectrum.
-        const auto approx = ONE + static_cast<real_t>(0.346) * value -
-                            math::pow(value, ONE / THREE) *
-                              (static_cast<real_t>(1.232) +
-                               static_cast<real_t>(0.033) * SQR(value));
+        // Leading-order small-x asymptote C(x) ≈ 1 - 1.232 x^{1/3}.
+        // Matches the inverse in inverse_ccdf() exactly so the two form a
+        // consistent bijection for inverse CDF sampling.
+        const auto approx = ONE -
+                            static_cast<real_t>(1.232) *
+                              math::pow(value, ONE / THREE);
         return approx > ZERO ? approx : m_ccdf(0);
       }
       if (value > m_x(m_size - 1)) {
