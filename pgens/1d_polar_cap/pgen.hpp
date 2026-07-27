@@ -339,6 +339,15 @@ namespace user {
       raise::ErrorIf(conversion_optical_depth <= ZERO,
                      "conversion_optical_depth must be positive",
                      HERE);
+      raise::ErrorIf(not std::isfinite(emission_step_coefficient),
+                     "emission_step_coefficient must be finite",
+                     HERE);
+      raise::ErrorIf(not std::isfinite(drag_step_coefficient),
+                     "drag_step_coefficient must be finite",
+                     HERE);
+      raise::ErrorIf(not std::isfinite(opacity_prefactor),
+                     "opacity_prefactor must be finite",
+                     HERE);
       static_assert(EmissionPolicyClass<polar_cap::CurvatureEmission<M>, M>,
                     "CurvatureEmission does not satisfy EmissionPolicyClass");
       static_assert(
