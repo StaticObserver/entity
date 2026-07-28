@@ -188,4 +188,5 @@ Landau-level physics outside the first implementation.
 Converted and boundary-absorbed photons are compacted after pair conversion
 every `photon_recycle_interval` completed steps. QED-on inputs that enable this
 path set the photon species' standard `clear_interval = 0`, avoiding redundant
-pre-conversion cleanup.
+pre-conversion cleanup. The interval is required only when magnetic pair
+creation is enabled.

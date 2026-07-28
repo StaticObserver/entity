@@ -204,12 +204,7 @@ namespace user::polar_cap {
         if (maximum_path_sine <= static_cast<real_t>(0.0)) {
           retain_pair_capable_spectrum = false;
         } else {
-          const auto threshold_margin =
-            static_cast<real_t>(1.0) -
-            static_cast<real_t>(64.0) *
-              std::numeric_limits<real_t>::epsilon();
-          const auto pair_capable_energy = (TWO / maximum_path_sine) *
-                                           threshold_margin;
+          const auto pair_capable_energy = TWO / maximum_path_sine;
           if (pair_capable_energy > retained_energy_min) {
             retained_energy_min = pair_capable_energy;
           }

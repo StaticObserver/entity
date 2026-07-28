@@ -30,6 +30,32 @@ namespace user {
 
   namespace polar_cap {
 
+    inline auto PhotonRecycleInterval(const SimulationParams& params,
+                                      bool                    pair_creation_enabled)
+      -> timestep_t {
+      if (not pair_creation_enabled) {
+        return 1u;
+      }
+
+      constexpr auto key = "setup.polar_cap.qed.photon_recycle_interval";
+      if (params.contains(key)) {
+        // [setup] integers are stored as int by SimulationParams. Validate
+        // before converting to the unsigned timestep type.
+        const auto configured_interval = params.template get<int>(key);
+        raise::ErrorIf(configured_interval <= 0,
+                       "photon_recycle_interval must be positive",
+                       HERE);
+        return static_cast<timestep_t>(configured_interval);
+      }
+
+      const auto default_interval =
+        params.template get<timestep_t>("particles.clear_interval");
+      raise::ErrorIf(default_interval == 0u,
+                     "photon_recycle_interval must be positive",
+                     HERE);
+      return default_interval;
+    }
+
     // Prescribed 1D polar-cap background. The electric field is the analytic
     // integral of the excess-positron charge minus the fixed
     // Goldreich-Julian background used by ExtraPositronDensity below.
@@ -360,13 +386,9 @@ namespace user {
       , opacity_substeps { params.template get<int>(
           "setup.polar_cap.qed.opacity_substeps",
           8) }
-      , photon_recycle_interval {
-          qed_enabled
-            ? params.template get<timestep_t>(
-                "setup.polar_cap.qed.photon_recycle_interval",
-                params.template get<timestep_t>("particles.clear_interval"))
-            : 1u
-        }
+      , photon_recycle_interval { polar_cap::PhotonRecycleInterval(
+          params,
+          qed_enabled and pair_creation_enabled) }
       , init_flds { b0, initial_e_coefficient, x_surface, atmosphere_width }
       , ext_current { params.template get<real_t>(
                         "setup.polar_cap.external_current"),
@@ -427,9 +449,6 @@ namespace user {
                        HERE);
         raise::ErrorIf(conversion_optical_depth <= ZERO,
                        "conversion_optical_depth must be positive",
-                       HERE);
-        raise::ErrorIf(photon_recycle_interval == 0u,
-                       "photon_recycle_interval must be positive",
                        HERE);
         if (filter_nonconverting_photons) {
           const auto particle_boundaries = metadomain.mesh().prtl_bc();

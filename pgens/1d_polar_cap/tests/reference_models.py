@@ -292,6 +292,38 @@ class PolarCapReferenceTests(unittest.TestCase):
             self.assertLess(float(np.max(rejected_energy * sine)), 2.0)
             self.assertGreater(float(np.max(retained_energy * sine)), 2.0)
 
+        emission_source = (
+            CASE_DIR / "qed" / "curvature_emission.hpp"
+        ).read_text()
+        cutoff_block = emission_source.split(
+            "const auto pair_capable_energy", 1
+        )[1].split(
+            "if (pair_capable_energy > retained_energy_min)", 1
+        )[0]
+        self.assertIn("TWO / maximum_path_sine", cutoff_block)
+        self.assertNotIn("threshold_margin", cutoff_block)
+        self.assertNotIn("epsilon()", cutoff_block)
+
+    def test_photon_recycle_interval_uses_setup_integer_contract(self) -> None:
+        source = (CASE_DIR / "pgen.hpp").read_text()
+        helper = source.split(
+            "inline auto PhotonRecycleInterval", 1
+        )[1].split(
+            "// Prescribed 1D polar-cap background", 1
+        )[0]
+
+        self.assertIn("params.template get<int>(key)", helper)
+        self.assertIn("configured_interval <= 0", helper)
+        self.assertIn("static_cast<timestep_t>(configured_interval)", helper)
+        self.assertNotIn("get<timestep_t>(key", helper)
+        self.assertRegex(
+            source,
+            re.compile(
+                r"PhotonRecycleInterval\(\s*params,\s*"
+                r"qed_enabled and pair_creation_enabled\s*\)"
+            ),
+        )
+
     def test_filter_does_not_modify_continuous_drag_block(self) -> None:
         source = (CASE_DIR / "qed" / "curvature_emission.hpp").read_text()
         drag_block = source.split(

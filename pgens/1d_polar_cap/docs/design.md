@@ -212,9 +212,10 @@ The case requests standard Entity fields and species densities. No
 - `rho_c`, `gamma_emit`, `photon_energy_min`, `b_over_bq`,
   `max_photons_per_particle_step`, `opacity_substeps`, and
   `conversion_optical_depth` must be positive.
-- `photon_recycle_interval` must be a positive integer. QED-on inputs that use
-  PGen-managed post-conversion recycling set photon-species
-  `clear_interval = 0`.
+- When magnetic pair creation is enabled, `photon_recycle_interval` must be a
+  positive integer. QED-on inputs that use PGen-managed post-conversion
+  recycling set photon-species `clear_interval = 0`. Modes without magnetic
+  pair creation do not require this interval.
 - `filter_nonconverting_photons` is valid only with magnetic pair creation and
   absorbing or atmosphere particle boundaries on both `x1` sides.
 - `opacity_substeps` must be even.
