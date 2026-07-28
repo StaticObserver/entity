@@ -104,23 +104,52 @@ coordinate-basis conversion.
 When QED is enabled, electron and positron species select
 `emission = "custom"`. Their `EmissionPolicy` provides:
 
-- continuous curvature recoil proportional to `-gamma^3 u / rho_c^2`;
+- continuous curvature recoil normalized by `qed.gamma_rad` and
+  `qed.reference_electric_field`;
 - unbiased stochastic rounding of the expected macro-photon count;
 - curvature-spectrum energy sampling truncated at the parent kinetic energy;
 - complete photon payload initialization.
+
+For QED curvature drag, the per-step coefficient is
+
+```text
+dt * omegaB0 * abs(qed.reference_electric_field) / qed.gamma_rad^4
+```
+
+so the intended radiation-reaction energy is independent of `ppc0` and
+macro-particle charge. QED and the separate QED-off radiation-reaction mode
+remain mutually exclusive.
 
 Entity's built-in synchrotron reaction is intentionally unused. It depends on
 local electromagnetic acceleration, vanishes for ideal parallel motion, and
 does not represent a prescribed field-line curvature radius.
 
-When QED is disabled, the TOML contains only the electron and positron species,
-both with `emission = "none"`. Entity then dispatches its no-emission policy,
-the PGen does not access species `3`, and no photon particle container or
-curvature-spectrum device arrays are allocated.
+When QED and explicit radiation reaction are both disabled, the TOML contains
+only the electron and positron species, both with `emission = "none"`. Entity
+then dispatches its no-emission policy, the PGen does not access species `3`,
+and no photon particle container or curvature-spectrum device arrays are
+allocated.
+
+A QED-off radiation-reaction test still contains exactly two charged species
+and no photon container, but selects `emission = "custom"` to invoke a
+drag-only policy. Its independent parameters are
+`radiation_reaction.enable`, `radiation_reaction.gamma_rad`,
+`radiation_reaction.reference_electric_field`, and
+`radiation_reaction.max_drag_fraction`. The per-step coefficient is
+
+```text
+dt * omegaB0 * abs(reference_electric_field) / gamma_rad^4
+```
+
+so curvature drag balances electric acceleration at `gamma_rad` when the local
+parallel field equals the configured reference field. It is independent of
+`ppc0`, creates no photons, and cannot be enabled simultaneously with QED.
 
 The independent TOML switches are `curvature_drag`,
 `curvature_emission`, and `magnetic_pair_creation`; `enable = false` disables
 the complete QED path and is the baseline setting until normalization is fixed.
+When `curvature_drag = true`, QED also requires `gamma_rad` and
+`reference_electric_field`.
 
 The photon `CustomParticleUpdate` advances:
 
@@ -132,8 +161,9 @@ pld_r[:, 2] = theta_B
 
 At emission, `theta_B` is initialized from the full photon direction relative
 to the `x1` magnetic field. The update then uses an even-substep composite
-Simpson rule, full photon trajectory length for opacity, `x1` displacement for
-the curvature-angle increment, and `abs(sin(theta_B))`.
+Simpson rule, full photon trajectory length for opacity, signed `x1`
+displacement for the curvature-angle increment, and
+`abs(sin(theta_B))`.
 `CustomPostStep` converts photons satisfying both
 `epsilon_gamma * abs(sin(theta_B)) >= 2` and the configured optical-depth
 threshold. Each conversion creates one electron and one positron with equal
@@ -153,8 +183,9 @@ The case requests standard Entity fields and species densities. No
 
 - Electron and positron species must remain indices `1` and `2`, massive and
   oppositely charged.
-- With `qed.enable = false`, exactly two species are allowed; both charged
-  species use `emission = "none"` and output must not request `N_3`.
+- With `qed.enable = false`, exactly two species are allowed and output must
+  not request `N_3`. Charged species use `emission = "custom"` only when
+  `radiation_reaction.enable = true`; otherwise they use `emission = "none"`.
 - With `qed.enable = true`, exactly three species are required; both charged
   species use `emission = "custom"`, while photon species `3` is massless,
   neutral, uses the photon pusher, and provides at least three real payloads.
@@ -162,6 +193,14 @@ The case requests standard Entity fields and species densities. No
   `max_photons_per_particle_step`, `opacity_substeps`, and
   `conversion_optical_depth` must be positive.
 - `opacity_substeps` must be even.
+- `qed.gamma_rad > 1`, `qed.reference_electric_field > 0`, and
+  `0 < qed.max_drag_fraction < 1` are required when QED curvature drag is
+  enabled.
+- `radiation_reaction.gamma_rad > 1`,
+  `radiation_reaction.reference_electric_field > 0`, and
+  `0 < radiation_reaction.max_drag_fraction < 1` are required when explicit
+  radiation reaction is enabled.
+- `qed.enable` and `radiation_reaction.enable` are mutually exclusive.
 - `extra_positron_density = initial_e_coefficient` is required for the default
   continuous initial Gauss closure.
 - `grid.boundaries.atmosphere.height` controls only the neutral atmosphere. It
@@ -184,15 +223,22 @@ Completed:
 - custom curvature emission and continuous recoil;
 - photon angle/opacity update;
 - deterministic magnetic pair conversion and particle bookkeeping;
-- non-compiling Python reference checks.
+- QED-off construction does not require inactive QED-only parameters such as
+  `b_over_bq`;
+- Python reference checks, including counter-propagating photon curvature;
+- A100 QED-off electron-beam force balance at
+  `j_ext = 1.5 j_GJ` and `gamma_rad = 1.6e5`;
+- bounded A100 QED-on emission and two-species force-balance measurement
+  through `t = 0.2`.
 
 Pending:
 
 - Entity compilation and runtime smoke tests;
-- single-particle drag and emission tests inside Kokkos;
+- single-particle emission tests inside Kokkos;
 - discrete Gauss/Ampere checks for the initial state;
 - MPI payload transport and multi-domain conversion checks;
-- production normalization and ensemble radiation-energy calibration.
+- production normalization and ensemble radiation-energy calibration;
+- clean process teardown after output closure.
 
 ## 10. Important Changes
 
@@ -202,7 +248,16 @@ Pending:
   electron and positron containers.
 - Kept curvature radiation custom despite built-in synchrotron support because
   the physical accelerations are different.
+- Added a photon-free, QED-off curvature-drag mode normalized by an explicit
+  `gamma_rad`, removing macro-particle-charge dependence from the balance
+  energy.
+- Applied the same explicit `gamma_rad` normalization to QED-on curvature
+  recoil, replacing the migrated macro-particle-charge coefficient.
+- Made inactive QED-only constructor parameters optional so a QED-off
+  radiation-reaction input does not need placeholder QED configuration.
 - Replaced the old two-table spectrum reader with one validated CCDF table.
 - Fixed missing photon configuration, payload initialization, pair-kernel
   launch, threshold survival, signed opacity, Simpson parity, capacity checks,
   counters, and propagation direction.
+- Added an explicit counter-propagating photon regression test so the signed
+  curvature-angle convention cannot silently revert to `abs(ux1)`.

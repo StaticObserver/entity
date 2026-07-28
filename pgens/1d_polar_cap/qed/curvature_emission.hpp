@@ -113,6 +113,30 @@ namespace user::polar_cap {
       Kokkos::deep_copy(photon_injected, 0);
     }
 
+    // Drag-only construction for QED-off runs. The policy still uses Entity's
+    // custom-emission hook so recoil is applied inside the pusher, but it owns
+    // no photon destination and reports no injected species.
+    CurvatureEmission(bool                  apply_drag,
+                      real_t                drag_step_coefficient,
+                      real_t                max_drag_fraction,
+                      random_number_pool_t& pool)
+      : emission_enabled { false }
+      , apply_drag { apply_drag }
+      , photon_species_index { 0 }
+      , photon_energy_min { ONE }
+      , gamma_emit { static_cast<real_t>(2.0) }
+      , rho_c { ONE }
+      , emission_step_coefficient { ZERO }
+      , drag_step_coefficient { drag_step_coefficient }
+      , max_drag_fraction { max_drag_fraction }
+      , max_photons_per_particle { 0 }
+      , spectrum {}
+      , random_pool { pool }
+      , photon_offset { 0 }
+      , photon_counter { 0 }
+      , domain_index { 0 }
+      , photon_tracking { false } {}
+
     Inline auto shouldEmit(const coord_t<M::PrtlDim>&,
                            const coord_t<M::PrtlDim>&,
                            const vec_t<Dim::_3D>& u_Ph,
@@ -283,10 +307,14 @@ namespace user::polar_cap {
     }
 
     auto emitted_species_indices() const -> std::vector<spidx_t> {
-      return { photon_species_index };
+      return emission_enabled ? std::vector<spidx_t> { photon_species_index }
+                              : std::vector<spidx_t> {};
     }
 
     auto numbers_injected() const -> std::vector<npart_t> {
+      if (not emission_enabled) {
+        return {};
+      }
       // Entity consumes this count after each charged-species pusher call and
       // advances photon npart/counter before the next species is processed.
       auto host = Kokkos::create_mirror_view(photon_injected);

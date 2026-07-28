@@ -48,6 +48,76 @@ class PolarCapReferenceTests(unittest.TestCase):
         self.assertTrue(np.all((self.ccdf > 0.0) & (self.ccdf <= 1.0)))
         self.assertTrue(np.all(np.diff(self.ccdf) < 0.0))
 
+    def test_qed_on_scaled_parameter_card(self) -> None:
+        with (CASE_DIR / "qed_on_degj5dx_j1p5_test.toml").open("rb") as stream:
+            config = tomllib.load(stream)
+        setup = config["setup"]
+        qed = {
+            key.removeprefix("polar_cap.qed."): value
+            for key, value in setup.items()
+            if key.startswith("polar_cap.qed.")
+        }
+        species = config["particles"]["species"]
+
+        self.assertTrue(qed["enable"])
+        self.assertTrue(qed["curvature_drag"])
+        self.assertTrue(qed["curvature_emission"])
+        self.assertTrue(qed["magnetic_pair_creation"])
+        self.assertFalse(setup["polar_cap.radiation_reaction.enable"])
+        self.assertEqual(len(species), 3)
+        self.assertEqual(
+            [item["label"] for item in species], ["e-", "e+", "gamma"]
+        )
+        self.assertEqual(species[0]["emission"], "custom")
+        self.assertEqual(species[1]["emission"], "custom")
+        self.assertEqual(species[2]["pusher"], "Photon")
+        self.assertEqual(species[2]["n_payloads_real"], 3)
+        self.assertEqual(
+            config["output"]["fields"]["quantities"],
+            ["N_1", "N_2", "N_3", "E", "B", "J"],
+        )
+
+    def test_qed_on_scaled_energy_hierarchy(self) -> None:
+        with (CASE_DIR / "qed_on_degj5dx_j1p5_test.toml").open("rb") as stream:
+            config = tomllib.load(stream)
+        setup = config["setup"]
+        gamma_emit = setup["polar_cap.qed.gamma_emit"]
+        gamma_rad = setup["polar_cap.qed.gamma_rad"]
+        extent = config["grid"]["extent"][0]
+        skin_depth = config["scales"]["skindepth0"]
+        gamma_pc = 0.5 * ((extent[1] - extent[0]) / skin_depth) ** 2
+
+        self.assertEqual(gamma_rad / gamma_emit, 10.0)
+        self.assertEqual(gamma_pc / gamma_rad, 50.0)
+        self.assertEqual(gamma_pc, 8.0e6)
+
+    def test_qed_drag_uses_gamma_rad_not_macro_particle_charge(self) -> None:
+        source = (CASE_DIR / "pgen.hpp").read_text()
+        drag_block = source.split(", drag_step_coefficient {", 1)[1].split(
+            ", opacity_prefactor {", 1
+        )[0]
+        self.assertIn("setup.polar_cap.qed.gamma_rad", source)
+        self.assertIn("setup.polar_cap.qed.reference_electric_field", source)
+        self.assertIn("scales.omegaB0", drag_block)
+        self.assertNotIn("scales.q0", drag_block)
+        self.assertRegex(drag_block, re.compile(r"SQR\(SQR\(gamma_rad\)\)"))
+
+    def test_qed_drag_step_coefficient_matches_parameter_card(self) -> None:
+        with (CASE_DIR / "qed_on_degj5dx_j1p5_test.toml").open("rb") as stream:
+            config = tomllib.load(stream)
+        setup = config["setup"]
+        extent = config["grid"]["extent"][0]
+        dx = (extent[1] - extent[0]) / config["grid"]["resolution"][0]
+        dt = config["algorithms"]["timestep"]["CFL"] * dx
+        omega_b = 1.0 / config["scales"]["larmor0"]
+        coefficient = (
+            dt
+            * omega_b
+            * setup["polar_cap.qed.reference_electric_field"]
+            / setup["polar_cap.qed.gamma_rad"] ** 4
+        )
+        self.assertAlmostEqual(coefficient, 3.0517578125e-19, places=30)
+
     def test_inverse_ccdf_round_trip(self) -> None:
         probabilities = np.geomspace(self.ccdf[-1], self.ccdf[0], 2000)
         inverse = np.exp(
@@ -77,6 +147,28 @@ class PolarCapReferenceTests(unittest.TestCase):
             math.log(self.ccdf[-1]) + tail_slope * (inverse - self.x[-1])
         )
         self.assertAlmostEqual(reconstructed / probability, 1.0, places=12)
+
+    def test_default_spectrum_never_indexes_empty_device_views(self) -> None:
+        spectrum_source = (
+            CASE_DIR / "qed" / "curvature_spectrum.hpp"
+        ).read_text()
+        self.assertIn("CurvatureSpectrum() = default;", spectrum_source)
+        self.assertRegex(
+            spectrum_source,
+            re.compile(
+                r"ccdf\(real_t value\).*?m_size == 0.*?return ONE;"
+                r".*?m_x\(0\)",
+                re.DOTALL,
+            ),
+        )
+        self.assertRegex(
+            spectrum_source,
+            re.compile(
+                r"inverse_ccdf\(real_t probability\).*?m_size == 0"
+                r".*?return ZERO;.*?m_ccdf\(0\)",
+                re.DOTALL,
+            ),
+        )
 
     def test_truncated_spectrum_respects_parent_kinetic_energy(self) -> None:
         qed = self.qed
@@ -175,18 +267,42 @@ class PolarCapReferenceTests(unittest.TestCase):
             emission_source,
         )
 
-    def test_opacity_uses_trajectory_length_but_angle_uses_x1_distance(self) -> None:
+    def test_opacity_uses_trajectory_length_but_signed_x1_angle(self) -> None:
         dt = 0.2
         rho_c = 1.5
-        direction_cosine = 0.5
         trajectory_length = dt
-        field_line_distance = dt * abs(direction_cosine)
         self.assertEqual(trajectory_length, dt)
-        self.assertAlmostEqual(
-            field_line_distance / rho_c,
-            dt * abs(direction_cosine) / rho_c,
+
+        angle_increments = []
+        for direction_cosine in (0.5, -0.5):
+            field_line_distance = dt * direction_cosine
+            angle_increment = field_line_distance / rho_c
+            angle_increments.append(angle_increment)
+            self.assertAlmostEqual(
+                angle_increment,
+                dt * direction_cosine / rho_c,
+            )
+            self.assertGreater(trajectory_length, abs(field_line_distance))
+
+        self.assertAlmostEqual(angle_increments[0], -angle_increments[1])
+
+        opacity_source = (
+            CASE_DIR / "qed" / "photon_opacity.hpp"
+        ).read_text()
+        self.assertRegex(
+            opacity_source,
+            re.compile(
+                r"field_line_distance\s*=\s*context\.dt\s*\*\s*"
+                r"particles\.ux1\(p\)\s*/\s*u_norm"
+            ),
         )
-        self.assertGreater(trajectory_length, field_line_distance)
+        self.assertNotRegex(
+            opacity_source,
+            re.compile(
+                r"field_line_distance\s*=\s*context\.dt[^;]*"
+                r"abs\s*\(\s*particles\.ux1\(p\)"
+            ),
+        )
 
     def test_pair_energy_closure(self) -> None:
         for photon_energy in (2.0, 3.0, 10.0, 1.0e4):
@@ -194,6 +310,19 @@ class PolarCapReferenceTests(unittest.TestCase):
             momentum = math.sqrt(gamma_pair * gamma_pair - 1.0)
             reconstructed = 2.0 * math.sqrt(1.0 + momentum * momentum)
             self.assertAlmostEqual(reconstructed, photon_energy, places=11)
+
+    def test_pair_threshold_roundoff_is_clamped_before_sqrt(self) -> None:
+        pair_source = (
+            CASE_DIR / "qed" / "magnetic_pair_creation.hpp"
+        ).read_text()
+        self.assertRegex(
+            pair_source,
+            re.compile(
+                r"u_magnitude\s*=\s*math::sqrt\s*\(\s*"
+                r"math::max\s*\(\s*ZERO\s*,\s*"
+                r"SQR\(gamma_pair\)\s*-\s*ONE\s*\)"
+            ),
+        )
 
     def test_composite_simpson_opacity_against_dense_reference(self) -> None:
         qed = self.qed
@@ -419,10 +548,112 @@ class PolarCapReferenceTests(unittest.TestCase):
         self.assertIn("polar_cap.initial_injection.minimum_ppc", setup)
         self.assertIn("polar_cap.qed.enable", setup)
 
+    def test_pgen_requires_b0_and_validates_host_coefficients(self) -> None:
+        pgen_source = (CASE_DIR / "pgen.hpp").read_text()
+        self.assertIn(
+            'params.template get<real_t>("setup.polar_cap.B0")',
+            pgen_source,
+        )
+        self.assertNotRegex(
+            pgen_source,
+            re.compile(r'get<real_t>\("setup\.polar_cap\.B0"\s*,'),
+        )
+        self.assertIn("temperature must be non-negative", pgen_source)
+        for coefficient in (
+            "emission_step_coefficient",
+            "drag_step_coefficient",
+            "opacity_prefactor",
+        ):
+            self.assertIn(
+                f"not std::isfinite({coefficient})",
+                pgen_source,
+            )
+
     def test_output_smoothing_matches_third_order_particle_shape(self) -> None:
         smoothing = self.config["output"]["fields"]["smoothing"]
         self.assertEqual(smoothing["method"], "spline")
         self.assertEqual(smoothing["order"], 3)
+
+
+class RadiationReactionBalanceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        with (CASE_DIR / "radiation_reaction_balance.toml").open("rb") as stream:
+            cls.config = tomllib.load(stream)
+        setup = cls.config["setup"]
+        cls.rr = {
+            key.removeprefix("polar_cap.radiation_reaction."): value
+            for key, value in setup.items()
+            if key.startswith("polar_cap.radiation_reaction.")
+        }
+
+    def test_qed_is_off_and_no_photon_species_exists(self) -> None:
+        setup = self.config["setup"]
+        self.assertFalse(setup["polar_cap.qed.enable"])
+        self.assertNotIn("polar_cap.qed.b_over_bq", setup)
+        species = self.config["particles"]["species"]
+        self.assertEqual([item["label"] for item in species], ["e-", "e+"])
+        self.assertTrue(all(item["emission"] == "custom" for item in species))
+
+    def test_qed_off_rr_constructor_does_not_require_qed_parameters(self) -> None:
+        pgen_source = (CASE_DIR / "pgen.hpp").read_text()
+        for parameter, fallback in (
+            ("rho_c", "ONE"),
+            ("gamma_emit", r"static_cast<real_t>\(2\.0\)"),
+            ("photon_energy_min", "ONE"),
+            ("b_over_bq", "ONE"),
+            ("max_photons_per_particle_step", "1"),
+        ):
+            self.assertRegex(
+                pgen_source,
+                re.compile(
+                    rf"qed_enabled.*?get(?:<[^>]+>)?\s*\(\s*"
+                    rf'"setup\.polar_cap\.qed\.{parameter}"\)'
+                    rf".*?:\s*{fallback}",
+                    re.DOTALL,
+                ),
+            )
+
+    def test_super_gj_current_is_1p5(self) -> None:
+        self.assertEqual(self.config["setup"]["polar_cap.external_current"], 1.5)
+
+    def test_degj_and_gamma_pc_scaling(self) -> None:
+        resolution = self.config["grid"]["resolution"][0]
+        xmin, xmax = self.config["grid"]["extent"][0]
+        dx = (xmax - xmin) / resolution
+        d_e_gj = self.config["scales"]["skindepth0"]
+        self.assertAlmostEqual(d_e_gj / dx, 5.0)
+        gamma_pc = 0.5 * ((xmax - xmin) / d_e_gj) ** 2
+        self.assertAlmostEqual(gamma_pc, 8.0e6)
+
+    def test_explicit_drag_balances_at_gamma_rad(self) -> None:
+        resolution = self.config["grid"]["resolution"][0]
+        xmin, xmax = self.config["grid"]["extent"][0]
+        dx = (xmax - xmin) / resolution
+        dt = self.config["algorithms"]["timestep"]["CFL"] * dx
+        omega_b0 = 1.0 / self.config["scales"]["larmor0"]
+        gamma_rad = self.rr["gamma_rad"]
+        e_ref = self.rr["reference_electric_field"]
+        drag_step_coefficient = dt * omega_b0 * e_ref / gamma_rad**4
+        acceleration_per_step = dt * omega_b0 * e_ref
+        drag_per_step_at_balance = drag_step_coefficient * gamma_rad**4
+        self.assertAlmostEqual(
+            drag_per_step_at_balance / acceleration_per_step,
+            1.0,
+            places=14,
+        )
+        self.assertAlmostEqual(drag_step_coefficient, 3.0517578125e-19)
+
+    def test_explicit_drag_source_is_ppc_independent(self) -> None:
+        source = (CASE_DIR / "pgen.hpp").read_text()
+        drag_block = source.split(", drag_step_coefficient {", 1)[1].split(
+            ", opacity_prefactor {", 1
+        )[0]
+        self.assertIn("radiation_reaction_enabled", drag_block)
+        self.assertIn("scales.omegaB0", drag_block)
+        self.assertIn("reference_electric_field", drag_block)
+        self.assertIn("gamma_rad", drag_block)
+        self.assertNotIn("scales.q0", drag_block)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,150 @@
+{
+  "card": {
+    "digest": "sha256:c05cde2a56d8ef0d24a01957336029d1922ef9a37a3059dc8fd470dc84ff790f",
+    "domain": "simulation",
+    "fields": {
+      "algorithms.timestep.CFL": {
+        "tier": 1,
+        "value": 0.5
+      },
+      "grid.extent": {
+        "tier": 1,
+        "value": [
+          [
+            0.0,
+            2.0
+          ]
+        ]
+      },
+      "grid.resolution": {
+        "tier": 1,
+        "value": [
+          256
+        ]
+      },
+      "output.fields.quantities": {
+        "tier": 2,
+        "value": [
+          "N_1",
+          "N_2",
+          "N_3",
+          "E",
+          "B",
+          "J"
+        ]
+      },
+      "output.fields.smoothing.method": {
+        "tier": 2,
+        "value": "spline"
+      },
+      "output.fields.smoothing.order": {
+        "tier": 2,
+        "value": 3
+      },
+      "output.format": {
+        "tier": 2,
+        "value": "disabled"
+      },
+      "output.interval_time": {
+        "tier": 2,
+        "value": 1.0
+      },
+      "output.particles.enable": {
+        "tier": 2,
+        "value": false
+      },
+      "output.spectra.enable": {
+        "tier": 2,
+        "value": false
+      },
+      "particles.ppc0": {
+        "tier": 1,
+        "value": 50.0
+      },
+      "particles.species.0.charge": {
+        "tier": 1,
+        "value": -1.0
+      },
+      "particles.species.0.label": {
+        "tier": 1,
+        "value": "e-"
+      },
+      "particles.species.0.mass": {
+        "tier": 1,
+        "value": 1.0
+      },
+      "particles.species.0.maxnpart": {
+        "tier": 1,
+        "value": 50000
+      },
+      "particles.species.1.charge": {
+        "tier": 1,
+        "value": 1.0
+      },
+      "particles.species.1.label": {
+        "tier": 1,
+        "value": "e+"
+      },
+      "particles.species.1.mass": {
+        "tier": 1,
+        "value": 1.0
+      },
+      "particles.species.1.maxnpart": {
+        "tier": 1,
+        "value": 50000
+      },
+      "particles.species.2.charge": {
+        "tier": 1,
+        "value": 0.0
+      },
+      "particles.species.2.label": {
+        "tier": 1,
+        "value": "gamma"
+      },
+      "particles.species.2.mass": {
+        "tier": 1,
+        "value": 0.0
+      },
+      "particles.species.2.maxnpart": {
+        "tier": 1,
+        "value": 100000
+      },
+      "setup.polar_cap.extra_positron_density": {
+        "tier": 1,
+        "value": 1.0
+      },
+      "setup.polar_cap.initial_injection.minimum_density": {
+        "tier": 1,
+        "value": 1e-06
+      },
+      "setup.polar_cap.temperature": {
+        "tier": 1,
+        "value": 0.01
+      },
+      "simulation.engine": {
+        "tier": 2,
+        "value": "srpic"
+      },
+      "simulation.name": {
+        "tier": 2,
+        "value": "polar_cap_qedon_smoke"
+      },
+      "simulation.runtime": {
+        "tier": 1,
+        "value": 1.0
+      }
+    },
+    "input_sha256": "92b444462e1e4b825ddecb131af431020d78733930aab48d4b6cc23a97a5b02d",
+    "kind": "entity-parameter-card",
+    "schema_version": 1,
+    "warnings": [
+      "tier-1 missing: boundary conditions (boundaries.fields, boundaries.particles)"
+    ]
+  },
+  "confirmed_at": "2026-07-26T13:55:57.395992+00:00",
+  "confirmed_by": "Claude-QED-verification",
+  "defaults": false,
+  "input_sha256": "92b444462e1e4b825ddecb131af431020d78733930aab48d4b6cc23a97a5b02d",
+  "kind": "entity-pgen.simulation-confirmation",
+  "schema_version": 1
+}

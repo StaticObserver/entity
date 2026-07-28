@@ -57,7 +57,10 @@ namespace ntt {
       Kokkos::deep_copy(domain.fields.bckp, ZERO);
       auto scatter_bckp = Kokkos::Experimental::create_scatter_view(
         domain.fields.bckp);
-      const auto use_weights = M::CoordType != Coord::Cartesian;
+      // Follow the global particle-weight contract. Non-Cartesian injectors
+      // still enforce weights, while Cartesian cases may now use physical
+      // macro-particle weights supplied by their spatial distributions.
+      const auto use_weights = params.template get<bool>("particles.use_weights");
       const auto ni2         = domain.mesh.n_active(in::x2);
       const auto inv_n0      = ONE / params.template get<real_t>("scales.n0");
 

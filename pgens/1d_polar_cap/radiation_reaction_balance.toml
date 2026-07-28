@@ -1,0 +1,112 @@
+[simulation]
+  name    = "polar_cap_rr_balance_j1p5_degj5dx_r20k"
+  engine  = "srpic"
+  runtime = 2.0
+
+[grid]
+  resolution = [20000]
+  extent     = [[0.0, 2.0]]
+
+  [grid.metric]
+    metric = "minkowski"
+
+  [grid.boundaries]
+    fields    = [["ATMOSPHERE", "MATCH"]]
+    particles = [["ATMOSPHERE", "ABSORB"]]
+
+    [grid.boundaries.match]
+      ds = 0.05
+
+    [grid.boundaries.atmosphere]
+      temperature = 0.1
+      density     = 100.0
+      height      = 0.130288344571
+      species     = [1, 2]
+      ds          = 0.6
+
+[scales]
+  # R_PC=2, Nx=20000, dx=1e-4, and d_e^GJ=5 dx.
+  # larmor0=skindepth0^2 preserves initial_e_coefficient=1.
+  larmor0    = 2.5e-7
+  skindepth0 = 5.0e-4
+
+[algorithms]
+  current_filters = 32
+
+  [algorithms.timestep]
+    CFL = 0.25
+
+[particles]
+  ppc0                     = 50.0
+  use_weights              = true
+  clear_interval           = 100
+  spatial_sorting_interval = 0
+
+  [[particles.species]]
+    label    = "e-"
+    mass     = 1.0
+    charge   = -1.0
+    maxnpart = 1e8
+    pusher   = "Boris"
+    # Custom dispatch is used only for continuous curvature recoil.
+    emission = "custom"
+
+  [[particles.species]]
+    label    = "e+"
+    mass     = 1.0
+    charge   = 1.0
+    maxnpart = 1e8
+    pusher   = "Boris"
+    emission = "custom"
+
+[setup]
+  "polar_cap.B0"                       = -1.0
+  "polar_cap.temperature"              = 0.01
+  # Positive GJ convention: this is the super-GJ test j_m/j_GJ=1.5.
+  "polar_cap.external_current"         = 1.5
+  "polar_cap.initial_e_coefficient"    = 1.0
+  "polar_cap.extra_positron_density"   = 1.0
+
+  "polar_cap.initial_injection.minimum_density" = 1e-6
+  "polar_cap.initial_injection.minimum_ppc"     = 1
+
+  # QED is completely off: no photons, emission, opacity, or pair creation.
+  "polar_cap.qed.enable" = false
+
+  # The explicit drag coefficient makes gamma_rad independent of ppc0:
+  # K = omegaB0 * E_ref / gamma_rad^4.
+  "polar_cap.radiation_reaction.enable"                   = true
+  "polar_cap.radiation_reaction.gamma_rad"                = 1.6e5
+  "polar_cap.radiation_reaction.reference_electric_field" = 2.0
+  "polar_cap.radiation_reaction.max_drag_fraction"        = 0.2
+
+[output]
+  format        = "bp"
+  interval_time = 0.01
+
+  [output.fields]
+    quantities = ["N_1", "N_2", "E", "B", "J"]
+
+    [output.fields.smoothing]
+      method = "spline"
+      order  = 3
+
+  [output.particles]
+    enable  = true
+    species = [1, 2]
+    stride  = 50
+
+  [output.spectra]
+    enable   = true
+    e_min    = 1e0
+    e_max    = 1e7
+    log_bins = true
+    n_bins   = 512
+
+[diagnostics]
+  interval        = 1000
+  colored_stdout  = true
+  blocking_timers = true
+
+[checkpoint]
+  keep = 0

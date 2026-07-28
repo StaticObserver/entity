@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "snapshot_id": "5772729a87df56dcea192f7fbf5573caee7bdb86d75faaaad49a69ba89b9f3eb",
+  "snapshot_id": "c50c28cb5a6d126e8b9986075eb2bc8841fdbd228f81da420b729bca03985fb0",
   "files": [
     {
       "path": ".clang-format",
@@ -480,7 +480,11 @@
     },
     {
       "path": "pgens/1d_polar_cap/docs/design.md",
-      "sha256": "c54b3109b18b47f2f07addb46aef086206f9d829f77c2eb9ec2fa868f73e95a1"
+      "sha256": "dce9059a97a03a275136f9aa62901b34f204736e25d929a534acc14959090488"
+    },
+    {
+      "path": "pgens/1d_polar_cap/docs/design_summary.md",
+      "sha256": "fdcaf4ac6e7f0a01b519170c3f2f1392bdca3ee5bc60cb1767d92ce21fae867e"
     },
     {
       "path": "pgens/1d_polar_cap/generate_curvature_table.py",
@@ -492,35 +496,51 @@
     },
     {
       "path": "pgens/1d_polar_cap/pgen.hpp",
-      "sha256": "ecbc4c67e7724c6a655aba689e656f10c090354aeed56ec0e390f38eae2032f9"
+      "sha256": "840ef0c2831827dd4a6836fff96522b6f8ae6a6f2996c323a69537b319634ab9"
     },
     {
       "path": "pgens/1d_polar_cap/qed/curvature_emission.hpp",
-      "sha256": "ba643da55d7fa98a283cdb8afb0b86d6bd53931858747b01612dd76770344d42"
+      "sha256": "e497d4ba5eb69a8d119514348f9a1d1bdc8b977530167dcd3fb211a642ac382c"
     },
     {
       "path": "pgens/1d_polar_cap/qed/curvature_spectrum.hpp",
-      "sha256": "c41ee2032e5eef42e273523bd480f253ab9b2509acff20e0726947a1eb59aed1"
+      "sha256": "ba0371c4a7b90aa7f5471a567b21901cb9564ad2e1643a12f3058bdef48d99bb"
     },
     {
       "path": "pgens/1d_polar_cap/qed/magnetic_pair_creation.hpp",
-      "sha256": "77c564bc8f17be132e7e26f7449fa9e8d3d94147d58fdd6573e1b90a4ac5ccd4"
+      "sha256": "d9a617e9dd6c08d0b43b9b121dd00dc89d404ec97c00a8719c39402bc3fcc979"
     },
     {
       "path": "pgens/1d_polar_cap/qed/photon_opacity.hpp",
-      "sha256": "860081a242e061c6d0338fe06e972931c60ff99661146ab252add6d0ad58cdba"
+      "sha256": "63c713c6300bdc022854c1078c2f624280b16ce3f6f2e41ad33588f3b67910e7"
+    },
+    {
+      "path": "pgens/1d_polar_cap/qed_on_degj5dx_j1p5_test.toml",
+      "sha256": "7f924f9b2f959f909def718f64ba4662d4afd874b44a67ff498537a9c55ba2d5"
+    },
+    {
+      "path": "pgens/1d_polar_cap/radiation_reaction_balance.toml",
+      "sha256": "e0af483901d064e81cca6297c8011581bde3931c51dd7303523a2684b8a32ecf"
     },
     {
       "path": "pgens/1d_polar_cap/realistic_qedoff.toml",
-      "sha256": "f85c9174a69770f63700b0d3a1cbb0a5be3eefeedc0dbf8c855f8008b0cde55c"
+      "sha256": "c8d466785e5abd6dad24186037c48196fd70c6b8dab69b9e55261ccde24f8bca"
     },
     {
       "path": "pgens/1d_polar_cap/realistic_qedoff.toml.decisions.json",
-      "sha256": "700bfd47179d3fdd629bf9f4bbc2231de3c79dbe35ddf2b59b1589e0b95a485e"
+      "sha256": "7d61007828e69508db2f2259f706c30c676807b50c76648d9cdc6dd27e9b2de8"
+    },
+    {
+      "path": "pgens/1d_polar_cap/realistic_qedon_smoke.toml",
+      "sha256": "92b444462e1e4b825ddecb131af431020d78733930aab48d4b6cc23a97a5b02d"
+    },
+    {
+      "path": "pgens/1d_polar_cap/realistic_qedon_smoke.toml.decisions.json",
+      "sha256": "bf334a5953a1346f79fa51737a1e78cc40ef6e4d3275321b5d040cfa51a9733f"
     },
     {
       "path": "pgens/1d_polar_cap/tests/reference_models.py",
-      "sha256": "e47eef9f7de387f1266d32a46217b8ec107436e77e1af06e1b494f3be23ba4ac"
+      "sha256": "bf40cb692304245b32569a768f421115ac1171fe5611ce4b0cf7bd13453f0137"
     },
     {
       "path": "pgens/accretion/accretion.toml",

@@ -22,6 +22,7 @@
 
 #include <Kokkos_Core.hpp>
 
+#include <cmath>
 #include <string>
 
 namespace user {
@@ -210,7 +211,9 @@ namespace user {
 
     const bool           qed_enabled, curvature_drag_enabled;
     const bool           curvature_emission_enabled, pair_creation_enabled;
+    const bool           radiation_reaction_enabled;
     const real_t         rho_c, gamma_emit, photon_energy_min;
+    const real_t         gamma_rad, reference_electric_field;
     const real_t         emission_step_coefficient, drag_step_coefficient;
     const real_t         opacity_prefactor, b_over_bq;
     const real_t         max_drag_fraction, conversion_optical_depth;
@@ -252,40 +255,97 @@ namespace user {
       , pair_creation_enabled { params.template get<bool>(
           "setup.polar_cap.qed.magnetic_pair_creation",
           true) }
-      , rho_c { params.template get<real_t>("setup.polar_cap.qed.rho_c") }
-      , gamma_emit { params.template get<real_t>("setup.polar_cap.qed.gamma_emit") }
-      , photon_energy_min { params.template get<real_t>(
-          "setup.polar_cap.qed.photon_energy_min") }
+      , radiation_reaction_enabled { params.template get<bool>(
+          "setup.polar_cap.radiation_reaction.enable",
+          false) }
+      , rho_c {
+          qed_enabled
+            ? params.template get<real_t>("setup.polar_cap.qed.rho_c")
+            : ONE
+        }
+      , gamma_emit {
+          qed_enabled
+            ? params.template get<real_t>("setup.polar_cap.qed.gamma_emit")
+            : static_cast<real_t>(2.0)
+        }
+      , photon_energy_min {
+          qed_enabled
+            ? params.template get<real_t>(
+                "setup.polar_cap.qed.photon_energy_min")
+            : ONE
+        }
+      , gamma_rad {
+          qed_enabled and curvature_drag_enabled
+            ? params.template get<real_t>("setup.polar_cap.qed.gamma_rad")
+            : radiation_reaction_enabled
+                ? params.template get<real_t>(
+                    "setup.polar_cap.radiation_reaction.gamma_rad")
+                : static_cast<real_t>(2.0)
+        }
+      , reference_electric_field {
+          qed_enabled and curvature_drag_enabled
+            ? params.template get<real_t>(
+                "setup.polar_cap.qed.reference_electric_field")
+            : radiation_reaction_enabled
+                ? params.template get<real_t>(
+                    "setup.polar_cap.radiation_reaction."
+                    "reference_electric_field")
+                : ONE
+        }
       , emission_step_coefficient {
           // Convert the configured photon-number coefficient to a per-step
           // coefficient. 5*pi/3 normalizes the curvature number spectrum.
-          params.template get<real_t>("setup.polar_cap.qed.emission_coefficient") *
+          (qed_enabled
+             ? params.template get<real_t>(
+                 "setup.polar_cap.qed.emission_coefficient")
+             : ZERO) *
           params.template get<real_t>("algorithms.timestep.dt") /
           params.template get<real_t>("scales.skindepth0") *
           static_cast<real_t>(5.0 * constant::PI / 3.0)
         }
       , drag_step_coefficient {
-          // Continuous curvature recoil: delta_u/u ~ dt*q0*gamma^3/(6*pi*rho_c^2).
-          params.template get<real_t>("scales.q0") *
-          params.template get<real_t>("algorithms.timestep.dt") /
-          (static_cast<real_t>(6.0 * constant::PI) * SQR(rho_c))
+          // Both the QED curvature recoil and the QED-off drag-only mode use
+          // the same physical normalization: K*gamma^4 balances
+          // omegaB0*E_ref at gamma_rad. This removes any dependence on
+          // macro-particle charge or ppc0.
+          (radiation_reaction_enabled or
+           (qed_enabled and curvature_drag_enabled))
+            ? params.template get<real_t>("algorithms.timestep.dt") *
+                params.template get<real_t>("scales.omegaB0") *
+                math::abs(reference_electric_field) /
+                SQR(SQR(gamma_rad))
+            : ZERO
         }
       , opacity_prefactor {
           // Erber-like magnetic conversion coefficient in Entity length units.
-          params.template get<real_t>("setup.polar_cap.qed.pair_coefficient") *
+          (qed_enabled
+             ? params.template get<real_t>(
+                 "setup.polar_cap.qed.pair_coefficient")
+             : ZERO) *
           static_cast<real_t>(0.23 * constant::PI * constant::SQRT3) *
-          params.template get<real_t>("setup.polar_cap.qed.b_over_bq") /
+          (qed_enabled
+             ? params.template get<real_t>("setup.polar_cap.qed.b_over_bq")
+             : ONE) /
           params.template get<real_t>("scales.skindepth0")
         }
-      , b_over_bq { params.template get<real_t>("setup.polar_cap.qed.b_over_bq") }
+      , b_over_bq {
+          qed_enabled
+            ? params.template get<real_t>("setup.polar_cap.qed.b_over_bq")
+            : ONE
+        }
       , max_drag_fraction { params.template get<real_t>(
-          "setup.polar_cap.qed.max_drag_fraction",
-          static_cast<real_t>(0.2)) }
+          "setup.polar_cap.radiation_reaction.max_drag_fraction",
+          params.template get<real_t>("setup.polar_cap.qed.max_drag_fraction",
+                                      static_cast<real_t>(0.2))) }
       , conversion_optical_depth { params.template get<real_t>(
           "setup.polar_cap.qed.conversion_optical_depth",
           ONE) }
-      , max_photons_per_particle { params.template get<int>(
-          "setup.polar_cap.qed.max_photons_per_particle_step") }
+      , max_photons_per_particle {
+          qed_enabled
+            ? params.template get<int>(
+                "setup.polar_cap.qed.max_photons_per_particle_step")
+            : 1
+        }
       , opacity_substeps { params.template get<int>(
           "setup.polar_cap.qed.opacity_substeps",
           8) }
@@ -303,7 +363,6 @@ namespace user {
         } {
       // Validate signed host-side values before passing compact values into
       // device policies. In particular, negative integers must not wrap.
-      raise::ErrorIf(rho_c <= ZERO, "rho_c must be positive", HERE);
       raise::ErrorIf(atmosphere_width <= ZERO,
                      "Atmosphere width must be positive",
                      HERE);
@@ -313,32 +372,50 @@ namespace user {
       raise::ErrorIf(extra_positron_density < ZERO,
                      "extra_positron_density must be non-negative",
                      HERE);
-      raise::ErrorIf(gamma_emit <= ONE, "gamma_emit must be greater than one", HERE);
-      raise::ErrorIf(photon_energy_min <= ZERO,
-                     "photon_energy_min must be positive",
+      raise::ErrorIf(qed_enabled and radiation_reaction_enabled,
+                     "QED and explicit radiation reaction cannot both be enabled",
                      HERE);
-      raise::ErrorIf(b_over_bq <= ZERO, "b_over_bq must be positive", HERE);
-      raise::ErrorIf(
-        params.template get<real_t>("setup.polar_cap.qed.emission_coefficient") <
-          ZERO,
-        "emission_coefficient must be non-negative",
-        HERE);
-      raise::ErrorIf(
-        params.template get<real_t>("setup.polar_cap.qed.pair_coefficient") < ZERO,
-        "pair_coefficient must be non-negative",
-        HERE);
-      raise::ErrorIf(max_photons_per_particle <= 0,
-                     "max_photons_per_particle_step must be positive",
-                     HERE);
-      raise::ErrorIf(opacity_substeps <= 0 or opacity_substeps % 2 != 0,
-                     "opacity_substeps must be a positive even number",
-                     HERE);
-      raise::ErrorIf(max_drag_fraction <= ZERO or max_drag_fraction >= ONE,
-                     "max_drag_fraction must be in (0, 1)",
-                     HERE);
-      raise::ErrorIf(conversion_optical_depth <= ZERO,
-                     "conversion_optical_depth must be positive",
-                     HERE);
+      if (qed_enabled) {
+        raise::ErrorIf(rho_c <= ZERO, "rho_c must be positive", HERE);
+        raise::ErrorIf(gamma_emit <= ONE,
+                       "gamma_emit must be greater than one",
+                       HERE);
+        raise::ErrorIf(photon_energy_min <= ZERO,
+                       "photon_energy_min must be positive",
+                       HERE);
+        raise::ErrorIf(b_over_bq <= ZERO, "b_over_bq must be positive", HERE);
+        raise::ErrorIf(
+          params.template get<real_t>("setup.polar_cap.qed.emission_coefficient",
+                                      ZERO) < ZERO,
+          "emission_coefficient must be non-negative",
+          HERE);
+        raise::ErrorIf(
+          params.template get<real_t>("setup.polar_cap.qed.pair_coefficient",
+                                      ZERO) < ZERO,
+          "pair_coefficient must be non-negative",
+          HERE);
+        raise::ErrorIf(max_photons_per_particle <= 0,
+                       "max_photons_per_particle_step must be positive",
+                       HERE);
+        raise::ErrorIf(opacity_substeps <= 0 or opacity_substeps % 2 != 0,
+                       "opacity_substeps must be a positive even number",
+                       HERE);
+        raise::ErrorIf(conversion_optical_depth <= ZERO,
+                       "conversion_optical_depth must be positive",
+                       HERE);
+      }
+      if (radiation_reaction_enabled or
+          (qed_enabled and curvature_drag_enabled)) {
+        raise::ErrorIf(gamma_rad <= ONE,
+                       "curvature-drag gamma_rad must be greater than one",
+                       HERE);
+        raise::ErrorIf(reference_electric_field <= ZERO,
+                       "reference_electric_field must be positive",
+                       HERE);
+        raise::ErrorIf(max_drag_fraction <= ZERO or max_drag_fraction >= ONE,
+                       "max_drag_fraction must be in (0, 1)",
+                       HERE);
+      }
       raise::ErrorIf(not std::isfinite(emission_step_coefficient),
                      "emission_step_coefficient must be finite",
                      HERE);
@@ -406,17 +483,23 @@ namespace user {
                        "Photon species requires three real payloads",
                        HERE);
       } else {
-        // Selecting emission=none makes Entity dispatch NoPolicy before the
-        // PGen's EmissionPolicy can reference species 3.
         raise::ErrorIf(
           domain.species.size() != 2,
           "QED-off polar-cap requires exactly two species and no photon allocation",
           HERE);
-        raise::ErrorIf(
-          electrons.emission_policy_flag() != EmissionType::NONE or
-            positrons.emission_policy_flag() != EmissionType::NONE,
-          "QED-off electron and positron species must use emission=none",
-          HERE);
+        if (radiation_reaction_enabled) {
+          raise::ErrorIf(
+            electrons.emission_policy_flag() != EmissionType::CUSTOM or
+              positrons.emission_policy_flag() != EmissionType::CUSTOM,
+            "Radiation-reaction species must use emission=custom",
+            HERE);
+        } else {
+          raise::ErrorIf(
+            electrons.emission_policy_flag() != EmissionType::NONE or
+              positrons.emission_policy_flag() != EmissionType::NONE,
+            "QED-off electron and positron species must use emission=none",
+            HERE);
+        }
       }
 
       const auto maxwellian = arch::energy_dist::Maxwellian<M::Dim, M::CoordType>(
@@ -468,6 +551,14 @@ namespace user {
       // Entity asks for a policy for each species. Only the two charged species
       // activate this custom curvature process.
       const auto charged = species == electron_index or species == positron_index;
+      if (not qed_enabled) {
+        return polar_cap::CurvatureEmission<M> {
+          radiation_reaction_enabled and charged,
+          drag_step_coefficient,
+          max_drag_fraction,
+          domain.random_pool()
+        };
+      }
       return polar_cap::CurvatureEmission<M> {
         qed_enabled and curvature_emission_enabled and charged,
         qed_enabled and curvature_drag_enabled and charged,
