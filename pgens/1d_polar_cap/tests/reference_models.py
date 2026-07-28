@@ -319,7 +319,7 @@ class PolarCapReferenceTests(unittest.TestCase):
             pair_source,
             re.compile(
                 r"u_magnitude\s*=\s*math::sqrt\s*\(\s*"
-                r"math::max\s*\(\s*ZERO\s*,\s*"
+                r"math::max\s*\(\s*static_cast<real_t>\(0\.0\)\s*,\s*"
                 r"SQR\(gamma_pair\)\s*-\s*ONE\s*\)"
             ),
         )

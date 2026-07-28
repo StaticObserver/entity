@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "snapshot_id": "c50c28cb5a6d126e8b9986075eb2bc8841fdbd228f81da420b729bca03985fb0",
+  "snapshot_id": "d683a63d5e8f7b69d2bc54f28d3da4cea5a448308a75b72cdffdcf35e97a8584",
   "files": [
     {
       "path": ".clang-format",
@@ -480,7 +480,7 @@
     },
     {
       "path": "pgens/1d_polar_cap/docs/design.md",
-      "sha256": "dce9059a97a03a275136f9aa62901b34f204736e25d929a534acc14959090488"
+      "sha256": "4bf7aa183479452e70309deea6be7bb64410e9057d3ddd8818c6f01528339aa0"
     },
     {
       "path": "pgens/1d_polar_cap/docs/design_summary.md",
@@ -508,7 +508,7 @@
     },
     {
       "path": "pgens/1d_polar_cap/qed/magnetic_pair_creation.hpp",
-      "sha256": "d9a617e9dd6c08d0b43b9b121dd00dc89d404ec97c00a8719c39402bc3fcc979"
+      "sha256": "ca27159cb1bebe50031fd48851ae05d0bbdb99c7b6fb6ab68ff452ac9a62cf90"
     },
     {
       "path": "pgens/1d_polar_cap/qed/photon_opacity.hpp",
@@ -540,7 +540,7 @@
     },
     {
       "path": "pgens/1d_polar_cap/tests/reference_models.py",
-      "sha256": "bf40cb692304245b32569a768f421115ac1171fe5611ce4b0cf7bd13453f0137"
+      "sha256": "c2d5ce548b509139d0234157e6f0b24d653ccdaa9429799c5a644ddc7d7878e6"
     },
     {
       "path": "pgens/accretion/accretion.toml",

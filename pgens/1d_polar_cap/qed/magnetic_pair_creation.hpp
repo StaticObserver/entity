@@ -124,7 +124,8 @@ namespace user::polar_cap {
       // Reduced 1D closure: split photon energy equally and place both
       // particles along the photon's x1 propagation direction.
       const auto gamma_pair = HALF * photon_energy;
-      const auto u_magnitude = math::sqrt(math::max(ZERO, SQR(gamma_pair) - ONE));
+      const auto u_magnitude = math::sqrt(
+        math::max(static_cast<real_t>(0.0), SQR(gamma_pair) - ONE));
       const auto direction   = photon_ux1(p) >= ZERO ? ONE : -ONE;
       const vec_t<Dim::_3D> pair_u { direction * u_magnitude, ZERO, ZERO };
       const tuple_t<int, D> pair_i { photon_i1(p) };

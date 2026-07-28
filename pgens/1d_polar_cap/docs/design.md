@@ -261,3 +261,5 @@ Pending:
   counters, and propagation direction.
 - Added an explicit counter-propagating photon regression test so the signed
   curvature-angle convention cannot silently revert to `abs(ux1)`.
+- Clamp pair-threshold roundoff with an explicit device-visible `real_t(0.0)`
+  bound before evaluating the child momentum square root.
