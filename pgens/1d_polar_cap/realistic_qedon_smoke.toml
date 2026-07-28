@@ -67,6 +67,8 @@
     maxnpart        = 100000
     pusher          = "Photon"
     emission        = "none"
+    # CustomPostStep reclaims photons after pair conversion.
+    clear_interval  = 0
     n_payloads_real = 3
 
 [setup]
@@ -84,6 +86,8 @@
   "polar_cap.qed.curvature_drag"                = true
   "polar_cap.qed.curvature_emission"            = true
   "polar_cap.qed.magnetic_pair_creation"        = true
+  "polar_cap.qed.filter_nonconverting_photons"  = true
+  "polar_cap.qed.photon_recycle_interval"       = 10
   "polar_cap.qed.rho_c"                         = 1.0
   "polar_cap.qed.gamma_emit"                    = 3e4
   "polar_cap.qed.photon_energy_min"             = 2.0

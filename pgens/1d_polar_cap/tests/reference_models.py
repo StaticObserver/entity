@@ -41,6 +41,16 @@ class PolarCapReferenceTests(unittest.TestCase):
             if key.startswith("initial_injection.")
         }
 
+    @staticmethod
+    def maximum_abs_sine(theta0: float, theta1: float) -> float:
+        lower, upper = sorted((theta0, theta1))
+        first_peak = 0.5 * math.pi + math.pi * math.ceil(
+            (lower - 0.5 * math.pi) / math.pi
+        )
+        if first_peak <= upper:
+            return 1.0
+        return max(abs(math.sin(theta0)), abs(math.sin(theta1)))
+
     def test_spectrum_table_contract(self) -> None:
         self.assertGreaterEqual(self.x.size, 2)
         self.assertTrue(np.all(self.x > 0.0))
@@ -63,6 +73,8 @@ class PolarCapReferenceTests(unittest.TestCase):
         self.assertTrue(qed["curvature_drag"])
         self.assertTrue(qed["curvature_emission"])
         self.assertTrue(qed["magnetic_pair_creation"])
+        self.assertTrue(qed["filter_nonconverting_photons"])
+        self.assertEqual(qed["photon_recycle_interval"], 10)
         self.assertFalse(setup["polar_cap.radiation_reaction.enable"])
         self.assertEqual(len(species), 3)
         self.assertEqual(
@@ -72,6 +84,7 @@ class PolarCapReferenceTests(unittest.TestCase):
         self.assertEqual(species[1]["emission"], "custom")
         self.assertEqual(species[2]["pusher"], "Photon")
         self.assertEqual(species[2]["n_payloads_real"], 3)
+        self.assertEqual(species[2]["clear_interval"], 0)
         self.assertEqual(
             config["output"]["fields"]["quantities"],
             ["N_1", "N_2", "N_3", "E", "B", "J"],
@@ -251,6 +264,70 @@ class PolarCapReferenceTests(unittest.TestCase):
             re.compile(
                 r"transverse_direction\s*=\s*math::sqrt\s*\(\s*"
                 r"SQR\(direction\[1\]\)\s*\+\s*SQR\(direction\[2\]\)"
+            ),
+        )
+
+    def test_path_sine_maximum_matches_dense_reference(self) -> None:
+        rng = np.random.default_rng(42)
+        for theta0, theta1 in rng.uniform(-8.0, 8.0, size=(200, 2)):
+            analytical = self.maximum_abs_sine(float(theta0), float(theta1))
+            path = np.linspace(theta0, theta1, 20_001)
+            dense = float(np.max(np.abs(np.sin(path))))
+            self.assertGreaterEqual(analytical + 1.0e-12, dense)
+            self.assertAlmostEqual(analytical, dense, delta=1.0e-7)
+
+    def test_pair_capable_spectral_cutoff_is_conservative(self) -> None:
+        for theta0, theta1 in (
+            (0.0, 0.1),
+            (0.4, -0.2),
+            (-0.2, 2.0),
+            (2.2, 0.3),
+        ):
+            maximum_sine = self.maximum_abs_sine(theta0, theta1)
+            retained_minimum = 2.0 / maximum_sine
+            path = np.linspace(theta0, theta1, 100_001)
+            sine = np.abs(np.sin(path))
+            rejected_energy = retained_minimum * (1.0 - 1.0e-8)
+            retained_energy = retained_minimum * (1.0 + 1.0e-8)
+            self.assertLess(float(np.max(rejected_energy * sine)), 2.0)
+            self.assertGreater(float(np.max(retained_energy * sine)), 2.0)
+
+    def test_filter_does_not_modify_continuous_drag_block(self) -> None:
+        source = (CASE_DIR / "qed" / "curvature_emission.hpp").read_text()
+        drag_block = source.split(
+            "// Continuous recoil is an ensemble loss term", 1
+        )[1].split("return { payload.n_photons > 0, do_drag };", 1)[0]
+        self.assertNotIn("filter_nonconverting_photons", drag_block)
+        self.assertIn("drag_step_coefficient * CUBE(gamma)", drag_block)
+
+    def test_filter_and_recycle_source_contract(self) -> None:
+        emission_source = (
+            CASE_DIR / "qed" / "curvature_emission.hpp"
+        ).read_text()
+        pgen_source = (CASE_DIR / "pgen.hpp").read_text()
+        sort_source = (
+            SOURCE_ROOT / "src" / "framework" / "domain" /
+            "metadomain_sort.cpp"
+        ).read_text()
+
+        self.assertIn("MaximumAbsSineOnInterval", emission_source)
+        self.assertIn("TWO / maximum_path_sine", emission_source)
+        self.assertIn("payload.photon_energy_min", emission_source)
+        self.assertIn("photons.set_unsorted();", pgen_source)
+        self.assertIn("photons.RemoveDead();", pgen_source)
+        self.assertRegex(
+            pgen_source,
+            re.compile(
+                r"\(step \+ 1u\) % photon_recycle_interval == 0u"
+            ),
+        )
+        self.assertEqual(sort_source.count("species.RemoveDead();"), 1)
+        self.assertNotRegex(
+            sort_source,
+            re.compile(
+                r"if \(\(clearing_interval.*?"
+                r"for \(auto& species : domain\.species\)",
+                re.DOTALL,
             ),
         )
 

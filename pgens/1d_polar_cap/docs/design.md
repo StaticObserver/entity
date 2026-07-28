@@ -108,7 +108,23 @@ When QED is enabled, electron and positron species select
   `qed.reference_electric_field`;
 - unbiased stochastic rounding of the expected macro-photon count;
 - curvature-spectrum energy sampling truncated at the parent kinetic energy;
+- optional removal of the spectrum interval that cannot reach the magnetic
+  pair threshold before an absorbing `x1` boundary;
 - complete photon payload initialization.
+
+When `filter_nonconverting_photons = true`, the emission policy evaluates
+
+```text
+s_max = max_path abs(sin(theta_B))
+epsilon_keep = max(photon_energy_min, 2 / s_max)
+```
+
+along the photon's remaining straight path to the appropriate global `x1`
+boundary. The curvature-number CCDF is integrated and sampled only above
+`epsilon_keep`. This preserves every photon that can acquire nonzero magnetic
+pair opacity while omitting photons whose opacity is identically zero
+throughout the domain. Continuous curvature recoil is unchanged, so omitted
+escaping radiation is not represented by individual macro-photons.
 
 For QED curvature drag, the per-step coefficient is
 
@@ -170,7 +186,11 @@ threshold. Each conversion creates one electron and one positron with equal
 weight and half the photon energy.
 
 Pairs are created after the standard field/current step and participate from
-the next timestep.
+the next timestep. The photon container is marked unsorted after conversion
+and compacted after each complete `photon_recycle_interval`, so converted and
+boundary-absorbed photons are reclaimed after pair conversion rather than just
+before it. Optimized QED-on inputs set the photon species' standard
+`clear_interval` to zero to avoid a redundant pre-conversion compaction.
 
 ## 7. Custom Output
 
@@ -192,6 +212,11 @@ The case requests standard Entity fields and species densities. No
 - `rho_c`, `gamma_emit`, `photon_energy_min`, `b_over_bq`,
   `max_photons_per_particle_step`, `opacity_substeps`, and
   `conversion_optical_depth` must be positive.
+- `photon_recycle_interval` must be a positive integer. QED-on inputs that use
+  PGen-managed post-conversion recycling set photon-species
+  `clear_interval = 0`.
+- `filter_nonconverting_photons` is valid only with magnetic pair creation and
+  absorbing or atmosphere particle boundaries on both `x1` sides.
 - `opacity_substeps` must be even.
 - `qed.gamma_rad > 1`, `qed.reference_electric_field > 0`, and
   `0 < qed.max_drag_fraction < 1` are required when QED curvature drag is
@@ -223,6 +248,9 @@ Completed:
 - custom curvature emission and continuous recoil;
 - photon angle/opacity update;
 - deterministic magnetic pair conversion and particle bookkeeping;
+- path-aware removal of photons that cannot reach the magnetic pair threshold;
+- post-conversion photon recycling and non-duplicating per-species framework
+  cleanup;
 - QED-off construction does not require inactive QED-only parameters such as
   `b_over_bq`;
 - Python reference checks, including counter-propagating photon curvature;
@@ -233,7 +261,7 @@ Completed:
 
 Pending:
 
-- Entity compilation and runtime smoke tests;
+- Entity compilation and runtime smoke tests for the photon-filter branch;
 - single-particle emission tests inside Kokkos;
 - discrete Gauss/Ampere checks for the initial state;
 - MPI payload transport and multi-domain conversion checks;
@@ -263,3 +291,7 @@ Pending:
   curvature-angle convention cannot silently revert to `abs(ux1)`.
 - Clamp pair-threshold roundoff with an explicit device-visible `real_t(0.0)`
   bound before evaluating the child momentum square root.
+- Added a path-aware curvature-spectrum lower bound that removes only photons
+  whose magnetic pair opacity remains identically zero before escape.
+- Moved periodic photon reclamation behind pair conversion and fixed the
+  framework cleanup loop so one due species no longer clears every species.

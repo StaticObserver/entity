@@ -211,14 +211,17 @@ namespace user {
 
     const bool           qed_enabled, curvature_drag_enabled;
     const bool           curvature_emission_enabled, pair_creation_enabled;
+    const bool           filter_nonconverting_photons;
     const bool           radiation_reaction_enabled;
     const real_t         rho_c, gamma_emit, photon_energy_min;
+    const real_t         global_x_min, global_x_max;
     const real_t         gamma_rad, reference_electric_field;
     const real_t         emission_step_coefficient, drag_step_coefficient;
     const real_t         opacity_prefactor, b_over_bq;
     const real_t         max_drag_fraction, conversion_optical_depth;
     const int max_photons_per_particle;
     const int opacity_substeps;
+    const timestep_t photon_recycle_interval;
 
     polar_cap::InitialFields<D>          init_flds;
     polar_cap::MagnetosphericCurrent<D> ext_current;
@@ -255,6 +258,12 @@ namespace user {
       , pair_creation_enabled { params.template get<bool>(
           "setup.polar_cap.qed.magnetic_pair_creation",
           true) }
+      , filter_nonconverting_photons {
+          qed_enabled and pair_creation_enabled and
+          params.template get<bool>(
+            "setup.polar_cap.qed.filter_nonconverting_photons",
+            false)
+        }
       , radiation_reaction_enabled { params.template get<bool>(
           "setup.polar_cap.radiation_reaction.enable",
           false) }
@@ -274,6 +283,8 @@ namespace user {
                 "setup.polar_cap.qed.photon_energy_min")
             : ONE
         }
+      , global_x_min { metadomain.mesh().extent(in::x1).first }
+      , global_x_max { metadomain.mesh().extent(in::x1).second }
       , gamma_rad {
           qed_enabled and curvature_drag_enabled
             ? params.template get<real_t>("setup.polar_cap.qed.gamma_rad")
@@ -349,6 +360,13 @@ namespace user {
       , opacity_substeps { params.template get<int>(
           "setup.polar_cap.qed.opacity_substeps",
           8) }
+      , photon_recycle_interval {
+          qed_enabled
+            ? params.template get<timestep_t>(
+                "setup.polar_cap.qed.photon_recycle_interval",
+                params.template get<timestep_t>("particles.clear_interval"))
+            : 1u
+        }
       , init_flds { b0, initial_e_coefficient, x_surface, atmosphere_width }
       , ext_current { params.template get<real_t>(
                         "setup.polar_cap.external_current"),
@@ -376,6 +394,13 @@ namespace user {
                      "QED and explicit radiation reaction cannot both be enabled",
                      HERE);
       if (qed_enabled) {
+        raise::ErrorIf(
+          params.template get<bool>(
+            "setup.polar_cap.qed.filter_nonconverting_photons",
+            false) and
+            not pair_creation_enabled,
+          "filter_nonconverting_photons requires magnetic pair creation",
+          HERE);
         raise::ErrorIf(rho_c <= ZERO, "rho_c must be positive", HERE);
         raise::ErrorIf(gamma_emit <= ONE,
                        "gamma_emit must be greater than one",
@@ -403,6 +428,19 @@ namespace user {
         raise::ErrorIf(conversion_optical_depth <= ZERO,
                        "conversion_optical_depth must be positive",
                        HERE);
+        raise::ErrorIf(photon_recycle_interval == 0u,
+                       "photon_recycle_interval must be positive",
+                       HERE);
+        if (filter_nonconverting_photons) {
+          const auto particle_boundaries = metadomain.mesh().prtl_bc();
+          const auto lower_bc = particle_boundaries[0].first;
+          const auto upper_bc = particle_boundaries[0].second;
+          raise::ErrorIf(
+            (lower_bc != PrtlBC::ATMOSPHERE and lower_bc != PrtlBC::ABSORB) or
+              (upper_bc != PrtlBC::ATMOSPHERE and upper_bc != PrtlBC::ABSORB),
+            "filter_nonconverting_photons requires absorbing x1 boundaries",
+            HERE);
+        }
       }
       if (radiation_reaction_enabled or
           (qed_enabled and curvature_drag_enabled)) {
@@ -562,12 +600,15 @@ namespace user {
       return polar_cap::CurvatureEmission<M> {
         qed_enabled and curvature_emission_enabled and charged,
         qed_enabled and curvature_drag_enabled and charged,
+        filter_nonconverting_photons,
         photon_index,
         domain.species[photon_index - 1],
         domain.index(),
         photon_energy_min,
         gamma_emit,
         rho_c,
+        global_x_min,
+        global_x_max,
         emission_step_coefficient,
         drag_step_coefficient,
         max_drag_fraction,
@@ -591,7 +632,7 @@ namespace user {
       };
     }
 
-    void CustomPostStep(timestep_t, simtime_t, Domain<S, M>& domain) {
+    void CustomPostStep(timestep_t step, simtime_t, Domain<S, M>& domain) {
       if (not qed_enabled or not pair_creation_enabled) {
         return;
       }
@@ -611,6 +652,11 @@ namespace user {
       // number_converted() performs the device-to-host copy and therefore
       // completes the kernel before host-side species metadata is updated.
       const auto converted = conversion.number_converted();
+      // The photon pusher and pair kernel can both create dead entries. Mark
+      // the container unsorted before output and reclaim those entries after
+      // each complete recycle interval, i.e. after pair conversion rather
+      // than immediately before it in the next engine step.
+      photons.set_unsorted();
       if (converted > 0) {
         electrons.set_npart(electrons.npart() + converted);
         electrons.set_counter(electrons.counter() + converted);
@@ -618,6 +664,9 @@ namespace user {
         positrons.set_npart(positrons.npart() + converted);
         positrons.set_counter(positrons.counter() + converted);
         positrons.set_unsorted();
+      }
+      if ((step + 1u) % photon_recycle_interval == 0u) {
+        photons.RemoveDead();
       }
     }
   };

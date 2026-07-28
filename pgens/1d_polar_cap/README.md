@@ -101,6 +101,16 @@ budget must still be checked after the normalization parameters are fixed; the
 current migration defaults are not an event-by-event energy-conserving Monte
 Carlo prescription.
 
+For pair-cascade runs,
+`filter_nonconverting_photons = true` additionally removes the part of the
+curvature-number spectrum that cannot satisfy
+`epsilon_gamma * abs(sin(theta_B)) >= 2` anywhere before the photon reaches an
+absorbing `x1` boundary. The cutoff is computed from the exact maximum of
+`abs(sin(theta_B))` along the remaining path, so it does not remove any photon
+that can acquire nonzero magnetic pair opacity. It does remove per-particle
+records of low-energy escaping radiation; continuous curvature recoil remains
+unchanged.
+
 ## Curvature spectrum
 
 `data/curvature_ccdf.tsv` stores the normalized complementary CDF of the
@@ -174,3 +184,8 @@ condition: a photon converts when both
 receive half the photon energy and move in the photon's parallel direction.
 This gives an explicit energy-conserving 1D closure while leaving transverse
 Landau-level physics outside the first implementation.
+
+Converted and boundary-absorbed photons are compacted after pair conversion
+every `photon_recycle_interval` completed steps. QED-on inputs that enable this
+path set the photon species' standard `clear_interval = 0`, avoiding redundant
+pre-conversion cleanup.

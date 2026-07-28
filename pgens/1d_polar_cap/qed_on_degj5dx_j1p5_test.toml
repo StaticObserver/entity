@@ -65,6 +65,8 @@
     maxnpart        = 1e8
     pusher          = "Photon"
     emission        = "none"
+    # CustomPostStep reclaims photons after pair conversion.
+    clear_interval  = 0
     # epsilon_gamma, tau_pair, theta_B
     n_payloads_real = 3
 
@@ -82,6 +84,8 @@
   "polar_cap.qed.curvature_drag"                = true
   "polar_cap.qed.curvature_emission"            = true
   "polar_cap.qed.magnetic_pair_creation"        = true
+  "polar_cap.qed.filter_nonconverting_photons"  = true
+  "polar_cap.qed.photon_recycle_interval"       = 10
   "polar_cap.qed.rho_c"                         = 10.0
   "polar_cap.qed.gamma_emit"                    = 1.6e4
   "polar_cap.qed.gamma_rad"                     = 1.6e5

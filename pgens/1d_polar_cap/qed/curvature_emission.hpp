@@ -17,10 +17,29 @@
 #include <Kokkos_Core.hpp>
 #include <Kokkos_Pair.hpp>
 
+#include <limits>
 #include <vector>
 
 namespace user::polar_cap {
   using namespace ntt;
+
+  Inline auto MaximumAbsSineOnInterval(real_t theta0, real_t theta1) -> real_t {
+    const auto lower = theta0 < theta1 ? theta0 : theta1;
+    const auto upper = theta0 < theta1 ? theta1 : theta0;
+    const auto pi = static_cast<real_t>(3.14159265358979323846);
+    const auto half_pi = static_cast<real_t>(1.57079632679489661923);
+    const auto tolerance =
+      static_cast<real_t>(64.0) * std::numeric_limits<real_t>::epsilon() *
+      (static_cast<real_t>(1.0) + math::abs(lower) + math::abs(upper));
+    const auto first_peak = half_pi +
+                            pi * math::ceil((lower - tolerance - half_pi) / pi);
+    if (first_peak <= upper + tolerance) {
+      return static_cast<real_t>(1.0);
+    }
+    const auto sine0 = math::abs(math::sin(theta0));
+    const auto sine1 = math::abs(math::sin(theta1));
+    return sine0 > sine1 ? sine0 : sine1;
+  }
 
   template <MetricClass M>
   struct CurvatureEmission {
@@ -35,6 +54,7 @@ namespace user::polar_cap {
       npart_t n_photons { 0 };
       real_t  weight_scale { ONE };
       real_t  photon_energy_scale { ZERO };
+      real_t  photon_energy_min { ZERO };
       real_t  photon_energy_max { ZERO };
       real_t  ccdf_at_max_energy { ZERO };
       real_t  ccdf_interval { ZERO };
@@ -42,10 +62,12 @@ namespace user::polar_cap {
 
     const bool    emission_enabled;
     const bool    apply_drag;
+    const bool    filter_nonconverting_photons;
     const spidx_t photon_species_index;
     const real_t  photon_energy_min;
     const real_t  gamma_emit;
     const real_t  rho_c;
+    const real_t  global_x_min, global_x_max;
     const real_t  emission_step_coefficient;
     const real_t  drag_step_coefficient;
     const real_t  max_drag_fraction;
@@ -68,12 +90,15 @@ namespace user::polar_cap {
 
     CurvatureEmission(bool                              emission_enabled,
                       bool                              apply_drag,
+                      bool                              filter_nonconverting_photons,
                       spidx_t                           photon_species_index,
                       Particles<M::Dim, M::CoordType>& photon_species,
                       npart_t                           domain_idx,
                       real_t                            photon_energy_min,
                       real_t                            gamma_emit,
                       real_t                            rho_c,
+                      real_t                            global_x_min,
+                      real_t                            global_x_max,
                       real_t                            emission_step_coefficient,
                       real_t                            drag_step_coefficient,
                       real_t                            max_drag_fraction,
@@ -82,10 +107,13 @@ namespace user::polar_cap {
                       const CurvatureSpectrum&          spectrum)
       : emission_enabled { emission_enabled }
       , apply_drag { apply_drag }
+      , filter_nonconverting_photons { filter_nonconverting_photons }
       , photon_species_index { photon_species_index }
       , photon_energy_min { photon_energy_min }
       , gamma_emit { gamma_emit }
       , rho_c { rho_c }
+      , global_x_min { global_x_min }
+      , global_x_max { global_x_max }
       , emission_step_coefficient { emission_step_coefficient }
       , drag_step_coefficient { drag_step_coefficient }
       , max_drag_fraction { max_drag_fraction }
@@ -122,10 +150,13 @@ namespace user::polar_cap {
                       random_number_pool_t& pool)
       : emission_enabled { false }
       , apply_drag { apply_drag }
+      , filter_nonconverting_photons { false }
       , photon_species_index { 0 }
       , photon_energy_min { ONE }
       , gamma_emit { static_cast<real_t>(2.0) }
       , rho_c { ONE }
+      , global_x_min { ZERO }
+      , global_x_max { ZERO }
       , emission_step_coefficient { ZERO }
       , drag_step_coefficient { drag_step_coefficient }
       , max_drag_fraction { max_drag_fraction }
@@ -138,7 +169,7 @@ namespace user::polar_cap {
       , photon_tracking { false } {}
 
     Inline auto shouldEmit(const coord_t<M::PrtlDim>&,
-                           const coord_t<M::PrtlDim>&,
+                           const coord_t<M::PrtlDim>& x_Ph,
                            const vec_t<Dim::_3D>& u_Ph,
                            const vec_t<Dim::_3D>&,
                            const vec_t<Dim::_3D>&,
@@ -155,13 +186,45 @@ namespace user::polar_cap {
       const auto gamma = math::sqrt(ONE + SQR(u_mag));
       const auto gamma_ratio = gamma / gamma_emit;
 
+      auto retained_energy_min = photon_energy_min;
+      auto retain_pair_capable_spectrum = true;
+      if (emission_enabled and filter_nonconverting_photons) {
+        const auto transverse_u = math::sqrt(SQR(u_Ph[1]) + SQR(u_Ph[2]));
+        const auto initial_theta = math::atan2(transverse_u,
+                                               math::abs(u_Ph[0]));
+        auto exit_theta = initial_theta;
+        if (math::abs(u_Ph[0]) > static_cast<real_t>(0.0)) {
+          const auto exit_x = u_Ph[0] > static_cast<real_t>(0.0)
+                                ? global_x_max
+                                : global_x_min;
+          exit_theta += (exit_x - x_Ph[0]) / rho_c;
+        }
+        const auto maximum_path_sine = MaximumAbsSineOnInterval(initial_theta,
+                                                                 exit_theta);
+        if (maximum_path_sine <= static_cast<real_t>(0.0)) {
+          retain_pair_capable_spectrum = false;
+        } else {
+          const auto threshold_margin =
+            static_cast<real_t>(1.0) -
+            static_cast<real_t>(64.0) *
+              std::numeric_limits<real_t>::epsilon();
+          const auto pair_capable_energy = (TWO / maximum_path_sine) *
+                                           threshold_margin;
+          if (pair_capable_energy > retained_energy_min) {
+            retained_energy_min = pair_capable_energy;
+          }
+        }
+      }
+
       // No sampled photon may carry more than the parent's kinetic energy.
       const auto photon_energy_max = gamma - ONE;
-      if (emission_enabled and photon_energy_max > photon_energy_min) {
+      if (emission_enabled and retain_pair_capable_spectrum and
+          photon_energy_max > retained_energy_min) {
         payload.photon_energy_scale = CUBE(gamma_ratio) / rho_c;
+        payload.photon_energy_min   = retained_energy_min;
         payload.photon_energy_max   = photon_energy_max;
 
-        const auto zeta = photon_energy_min / payload.photon_energy_scale;
+        const auto zeta = retained_energy_min / payload.photon_energy_scale;
         const auto max_normalized_energy = photon_energy_max /
                                            payload.photon_energy_scale;
         const auto ccdf_at_min_energy = spectrum.ccdf(zeta);
@@ -247,7 +310,7 @@ namespace user::polar_cap {
         const auto sampled_energy = spectrum.inverse_ccdf(probability) *
                                     payload.photon_energy_scale;
         const auto photon_energy = math::max(
-          photon_energy_min,
+          payload.photon_energy_min,
           math::min(sampled_energy, payload.photon_energy_max));
         random_pool.free_state(gen);
 
