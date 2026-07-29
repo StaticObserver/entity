@@ -94,11 +94,20 @@ Status: implemented through standard Entity boundaries, not runtime-verified.
 
 Status: implemented, reference-tested, not compiled.
 
-`setup.polar_cap.external_current` is the desired constant tetrad current
+`setup.polar_cap.external_current` is the desired interior tetrad current
 normalized to `n0 q0 c`. Entity adds `ext_current.jx1()` directly to the
-deposited contravariant current, so the PGen stores and returns
-`J^1 = J^(hat 1) / scales.dx0`. The `ppc0` multiplier in the Ampere kernel is
-cancelled by the `1/ppc0` dependence of `scales.q0` and does not replace this
+deposited contravariant current, so the PGen stores
+`J^1 = J^(hat 1) / scales.dx0`. In the right MATCH layer it returns
+
+```text
+J_ext(x) = J_ext,0 tanh[4 (x_max - x) / match_ds],
+```
+
+and returns zero at and beyond `x_max`. This is the same retained-fraction
+profile and the same half-cell staggering used for `E_x` by Entity's
+`MatchBoundaries_kernel`, so the prescribed current and matched electric field
+relax over one aligned layer. The `ppc0` multiplier in the Ampere kernel is
+cancelled by the `1/ppc0` dependence of `scales.q0` and does not replace the
 coordinate-basis conversion.
 
 When QED is enabled, electron and positron species select
@@ -231,8 +240,10 @@ The case requests standard Entity fields and species densities. No
   continuous initial Gauss closure.
 - `grid.boundaries.atmosphere.height` controls only the neutral atmosphere. It
   must not be fitted to the sum of neutral particles and excess positrons.
-- `external_current` is a tetrad current normalized to `n0 q0 c`; the PGen
-  converts it to the internal contravariant `x1` component using `scales.dx0`.
+- `external_current` is the interior tetrad current normalized to `n0 q0 c`;
+  the PGen converts it to the internal contravariant `x1` component using
+  `scales.dx0` and tapers it to zero across the right
+  `grid.boundaries.match.ds`.
 - `initial_injection.minimum_density` must be non-negative and
   `initial_injection.minimum_ppc` must be a positive integer.
 - Production builds use `deposit=esirkepov` and `shape_order=3`; matching TOML
@@ -288,6 +299,8 @@ Pending:
 - Fixed missing photon configuration, payload initialization, pair-kernel
   launch, threshold survival, signed opacity, Simpson parity, capacity checks,
   counters, and propagation direction.
+- Matched the prescribed external-current taper to Entity's right-boundary
+  electric-field MATCH profile without modifying the engine.
 - Added an explicit counter-propagating photon regression test so the signed
   curvature-angle convention cannot silently revert to `abs(ux1)`.
 - Clamp pair-threshold roundoff with an explicit device-visible `real_t(0.0)`

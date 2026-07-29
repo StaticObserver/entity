@@ -155,12 +155,14 @@ making every coefficient explicit:
 - `b_over_bq` is a positive magnetic-field magnitude and is independent of the
   sign of `setup.polar_cap.B0`;
 - `rho_c` is a positive curvature radius in code length units;
-- `external_current` is the constant tetrad current normalized to `n0 q0 c`.
+- `external_current` is the interior tetrad current normalized to `n0 q0 c`.
   Entity's Ampere kernel adds external current directly to the deposited
   contravariant current, so this 1D Minkowski PGen converts
-  `J^(hat 1) -> J^1` by dividing by `scales.dx0`. The kernel's `ppc0` factor
-  cancels against the `ppc0` dependence of `scales.q0`; it is independent of
-  this coordinate-basis conversion.
+  `J^(hat 1) -> J^1` by dividing by `scales.dx0`. Across the right MATCH layer
+  it multiplies this value by `tanh(4 (x_max - x) / match_ds)`, matching the
+  electric-field boundary profile and reaching zero at the outer edge. The
+  kernel's `ppc0` factor cancels against the `ppc0` dependence of `scales.q0`;
+  it is independent of this coordinate-basis conversion.
 
 The numerical defaults are migration baselines, not a validated pulsar model.
 The physical conversion from a chosen pulsar field, curvature radius, and

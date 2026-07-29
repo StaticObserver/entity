@@ -595,6 +595,36 @@ class PolarCapReferenceTests(unittest.TestCase):
         )
         self.assertIn('"scales.dx0"', pgen_source)
 
+    def test_external_current_matches_right_boundary_taper(self) -> None:
+        """Match J_ext to the electric-field MATCH retained fraction."""
+        match_ds = self.config["grid"]["boundaries"]["match"]["ds"]
+        x_max = self.config["grid"]["extent"][0][1]
+
+        def retained_fraction(x: float) -> float:
+            if x >= x_max:
+                return 0.0
+            distance = x_max - x
+            if distance >= match_ds:
+                return 1.0
+            return math.tanh(4.0 * distance / match_ds)
+
+        self.assertEqual(retained_fraction(x_max), 0.0)
+        self.assertAlmostEqual(
+            retained_fraction(x_max - 0.5 * match_ds),
+            math.tanh(2.0),
+        )
+        self.assertEqual(retained_fraction(x_max - match_ds), 1.0)
+        self.assertEqual(retained_fraction(x_max - 2.0 * match_ds), 1.0)
+
+        pgen_source = (CASE_DIR / "pgen.hpp").read_text()
+        self.assertIn('"grid.boundaries.match.ds"', pgen_source)
+        self.assertRegex(
+            pgen_source,
+            re.compile(
+                r"math::tanh\(\s*FOUR\s*\*\s*distance\s*/\s*match_ds\s*\)"
+            ),
+        )
+
     def test_qed_off_toml_has_no_photon_allocation(self) -> None:
         species = self.config["particles"]["species"]
         self.assertFalse(self.qed["enable"])

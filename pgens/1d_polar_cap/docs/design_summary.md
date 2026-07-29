@@ -74,6 +74,8 @@ Gauss 闭合 `dE_x/dx = rho_excess - rho_GJ`。背景电荷是物理解释的一
 
 - **外部电流**:`MagnetosphericCurrent` 把 tetrad 分量(以 `n0 q0 c`
   归一)转成逆变分量 `J^1 = J^(hat1)/dx` 后由 Ampere 核直接叠加;
+  在右侧 MATCH 层内再乘
+  `tanh[4 (x_max-x)/match_ds]`,与 `E_x` 的边界衰减对齐并在外边界归零;
   `ppc0` 因子由 Entity 内部处理。
 - **曲率辐射**(`qed/curvature_emission.hpp`,EmissionPolicy):
   - 连续反冲 `-gamma^3 u / rho_c^2`,单步动量损失上限
@@ -117,7 +119,8 @@ Gauss 闭合 `dE_x/dx = rho_excess - rho_GJ`。背景电荷是物理解释的一
   `conversion_optical_depth` 均为正;`max_drag_fraction ∈ (0,1)`;
   构造函数集中做 host 端校验。
 - `extra_positron_density = initial_e_coefficient` 才有连续 Gauss 闭合。
-- `external_current` 是 tetrad 归一化电流,PGen 负责换算基底。
+- `external_current` 是内部区域的 tetrad 归一化电流,PGen 负责换算基底,
+  并在右侧 `grid.boundaries.match.ds` 内按 MATCH 轮廓衰减到零。
 - `x_surface` 由 `algorithms.current_filters + 2` 与 5 取大得到的缓冲
   格数决定,不在 TOML 中直接配置。
 
