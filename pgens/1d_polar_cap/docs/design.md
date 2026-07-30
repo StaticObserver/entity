@@ -40,7 +40,10 @@ a unit plateau through the atmosphere, so `E_x = 0` up to
 analytic integral of the S-shaped excess-positron decline and the prescribed
 background. After the excess profile reaches its explicit cutoff at
 `x_surface + 1.33 ds`, only the background remains and `E_x` is linear. The
-atmosphere and match boundaries impose `E_x = 0` and the same background `B_x`.
+The atmosphere boundary imposes `E_x = 0` and the background `B_x`. The right
+MATCH boundary relaxes only `B_x`; it deliberately leaves the longitudinal
+`E_x` untouched so the sponge does not violate the one-dimensional Gauss
+constraint.
 
 For `x >= x_surface`, this field obeys
 `dE_x/dx = rho_excess - rho_GJ` when
@@ -87,26 +90,21 @@ density convention.
 Status: implemented through standard Entity boundaries, not runtime-verified.
 
 - `x1 min`: field and particle atmosphere.
-- `x1 max`: matched fields and absorbing particles.
+- `x1 max`: `B_x` is matched, longitudinal `E_x` is not matched, and particles
+  are absorbed.
 - No global boundary or solver behavior is modified.
 
 ## 6. Custom Behavior
 
 Status: implemented, reference-tested, not compiled.
 
-`setup.polar_cap.external_current` is the desired interior tetrad current
+`setup.polar_cap.external_current` is the prescribed constant tetrad current
 normalized to `n0 q0 c`. Entity adds `ext_current.jx1()` directly to the
 deposited contravariant current, so the PGen stores
-`J^1 = J^(hat 1) / scales.dx0`. In the right MATCH layer it returns
-
-```text
-J_ext(x) = J_ext,0 tanh[4 (x_max - x) / match_ds],
-```
-
-and returns zero at and beyond `x_max`. This is the same retained-fraction
-profile and the same half-cell staggering used for `E_x` by Entity's
-`MatchBoundaries_kernel`, so the prescribed current and matched electric field
-relax over one aligned layer. The `ppc0` multiplier in the Ampere kernel is
+`J^1 = J^(hat 1) / scales.dx0` throughout the domain. It is not tapered in the
+right MATCH layer: a spatial taper would introduce `dJ_ext/dx != 0` without an
+evolving prescribed charge that satisfies continuity. The `ppc0` multiplier
+in the Ampere kernel is
 cancelled by the `1/ppc0` dependence of `scales.q0` and does not replace the
 coordinate-basis conversion.
 
@@ -241,9 +239,8 @@ The case requests standard Entity fields and species densities. No
 - `grid.boundaries.atmosphere.height` controls only the neutral atmosphere. It
   must not be fitted to the sum of neutral particles and excess positrons.
 - `external_current` is the interior tetrad current normalized to `n0 q0 c`;
-  the PGen converts it to the internal contravariant `x1` component using
-  `scales.dx0` and tapers it to zero across the right
-  `grid.boundaries.match.ds`.
+  the PGen converts it to a spatially constant internal contravariant `x1`
+  component using `scales.dx0`.
 - `initial_injection.minimum_density` must be non-negative and
   `initial_injection.minimum_ppc` must be a positive integer.
 - Production builds use `deposit=esirkepov` and `shape_order=3`; matching TOML
@@ -299,8 +296,9 @@ Pending:
 - Fixed missing photon configuration, payload initialization, pair-kernel
   launch, threshold survival, signed opacity, Simpson parity, capacity checks,
   counters, and propagation direction.
-- Matched the prescribed external-current taper to Entity's right-boundary
-  electric-field MATCH profile without modifying the engine.
+- Removed the prescribed-current taper and excluded longitudinal `E_x` from
+  the right MATCH target so the boundary no longer creates a Gauss-law source
+  across the sponge layer.
 - Added an explicit counter-propagating photon regression test so the signed
   curvature-angle convention cannot silently revert to `abs(ux1)`.
 - Clamp pair-threshold roundoff with an explicit device-visible `real_t(0.0)`

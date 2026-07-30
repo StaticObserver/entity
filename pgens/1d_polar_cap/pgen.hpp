@@ -133,6 +133,17 @@ namespace user {
     };
 
     template <Dimension D>
+    struct MatchBoundaryFields {
+      const real_t b0;
+
+      explicit MatchBoundaryFields(real_t b0) : b0 { b0 } {}
+
+      Inline auto bx1(const coord_t<D>&) const -> real_t {
+        return b0;
+      }
+    };
+
+    template <Dimension D>
     struct AtmosphereFields : public BoundaryFields<D> {
       explicit AtmosphereFields(real_t b0) : BoundaryFields<D> { b0 } {}
     };
@@ -188,36 +199,17 @@ namespace user {
 
     template <Dimension D>
     struct MagnetosphericCurrent {
-      const real_t current_x1_contravariant, x1_max, match_ds;
+      const real_t current_x1_contravariant;
 
-      MagnetosphericCurrent(real_t current_x1_tetrad,
-                            real_t dx,
-                            real_t x1_max,
-                            real_t match_ds)
-        : current_x1_contravariant { current_x1_tetrad / dx }
-        , x1_max { x1_max }
-        , match_ds { match_ds } {}
+      MagnetosphericCurrent(real_t current_x1_tetrad, real_t dx)
+        : current_x1_contravariant { current_x1_tetrad / dx } {}
 
-      Inline auto jx1(const coord_t<D>& x_Ph) const -> real_t {
+      Inline auto jx1(const coord_t<D>&) const -> real_t {
         // Ampere adds this value directly to the deposited contravariant
         // current. The configured current is a tetrad component, so the
         // 1D Minkowski conversion is J^1 = J^(hat 1) / dx. Entity separately
         // handles the ppc0 normalization in CurrentsAmpere_kernel.
-        //
-        // In the right MATCH layer, use the same retained-fraction profile as
-        // MatchBoundaries_kernel: tanh(4 d / ds), where d is the distance
-        // from the outer edge. This keeps the prescribed current compatible
-        // with the field relaxation and sends it continuously to zero at the
-        // absorbing edge.
-        if (x_Ph[0] >= x1_max) {
-          return ZERO;
-        }
-        const auto distance = x1_max - x_Ph[0];
-        if (distance >= match_ds) {
-          return current_x1_contravariant;
-        }
-        return current_x1_contravariant *
-               math::tanh(FOUR * distance / match_ds);
+        return current_x1_contravariant;
       }
       Inline auto jx2(const coord_t<D>&) const -> real_t {
         return ZERO;
@@ -411,12 +403,7 @@ namespace user {
       , init_flds { b0, initial_e_coefficient, x_surface, atmosphere_width }
       , ext_current { params.template get<real_t>(
                         "setup.polar_cap.external_current"),
-                      params.template get<real_t>("scales.dx0"),
-                      metadomain.mesh().extent(in::x1).second,
-                      params
-                        .template get<boundaries_t<real_t>>(
-                          "grid.boundaries.match.ds")[0]
-                        .second }
+                      params.template get<real_t>("scales.dx0") }
       , curvature_spectrum {
           // A QED-off run has no custom emission policy and therefore needs
           // neither the host table read nor the two device spectrum arrays.
@@ -524,8 +511,8 @@ namespace user {
       return polar_cap::AtmosphereFields<D> { b0 };
     }
 
-    auto MatchFields(simtime_t) const -> polar_cap::BoundaryFields<D> {
-      return polar_cap::BoundaryFields<D> { b0 };
+    auto MatchFields(simtime_t) const -> polar_cap::MatchBoundaryFields<D> {
+      return polar_cap::MatchBoundaryFields<D> { b0 };
     }
 
     void InitPrtls(Domain<S, M>& domain) {
