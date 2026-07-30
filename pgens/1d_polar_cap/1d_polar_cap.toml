@@ -88,6 +88,10 @@
   # their final displacement would have deposited; CustomPostStep then applies
   # the missing flux to the last active Ex/Jx faces using the CurrentsAmpere
   # normalization. Requires particles = ABSORB at x1 max.
+  # WARNING: superseded by the engine-level flux-conserving absorption (the
+  # pusher now clamps boundary crossers and deposits their final displacement
+  # before srpic::BoundaryAbsorb kills them). MUST stay false with the current
+  # engine, otherwise the flux is counted twice.
   "polar_cap.boundary_flux_compensation.enable" = false
 
   # Keep the migration baseline inert until the physical normalization is fixed.

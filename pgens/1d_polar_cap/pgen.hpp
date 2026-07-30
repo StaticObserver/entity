@@ -24,6 +24,7 @@
 #include <Kokkos_Core.hpp>
 
 #include <cmath>
+#include <cstdio>
 #include <string>
 
 namespace user {
@@ -263,6 +264,8 @@ namespace user {
     const bool       boundary_flux_compensation_enabled;
     const real_t     boundary_flux_ampere_coeff;
     const real_t     boundary_flux_inv_ppc0;
+    const bool       debug_edge_fields;
+    const timestep_t debug_edge_fields_interval;
 
     polar_cap::InitialFields<D>          init_flds;
     polar_cap::MagnetosphericCurrent<D> ext_current;
@@ -406,6 +409,11 @@ namespace user {
           params,
           qed_enabled and pair_creation_enabled) }
       , boundary_flux_compensation_enabled { params.template get<bool>(
+          // PGen-level workaround for the old kill-before-deposit engine.
+          // The engine now deposits clamped boundary particles before killing
+          // them (flux-conserving absorption in sr.hpp + srpic::BoundaryAbsorb),
+          // so this switch MUST stay false with the new engine: the pusher-time
+          // policy still sees i1 >= ni1 and would double-count the flux.
           "setup.polar_cap.boundary_flux_compensation.enable",
           false) }
       , boundary_flux_ampere_coeff {
@@ -423,6 +431,13 @@ namespace user {
             ? ONE / params.template get<real_t>("particles.ppc0")
             : ZERO
         }
+      , debug_edge_fields { params.template get<bool>(
+          "setup.polar_cap.debug_edge_fields",
+          false) }
+      , debug_edge_fields_interval { static_cast<timestep_t>(
+          params.template get<int>(
+            "setup.polar_cap.debug_edge_fields_interval",
+            1000)) }
       , init_flds { b0, initial_e_coefficient, x_surface, atmosphere_width }
       , ext_current { params.template get<real_t>(
                         "setup.polar_cap.external_current"),
@@ -712,9 +727,24 @@ namespace user {
       };
     }
 
-    void CustomPostStep(timestep_t step, simtime_t, Domain<S, M>& domain) {
+    void CustomPostStep(timestep_t step, simtime_t time, Domain<S, M>& domain) {
+      // Default-off diagnostic for the boundary-flux mechanism: prints the
+      // accumulated missing flux and the last active Ex/Jx faces. Read the
+      // accumulator before ApplyBoundaryFluxCompensation clears it.
+      auto missing_total = ZERO;
+      if (debug_edge_fields and boundary_flux_compensation_enabled and
+          (step % debug_edge_fields_interval == 0u)) {
+        auto missing_h = Kokkos::create_mirror_view(boundary_flux_missing);
+        Kokkos::deep_copy(missing_h, boundary_flux_missing);
+        for (std::size_t k = 0; k < polar_cap::BoundaryFluxAccSize; ++k) {
+          missing_total += missing_h(k);
+        }
+      }
       if (boundary_flux_compensation_enabled) {
         ApplyBoundaryFluxCompensation(domain);
+      }
+      if (debug_edge_fields and (step % debug_edge_fields_interval == 0u)) {
+        DebugPrintEdgeFields(step, time, missing_total, domain);
       }
       if (not qed_enabled or not pair_creation_enabled) {
         return;
@@ -782,6 +812,36 @@ namespace user {
       // deep_copy fences, so the applier finishes before the accumulator is
       // cleared for the next step.
       Kokkos::deep_copy(boundary_flux_missing, ZERO);
+    }
+
+    void DebugPrintEdgeFields(timestep_t      step,
+                              simtime_t       time,
+                              real_t          missing_total,
+                              Domain<S, M>&   domain) const {
+      const auto ni1  = domain.mesh.n_active(in::x1);
+      auto       em_h = Kokkos::create_mirror_view(domain.fields.em);
+      auto       cur_h = Kokkos::create_mirror_view(domain.fields.cur);
+      Kokkos::deep_copy(em_h, domain.fields.em);
+      Kokkos::deep_copy(cur_h, domain.fields.cur);
+      const auto first = ni1 > 8 ? ni1 - 8 : 0;
+      // Upstream reference 100 cells inside the right edge.
+      const auto upstream = ni1 > 100 ? ni1 - 100 : 0;
+      std::printf("EDGE step=%u t=%.5f miss=%+.6e Ex_up=%+.6e Ex=",
+                  static_cast<unsigned>(step),
+                  static_cast<double>(time),
+                  static_cast<double>(missing_total),
+                  static_cast<double>(em_h(upstream + N_GHOSTS, em::ex1)));
+      for (auto i = first; i < ni1; ++i) {
+        std::printf(" %+.4e",
+                    static_cast<double>(em_h(i + N_GHOSTS, em::ex1)));
+      }
+      std::printf(" Jx=");
+      for (auto i = first; i < ni1; ++i) {
+        std::printf(" %+.4e",
+                    static_cast<double>(cur_h(i + N_GHOSTS, cur::jx1)));
+      }
+      std::printf("\n");
+      std::fflush(stdout);
     }
   };
 

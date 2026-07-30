@@ -92,10 +92,14 @@ Status: implemented through standard Entity boundaries, not runtime-verified.
 - `x1 min`: field and particle atmosphere.
 - `x1 max`: `B_x` is matched, longitudinal `E_x` is not matched, and particles
   are absorbed.
-- No global boundary or solver behavior is modified.
-- Optional PGen-local compensation (`boundary_flux_compensation.enable`)
-  restores the current that right-edge absorption drops from the deposit; see
-  Custom Behavior. It changes no engine boundary code.
+- Absorption at global `x1` boundaries is flux-conserving: the SR pusher
+  clamps boundary-crossing particles onto the boundary face, the standard
+  deposit counts their final displacement, and `srpic::BoundaryAbsorb` tags
+  them dead before particle communication. `x2`/`x3` absorb branches keep
+  the old kill-in-pusher behavior.
+- The optional PGen-local compensation (`boundary_flux_compensation.enable`)
+  predates the engine fix and must stay disabled with it; see Custom
+  Behavior.
 
 ## 6. Custom Behavior
 
@@ -223,6 +227,13 @@ correction; internal MPI boundaries are `SYNC`, never `ABSORB`. The
 compensation bypasses current filtering and covers only the longitudinal
 component; absorbed transverse `J_y`/`J_z` are not restored.
 
+WARNING: this switch is a workaround for the old kill-before-deposit engine.
+The engine now implements flux-conserving absorption (the pusher clamps
+boundary-crossing particles onto the boundary face and `srpic::BoundaryAbsorb`
+kills them after `CurrentsDeposit`), so `boundary_flux_compensation.enable`
+MUST remain `false` with the current engine. The pusher-time policy still
+sees `i1 >= ni1` before the clamp and would add the flux a second time.
+
 ## 7. Custom Output
 
 Status: not-used.
@@ -274,6 +285,10 @@ The case requests standard Entity fields and species densities. No
 - No `radiative_drag = "synchrotron"` entry belongs on the charged species.
 - `boundary_flux_compensation.enable` requires `particles = ABSORB` at
   `x1 max` and is only valid for the 1D build; it defaults to `false`.
+- `debug_edge_fields` (default `false`, interval
+  `debug_edge_fields_interval`) prints the per-step accumulated missing flux
+  and the last eight active `E_x`/`J_x` faces to stdout for boundary-flux
+  diagnostics. It changes no physics.
 
 ## 9. Current Status
 
@@ -342,3 +357,8 @@ Pending:
   applies it to the last active `E_x`/`J_x` faces with the CurrentsAmpere
   normalization. The QED early return in `CustomPostStep` was restructured so
   the compensation also runs in QED-off runs.
+- Replaced kill-before-deposit absorption with flux-conserving absorption in
+  the SR engine: the pusher clamps `x1` boundary crossers onto the boundary
+  face (unique `dx1` markers) and the new `srpic::BoundaryAbsorb` pass tags
+  them dead after `CurrentsDeposit`, before particle communication. The
+  PGen-level compensation switch must stay disabled with this engine.

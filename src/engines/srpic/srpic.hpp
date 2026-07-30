@@ -127,6 +127,18 @@ namespace ntt {
           timers.stop("CurrentFiltering");
         }
 
+        {
+          // Flux-conserving absorption: the pusher clamped particles crossing
+          // global absorbing x1 boundaries onto the boundary face so that
+          // CurrentsDeposit above counted their final displacement; tag them
+          // dead now, before particle communication. Placed after the deposit
+          // block so clamped particles are also removed when the deposit is
+          // disabled.
+          timers.start("ParticleBoundaries");
+          srpic::BoundaryAbsorb(dom);
+          timers.stop("ParticleBoundaries");
+        }
+
         timers.start("Communications");
         m_metadomain.CommunicateParticles(dom);
         timers.stop("Communications");

@@ -8,6 +8,7 @@
 #include "metrics/minkowski.h"
 
 #include "framework/containers/particles.h"
+#include "kernels/boundary_absorb.hpp"
 #include "kernels/pushers/context.h"
 #include "kernels/pushers/sr.hpp"
 
@@ -386,6 +387,153 @@ void testPeriodicBC(const std::vector<ncells_t>&         res,
   }
 }
 
+// Flux-conserving absorption (1D): boundary-crossing particles must be
+// clamped onto the boundary face by the pusher (not killed), and the
+// BoundaryAbsorb kernel must tag exactly those clamped particles dead.
+template <SimEngine::type S, typename M>
+void testAbsorbClampBC(const std::vector<ncells_t>&         res,
+                       const boundaries_t<real_t>&          ext,
+                       const std::map<std::string, real_t>& params = {}) {
+  errorIf(M::Dim != Dim::_1D, "testAbsorbClampBC is implemented for 1D only");
+  errorIf(M::CoordType != Coord::Cartesian, "M::CoordType != Coord::Cartesian");
+
+  M metric { res, ext, params };
+
+  const auto nx1 = static_cast<int>(res.at(0));
+  // dx = 20 code-length units per cell for the res/ext used below; dt = 3
+  // with |ux| = 10 gives a displacement of ~0.149 cells per push, enough to
+  // cross from dx1 = 0.9 / 0.1 in a single step.
+  const auto dt  = static_cast<real_t>(3.0);
+
+  ndfield_t<Dim::_1D, 6> emfield { "emfield", res.at(0) + 2 * N_GHOSTS };
+
+  const spidx_t sp_idx = 1;
+  // three particles: right crosser, left crosser, interior survivor
+  array_t<int*>      i1 { "i1", 3 };
+  array_t<int*>      i2 { "i2", 3 };
+  array_t<int*>      i3 { "i3", 3 };
+  array_t<int*>      i1_prev { "i1_prev", 3 };
+  array_t<int*>      i2_prev { "i2_prev", 3 };
+  array_t<int*>      i3_prev { "i3_prev", 3 };
+  array_t<prtldx_t*> dx1 { "dx1", 3 };
+  array_t<prtldx_t*> dx2 { "dx2", 3 };
+  array_t<prtldx_t*> dx3 { "dx3", 3 };
+  array_t<prtldx_t*> dx1_prev { "dx1_prev", 3 };
+  array_t<prtldx_t*> dx2_prev { "dx2_prev", 3 };
+  array_t<prtldx_t*> dx3_prev { "dx3_prev", 3 };
+  array_t<real_t*>   ux1 { "ux1", 3 };
+  array_t<real_t*>   ux2 { "ux2", 3 };
+  array_t<real_t*>   ux3 { "ux3", 3 };
+  array_t<short*>    tag { "tag", 3 };
+  array_t<real_t*>   phi;
+
+  put_value<int>(i1, nx1 - 1, 0);
+  put_value<prtldx_t>(dx1, static_cast<prtldx_t>(0.9), 0);
+  put_value<real_t>(ux1, 10.0, 0);
+  put_value<int>(i1, 0, 1);
+  put_value<prtldx_t>(dx1, static_cast<prtldx_t>(0.1), 1);
+  put_value<real_t>(ux1, -10.0, 1);
+  put_value<int>(i1, nx1 / 2, 2);
+  put_value<prtldx_t>(dx1, static_cast<prtldx_t>(0.5), 2);
+  put_value<real_t>(ux1, 0.1, 2);
+  for (npart_t p = 0; p < 3; ++p) {
+    put_value<short>(tag, ParticleTag::alive, static_cast<prtlidx_t>(p));
+  }
+
+  ntt::ParticleArrays pusher_arrays { sp_idx };
+  pusher_arrays.i1       = i1;
+  pusher_arrays.i2       = i2;
+  pusher_arrays.i3       = i3;
+  pusher_arrays.i1_prev  = i1_prev;
+  pusher_arrays.i2_prev  = i2_prev;
+  pusher_arrays.i3_prev  = i3_prev;
+  pusher_arrays.dx1      = dx1;
+  pusher_arrays.dx2      = dx2;
+  pusher_arrays.dx3      = dx3;
+  pusher_arrays.dx1_prev = dx1_prev;
+  pusher_arrays.dx2_prev = dx2_prev;
+  pusher_arrays.dx3_prev = dx3_prev;
+  pusher_arrays.ux1      = ux1;
+  pusher_arrays.ux2      = ux2;
+  pusher_arrays.ux3      = ux3;
+  pusher_arrays.phi      = phi;
+  pusher_arrays.tag      = tag;
+
+  // left ATMOSPHERE also exercises its mapping onto the absorb path
+  const auto boundaries = kernel::sr::PusherBoundaries<Dim::_1D> {
+    { { PrtlBC::ATMOSPHERE, PrtlBC::ABSORB } }
+  };
+
+  Kokkos::parallel_for("pusher",
+                       CreateRangePolicy<Dim::_1D>({ 0 }, { 3 }),
+                       kernel::sr::Pusher_kernel<M>(
+                         {
+                           sp_idx,
+                           ParticlePusher::BORIS,
+                           RadiativeDrag::NONE,
+                           1.f,
+                           1.f,
+                           dt,
+                           dt,
+                           ONE,
+                           nx1,
+                           0,
+                           0,
+                         },
+                         boundaries,
+                         pusher_arrays,
+                         emfield,
+                         metric));
+
+  auto i1_       = Kokkos::create_mirror_view(i1);
+  auto dx1_      = Kokkos::create_mirror_view(dx1);
+  auto i1_prev_  = Kokkos::create_mirror_view(i1_prev);
+  auto dx1_prev_ = Kokkos::create_mirror_view(dx1_prev);
+  auto tag_      = Kokkos::create_mirror_view(tag);
+  Kokkos::deep_copy(i1_, i1);
+  Kokkos::deep_copy(dx1_, dx1);
+  Kokkos::deep_copy(i1_prev_, i1_prev);
+  Kokkos::deep_copy(dx1_prev_, dx1_prev);
+  Kokkos::deep_copy(tag_, tag);
+
+  // after the push both crossers must still be alive and clamped on the
+  // boundary faces, with the pre-push position kept for the deposit
+  errorIf(tag_(0) != ParticleTag::alive, "right crosser killed in pusher");
+  errorIf(i1_(0) != nx1 - 1, "right crosser i1 not clamped to ni1 - 1");
+  errorIf(dx1_(0) != static_cast<prtldx_t>(ONE),
+          "right crosser dx1 not clamped to 1");
+  errorIf(i1_prev_(0) != nx1 - 1, "right crosser i1_prev changed");
+  errorIf(not equal(static_cast<real_t>(dx1_prev_(0)),
+                    static_cast<real_t>(0.9),
+                    "right crosser dx1_prev changed"));
+
+  errorIf(tag_(1) != ParticleTag::alive, "left crosser killed in pusher");
+  errorIf(i1_(1) != 0, "left crosser i1 not clamped to 0");
+  errorIf(dx1_(1) != static_cast<prtldx_t>(ZERO),
+          "left crosser dx1 not clamped to 0");
+  errorIf(i1_prev_(1) != 0, "left crosser i1_prev changed");
+  errorIf(not equal(static_cast<real_t>(dx1_prev_(1)),
+                    static_cast<real_t>(0.1),
+                    "left crosser dx1_prev changed"));
+
+  errorIf(tag_(2) != ParticleTag::alive, "interior particle killed in pusher");
+
+  // the absorb pass must kill exactly the two clamped crossers
+  Kokkos::parallel_for("boundary_absorb",
+                       CreateRangePolicy<Dim::_1D>({ 0 }, { 3 }),
+                       kernel::sr::BoundaryAbsorb_kernel<Dim::_1D> {
+                         i1,
+                         dx1,
+                         tag,
+                         nx1,
+                         true,
+                         true });
+  Kokkos::deep_copy(tag_, tag);
+  errorIf(tag_(0) != ParticleTag::dead, "right crosser not killed by absorb");
+  errorIf(tag_(1) != ParticleTag::dead, "left crosser not killed by absorb");
+  errorIf(tag_(2) != ParticleTag::alive, "interior particle killed by absorb");
+}
+
 auto main(int argc, char* argv[]) -> int {
   Kokkos::initialize(argc, argv);
 
@@ -410,6 +558,7 @@ auto main(int argc, char* argv[]) -> int {
     testPeriodicBC<SimEngine::SRPIC, Minkowski<Dim::_1D>>(res1d, ext1d, {});
     testPeriodicBC<SimEngine::SRPIC, Minkowski<Dim::_2D>>(res2d, ext2d, {});
     testPeriodicBC<SimEngine::SRPIC, Minkowski<Dim::_3D>>(res3d, ext3d, {});
+    testAbsorbClampBC<SimEngine::SRPIC, Minkowski<Dim::_1D>>(res1d, ext1d, {});
 
   } catch (std::exception& e) {
     std::cerr << e.what() << '\n';

@@ -665,7 +665,16 @@ namespace kernel::sr {
             particles.i1(p)      += ctx.ni1;
             particles.i1_prev(p) += ctx.ni1;
           } else if (bc.is_absorb_i1min) {
-            particles.tag(p) = ParticleTag::dead;
+            // Flux-conserving absorption: do not kill here. Clamp the
+            // particle onto the boundary face so the current deposit below
+            // still counts the final displacement; the engine tags it dead
+            // after CurrentsDeposit (srpic::BoundaryAbsorb). A normal push
+            // normalizes dx1 to [0, 1), so dx1 == 0 at i1 == 0 is the clamp
+            // marker the absorb pass recognizes (a genuine particle landing
+            // exactly on x1min is absorbed anyway, so the rare collision is
+            // benign).
+            particles.i1(p)  = 0;
+            particles.dx1(p) = ZERO;
           } else if (bc.is_reflect_i1min) {
             particles.i1(p)  = 0;
             particles.dx1(p) = ONE - particles.dx1(p);
@@ -676,7 +685,12 @@ namespace kernel::sr {
             particles.i1(p)      -= ctx.ni1;
             particles.i1_prev(p) -= ctx.ni1;
           } else if (bc.is_absorb_i1max) {
-            particles.tag(p) = ParticleTag::dead;
+            // Flux-conserving absorption: clamp onto the last active face
+            // (dx1 == 1 cannot result from a normal push, so it uniquely
+            // marks the clamped state) and let the deposit count the final
+            // displacement; killed in srpic::BoundaryAbsorb afterwards.
+            particles.i1(p)  = ctx.ni1 - 1;
+            particles.dx1(p) = ONE;
           } else if (bc.is_reflect_i1max) {
             particles.i1(p)  = ctx.ni1 - 1;
             particles.dx1(p) = ONE - particles.dx1(p);
@@ -701,6 +715,9 @@ namespace kernel::sr {
         }
       }
       if constexpr (D == Dim::_2D || D == Dim::_3D) {
+        // Note: flux-conserving (clamp-then-kill) absorption is currently
+        // implemented for x1 only; the x2/x3 absorb branches below still
+        // kill immediately in the pusher.
         auto invert_vel = false;
         if (particles.i2(p) < 0) {
           if (bc.is_periodic_i2min) {

@@ -4,6 +4,7 @@
  * @implements
  *   - ntt::srpic::AtmosphereParticlesIn<> -> void
  *   - ntt::srpic::ParticleInjector<> -> void
+ *   - ntt::srpic::BoundaryAbsorb<> -> void
  * @namespaces:
  *   - ntt::srpic::
  */
@@ -25,6 +26,7 @@
 #include "framework/domain/domain.h"
 #include "framework/domain/metadomain.h"
 #include "framework/parameters/parameters.h"
+#include "kernels/boundary_absorb.hpp"
 #include "kernels/particle_moments.hpp"
 
 namespace ntt {
@@ -167,6 +169,39 @@ namespace ntt {
         if (metadomain.mesh().prtl_bc_in(direction) == PrtlBC::ATMOSPHERE) {
           AtmosphereParticlesIn(direction, metadomain, domain, params, tags);
         }
+      }
+    }
+
+    // Second half of the flux-conserving absorption (see
+    // kernels/boundary_absorb.hpp): the pusher clamped particles crossing a
+    // global absorbing x1 boundary onto the boundary face so CurrentsDeposit
+    // counted their final displacement; tag them dead now. Runs after
+    // CurrentsDeposit and before CommunicateParticles.
+    template <SRMetricClass M>
+    void BoundaryAbsorb(Domain<SimEngine::SRPIC, M>& domain) {
+      const auto particle_boundaries = domain.mesh.prtl_bc();
+      const auto absorb_min = particle_boundaries[0].first == PrtlBC::ABSORB or
+                              particle_boundaries[0].first == PrtlBC::ATMOSPHERE;
+      const auto absorb_max = particle_boundaries[0].second == PrtlBC::ABSORB or
+                              particle_boundaries[0].second == PrtlBC::ATMOSPHERE;
+      if (not absorb_min and not absorb_max) {
+        return;
+      }
+      const auto ni1 = static_cast<int>(domain.mesh.n_active(in::x1));
+      for (auto& species : domain.species) {
+        if ((species.pusher() == ParticlePusher::NONE) or
+            (species.npart() == 0)) {
+          continue;
+        }
+        Kokkos::parallel_for("BoundaryAbsorb",
+                             species.rangeActiveParticles(),
+                             kernel::sr::BoundaryAbsorb_kernel<M::Dim> {
+                               species.i1,
+                               species.dx1,
+                               species.tag,
+                               ni1,
+                               absorb_min,
+                               absorb_max });
       }
     }
 
