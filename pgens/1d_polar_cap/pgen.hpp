@@ -14,6 +14,7 @@
 #include "archetypes/particle_injector.h"
 #include "framework/domain/metadomain.h"
 
+#include "boundary_flux.hpp"
 #include "initial_injection.hpp"
 #include "qed/curvature_emission.hpp"
 #include "qed/curvature_spectrum.hpp"
@@ -259,10 +260,14 @@ namespace user {
     const int max_photons_per_particle;
     const int opacity_substeps;
     const timestep_t photon_recycle_interval;
+    const bool       boundary_flux_compensation_enabled;
+    const real_t     boundary_flux_ampere_coeff;
+    const real_t     boundary_flux_inv_ppc0;
 
     polar_cap::InitialFields<D>          init_flds;
     polar_cap::MagnetosphericCurrent<D> ext_current;
     polar_cap::CurvatureSpectrum         curvature_spectrum;
+    array_t<real_t*>                     boundary_flux_missing;
 
     PGen(const SimulationParams& p, const Metadomain<S, M>& metadomain)
       : params { p }
@@ -400,6 +405,24 @@ namespace user {
       , photon_recycle_interval { polar_cap::PhotonRecycleInterval(
           params,
           qed_enabled and pair_creation_enabled) }
+      , boundary_flux_compensation_enabled { params.template get<bool>(
+          "setup.polar_cap.boundary_flux_compensation.enable",
+          false) }
+      , boundary_flux_ampere_coeff {
+          // Same current-to-field coefficient as CurrentsAmpere:
+          // coeff = -dt * q0 / (B0 * V0).
+          boundary_flux_compensation_enabled
+            ? -params.template get<real_t>("algorithms.timestep.dt") *
+                params.template get<real_t>("scales.q0") /
+                (params.template get<real_t>("scales.B0") *
+                 params.template get<real_t>("scales.V0"))
+            : ZERO
+        }
+      , boundary_flux_inv_ppc0 {
+          boundary_flux_compensation_enabled
+            ? ONE / params.template get<real_t>("particles.ppc0")
+            : ZERO
+        }
       , init_flds { b0, initial_e_coefficient, x_surface, atmosphere_width }
       , ext_current { params.template get<real_t>(
                         "setup.polar_cap.external_current"),
@@ -411,7 +434,9 @@ namespace user {
             ? polar_cap::CurvatureSpectrum { params.template get<std::string>(
                 "setup.polar_cap.qed.spectrum_table") }
             : polar_cap::CurvatureSpectrum {}
-        } {
+        }
+      , boundary_flux_missing { "polar_cap_boundary_flux_missing",
+                                polar_cap::BoundaryFluxAccSize } {
       // Validate signed host-side values before passing compact values into
       // device policies. In particular, negative integers must not wrap.
       raise::ErrorIf(atmosphere_width <= ZERO,
@@ -433,6 +458,15 @@ namespace user {
       raise::ErrorIf(qed_enabled and radiation_reaction_enabled,
                      "QED and explicit radiation reaction cannot both be enabled",
                      HERE);
+      if (boundary_flux_compensation_enabled) {
+        // The compensation predicts the right-edge ABSORB kill in the pusher;
+        // any other right particle boundary makes the prediction wrong.
+        const auto particle_boundaries = metadomain.mesh().prtl_bc();
+        raise::ErrorIf(
+          particle_boundaries[0].second != PrtlBC::ABSORB,
+          "boundary_flux_compensation requires particles=ABSORB at x1 max",
+          HERE);
+      }
       if (qed_enabled) {
         raise::ErrorIf(
           params.template get<bool>(
@@ -503,8 +537,11 @@ namespace user {
       static_assert(EmissionPolicyClass<polar_cap::CurvatureEmission<M>, M>,
                     "CurvatureEmission does not satisfy EmissionPolicyClass");
       static_assert(
-        CustomParticleUpdatePolicyClass<polar_cap::PhotonOpacityUpdate<M>, M>,
-        "PhotonOpacityUpdate does not satisfy CustomParticleUpdatePolicyClass");
+        CustomParticleUpdatePolicyClass<
+          polar_cap::BoundaryFluxCompensationUpdate<M>,
+          M>,
+        "BoundaryFluxCompensationUpdate does not satisfy "
+        "CustomParticleUpdatePolicyClass");
     }
 
     auto AtmFields(simtime_t) const -> polar_cap::AtmosphereFields<D> {
@@ -656,20 +693,29 @@ namespace user {
     }
 
     auto CustomParticleUpdate(simtime_t, spidx_t species, Domain<S, M>&) const
-      -> polar_cap::PhotonOpacityUpdate<M> {
-      // The same policy type is dispatched for every species, but its enabled
-      // flag restricts payload evolution to photons.
-      return polar_cap::PhotonOpacityUpdate<M> {
-        qed_enabled and pair_creation_enabled and species == photon_index,
-        photon_index,
-        rho_c,
-        opacity_prefactor,
-        b_over_bq,
-        opacity_substeps
+      -> polar_cap::BoundaryFluxCompensationUpdate<M> {
+      // The same policy type is dispatched for every species. The opacity
+      // update is restricted to photons by its own enabled flag; flux
+      // compensation is restricted to the charged species.
+      const auto charged = species == electron_index or species == positron_index;
+      return polar_cap::BoundaryFluxCompensationUpdate<M> {
+        boundary_flux_compensation_enabled and charged,
+        boundary_flux_missing,
+        polar_cap::PhotonOpacityUpdate<M> {
+          qed_enabled and pair_creation_enabled and species == photon_index,
+          photon_index,
+          rho_c,
+          opacity_prefactor,
+          b_over_bq,
+          opacity_substeps
+        }
       };
     }
 
     void CustomPostStep(timestep_t step, simtime_t, Domain<S, M>& domain) {
+      if (boundary_flux_compensation_enabled) {
+        ApplyBoundaryFluxCompensation(domain);
+      }
       if (not qed_enabled or not pair_creation_enabled) {
         return;
       }
@@ -705,6 +751,37 @@ namespace user {
       if ((step + 1u) % photon_recycle_interval == 0u) {
         photons.RemoveDead();
       }
+    }
+
+    void ApplyBoundaryFluxCompensation(Domain<S, M>& domain) {
+      // Only the domain owning the global right edge collects missing flux:
+      // internal MPI boundaries are SYNC, never ABSORB, so this gate also
+      // keeps the shared accumulator single-writer under domain
+      // decomposition. The engine calls CustomPostStep after CurrentsAmpere,
+      // so the correction uses the same J -> E coefficient the deposited
+      // current would have seen this step.
+      if (domain.mesh.prtl_bc()[0].second != PrtlBC::ABSORB) {
+        return;
+      }
+      const auto ni1 = domain.mesh.n_active(in::x1);
+      auto       nslots = static_cast<ncells_t>(polar_cap::BoundaryFluxAccSize);
+      if (nslots > ni1) {
+        nslots = ni1;
+      }
+      Kokkos::parallel_for(
+        "PolarCapBoundaryFluxCompensation",
+        nslots,
+        polar_cap::BoundaryFluxApplier<M::Dim> {
+          domain.fields.em,
+          domain.fields.cur,
+          boundary_flux_missing,
+          static_cast<cellidx_t>(ni1 - 1 + N_GHOSTS),
+          boundary_flux_ampere_coeff,
+          boundary_flux_inv_ppc0
+        });
+      // deep_copy fences, so the applier finishes before the accumulator is
+      // cleared for the next step.
+      Kokkos::deep_copy(boundary_flux_missing, ZERO);
     }
   };
 

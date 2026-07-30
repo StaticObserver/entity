@@ -82,6 +82,14 @@
   # macro-particle weight so their total represented density remains exact.
   "polar_cap.initial_injection.minimum_ppc"     = 1
 
+  # PGen-level boundary-flux compensation (Phase 1 mechanism test). When true,
+  # the custom particle update predicts which charged particles the right
+  # ABSORB boundary will kill during this push and accumulates the current
+  # their final displacement would have deposited; CustomPostStep then applies
+  # the missing flux to the last active Ex/Jx faces using the CurrentsAmpere
+  # normalization. Requires particles = ABSORB at x1 max.
+  "polar_cap.boundary_flux_compensation.enable" = false
+
   # Keep the migration baseline inert until the physical normalization is fixed.
   "polar_cap.qed.enable"                        = false
   # Independent process switches; all are also gated by enable.

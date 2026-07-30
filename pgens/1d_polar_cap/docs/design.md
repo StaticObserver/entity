@@ -93,6 +93,9 @@ Status: implemented through standard Entity boundaries, not runtime-verified.
 - `x1 max`: `B_x` is matched, longitudinal `E_x` is not matched, and particles
   are absorbed.
 - No global boundary or solver behavior is modified.
+- Optional PGen-local compensation (`boundary_flux_compensation.enable`)
+  restores the current that right-edge absorption drops from the deposit; see
+  Custom Behavior. It changes no engine boundary code.
 
 ## 6. Custom Behavior
 
@@ -199,6 +202,27 @@ boundary-absorbed photons are reclaimed after pair conversion rather than just
 before it. Optimized QED-on inputs set the photon species' standard
 `clear_interval` to zero to avoid a redundant pre-conversion compaction.
 
+When `boundary_flux_compensation.enable = true`, the PGen compensates the
+current dropped by right-edge particle absorption. The engine pushes particles
+before depositing currents, and the deposit kernel skips dead particles, so
+the final displacement of a particle killed by the `x1 max` ABSORB boundary
+never contributes to `J`; Ampere then persistently underestimates the flux
+through the last active face. The composite `CustomParticleUpdate` policy runs
+inside the pusher after the position update but before the boundary condition
+tags the particle dead. For charged species it mirrors the pusher kill
+condition exactly (`is_absorb_i1max && i1 >= ni1`) and accumulates the current
+the deposit kernel would have placed on active faces: the zigzag
+`(1 - dx1_prev) * weight * charge / dt` for `SHAPE_ORDER = 0`, or the
+cumulative Esirkepov stencil current replayed through
+`prtl_shape::for_deposit` for higher orders, keeping only faces at or below
+`ni1 - 1`. `CustomPostStep` — now independent of the QED block — adds the
+accumulated macro current to `E_x` with the CurrentsAmpere coefficient
+`-dt q0 / (B0 V0)` and to the stored `J_x` divided by `ppc0`, then clears the
+accumulator. Only the domain owning the global right edge applies the
+correction; internal MPI boundaries are `SYNC`, never `ABSORB`. The
+compensation bypasses current filtering and covers only the longitudinal
+component; absorbed transverse `J_y`/`J_z` are not restored.
+
 ## 7. Custom Output
 
 Status: not-used.
@@ -248,6 +272,8 @@ The case requests standard Entity fields and species densities. No
 - `spectrum_table` is resolved first from the launch directory and then
   relative to the PGen directory.
 - No `radiative_drag = "synchrotron"` entry belongs on the charged species.
+- `boundary_flux_compensation.enable` requires `particles = ABSORB` at
+  `x1 max` and is only valid for the 1D build; it defaults to `false`.
 
 ## 9. Current Status
 
@@ -266,7 +292,10 @@ Completed:
 - A100 QED-off electron-beam force balance at
   `j_ext = 1.5 j_GJ` and `gamma_rad = 1.6e5`;
 - bounded A100 QED-on emission and two-species force-balance measurement
-  through `t = 0.2`.
+  through `t = 0.2`;
+- PGen-local boundary-flux compensation behind
+  `boundary_flux_compensation.enable` (default off), restoring the deposit
+  current dropped by right-edge absorption.
 
 Pending:
 
@@ -307,3 +336,9 @@ Pending:
   whose magnetic pair opacity remains identically zero before escape.
 - Moved periodic photon reclamation behind pair conversion and fixed the
   framework cleanup loop so one due species no longer clears every species.
+- Added an optional PGen-level boundary-flux compensation: a composite
+  `CustomParticleUpdate` policy predicts the right-edge ABSORB kill inside the
+  pusher and accumulates the dropped deposit current, and `CustomPostStep`
+  applies it to the last active `E_x`/`J_x` faces with the CurrentsAmpere
+  normalization. The QED early return in `CustomPostStep` was restructured so
+  the compensation also runs in QED-off runs.
