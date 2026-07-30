@@ -92,6 +92,17 @@ Status: implemented through standard Entity boundaries, not runtime-verified.
 - `x1 min`: field and particle atmosphere.
 - `x1 max`: `B_x` is matched, longitudinal `E_x` is not matched, and particles
   are absorbed.
+- The longitudinal `E_x` inside the right MATCH layer is instead handled by an
+  optional PGen-level damping pass (`boundary_ex_damping.enable`): once per
+  step, after the engine's MATCH(Bx) and Ampere updates, `CustomPostStep`
+  scales `E_x` on the last `cells` active faces by the cubic profile
+  `factor(d) = 1 - strength * ((cells - d)/cells)^3`, where `d` is the
+  distance in active faces from the last active face (`d = 0`). The profile
+  equals `1 - strength` at the edge and `1` at `d = cells`; faces beyond are
+  untouched. This is the Aperture4/TRISTAN-MP-style absorbing-layer damping,
+  implemented in the PGen rather than in the engine's MATCH kernel, which
+  keeps relaxing `B_x` alone. Only the domain whose fields bc at `x1 max` is
+  `MATCH` damps; internal MPI boundaries are `SYNC`, never `MATCH`.
 - Absorption at global `x1` boundaries is flux-conserving: the SR pusher
   clamps boundary-crossing particles onto the boundary face, the standard
   deposit counts their final displacement, and `srpic::BoundaryAbsorb` tags
@@ -234,6 +245,24 @@ kills them after `CurrentsDeposit`), so `boundary_flux_compensation.enable`
 MUST remain `false` with the current engine. The pusher-time policy still
 sees `i1 >= ni1` before the clamp and would add the flux a second time.
 
+When `boundary_ex_damping.enable = true`, `CustomPostStep` damps the
+longitudinal `E_x` inside the right MATCH layer once per step, right after
+the (normally disabled) flux compensation and before the edge-field
+diagnostic, so `debug_edge_fields` reports the damped state. The engine calls
+`CustomPostStep` after `FieldBoundaries(BC::E)`, i.e. after this step's
+MATCH(Bx) relaxation and the Ampere + CurrentsAmpere updates — the same
+relative position Aperture4's damping boundary has after its field-solver
+iterations. The pass multiplies `E_x` on the last `boundary_ex_damping.cells`
+active faces by `1 - strength * ((cells - d)/cells)^3` with `d` the distance
+in active faces from the last active face; no other field component is
+touched, and the engine's MATCH kernel continues to relax `B_x` only (the
+`BoundaryFields::ex1` setter stays unused). The ownership gate uses the
+fields-side bc (`domain.mesh.flds_bc()[0].second == FldsBC::MATCH`), not the
+particle-side bc, matching how the engine assigns the MATCH layer to a rank.
+Enabling the damping requires the 1D Cartesian build, `fields = MATCH` at
+`x1 max`, `0 < cells <= ni1`, and `0 < strength < 1`; with `enable = false`
+the pass is never launched and costs nothing.
+
 ## 7. Custom Output
 
 Status: not-used.
@@ -285,6 +314,11 @@ The case requests standard Entity fields and species densities. No
 - No `radiative_drag = "synchrotron"` entry belongs on the charged species.
 - `boundary_flux_compensation.enable` requires `particles = ABSORB` at
   `x1 max` and is only valid for the 1D build; it defaults to `false`.
+- `boundary_ex_damping.enable` requires `fields = MATCH` at `x1 max` and the
+  1D Cartesian build; `boundary_ex_damping.cells` must lie in `(0, ni1]`
+  (default `20`, well inside the default 500-cell MATCH layer at
+  `ds = 0.05`), and `boundary_ex_damping.strength` in `(0, 1)` (default
+  `0.1`). It defaults to `false`.
 - `debug_edge_fields` (default `false`, interval
   `debug_edge_fields_interval`) prints the per-step accumulated missing flux
   and the last eight active `E_x`/`J_x` faces to stdout for boundary-flux
@@ -362,3 +396,8 @@ Pending:
   face (unique `dx1` markers) and the new `srpic::BoundaryAbsorb` pass tags
   them dead after `CurrentsDeposit`, before particle communication. The
   PGen-level compensation switch must stay disabled with this engine.
+- Added optional PGen-level `E_x` damping inside the right MATCH layer:
+  `CustomPostStep` scales `E_x` on the last active faces once per step with a
+  cubic edge-peaked profile (`boundary_ex_damping.*`), suppressing the
+  honest-sheath `E_x` left by hard absorption while the engine's MATCH kernel
+  keeps relaxing `B_x` alone.

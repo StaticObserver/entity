@@ -264,6 +264,9 @@ namespace user {
     const bool       boundary_flux_compensation_enabled;
     const real_t     boundary_flux_ampere_coeff;
     const real_t     boundary_flux_inv_ppc0;
+    const bool       boundary_ex_damping_enabled;
+    const int        boundary_ex_damping_cells;
+    const real_t     boundary_ex_damping_strength;
     const bool       debug_edge_fields;
     const timestep_t debug_edge_fields_interval;
 
@@ -431,6 +434,15 @@ namespace user {
             ? ONE / params.template get<real_t>("particles.ppc0")
             : ZERO
         }
+      , boundary_ex_damping_enabled { params.template get<bool>(
+          "setup.polar_cap.boundary_ex_damping.enable",
+          false) }
+      , boundary_ex_damping_cells { params.template get<int>(
+          "setup.polar_cap.boundary_ex_damping.cells",
+          20) }
+      , boundary_ex_damping_strength { params.template get<real_t>(
+          "setup.polar_cap.boundary_ex_damping.strength",
+          static_cast<real_t>(0.1)) }
       , debug_edge_fields { params.template get<bool>(
           "setup.polar_cap.debug_edge_fields",
           false) }
@@ -481,6 +493,32 @@ namespace user {
           particle_boundaries[0].second != PrtlBC::ABSORB,
           "boundary_flux_compensation requires particles=ABSORB at x1 max",
           HERE);
+      }
+      if (boundary_ex_damping_enabled) {
+        // The damping owns the longitudinal E_x inside the right MATCH layer;
+        // it requires the fields-side MATCH boundary (not the particle-side
+        // bc) at the global x1 max, mirroring the ownership test the engine's
+        // FieldBoundaries uses for the MATCH layer.
+        raise::ErrorIf(D != Dim::_1D,
+                       "boundary_ex_damping is only valid for the 1D build",
+                       HERE);
+        raise::ErrorIf(M::CoordType != Coord::Cartesian,
+                       "boundary_ex_damping requires Cartesian coordinates",
+                       HERE);
+        raise::ErrorIf(
+          metadomain.mesh().flds_bc()[0].second != FldsBC::MATCH,
+          "boundary_ex_damping requires fields=MATCH at x1 max",
+          HERE);
+        raise::ErrorIf(
+          boundary_ex_damping_cells <= 0 or
+            boundary_ex_damping_cells >
+              static_cast<int>(metadomain.mesh().n_active(in::x1)),
+          "boundary_ex_damping.cells must be in (0, ni1]",
+          HERE);
+        raise::ErrorIf(boundary_ex_damping_strength <= ZERO or
+                         boundary_ex_damping_strength >= ONE,
+                       "boundary_ex_damping.strength must be in (0, 1)",
+                       HERE);
       }
       if (qed_enabled) {
         raise::ErrorIf(
@@ -743,6 +781,12 @@ namespace user {
       if (boundary_flux_compensation_enabled) {
         ApplyBoundaryFluxCompensation(domain);
       }
+      // Ex damping runs after the flux compensation so both corrections see
+      // the same post-Ampere state; the debug print below then reports the
+      // damped edge fields.
+      if (boundary_ex_damping_enabled) {
+        ApplyBoundaryExDamping(domain);
+      }
       if (debug_edge_fields and (step % debug_edge_fields_interval == 0u)) {
         DebugPrintEdgeFields(step, time, missing_total, domain);
       }
@@ -812,6 +856,29 @@ namespace user {
       // deep_copy fences, so the applier finishes before the accumulator is
       // cleared for the next step.
       Kokkos::deep_copy(boundary_flux_missing, ZERO);
+    }
+
+    void ApplyBoundaryExDamping(Domain<S, M>& domain) const {
+      // Only the domain owning the global right MATCH boundary damps:
+      // internal MPI boundaries are SYNC, never MATCH, so this fields-side
+      // gate (the same ownership test the engine's FieldBoundaries uses for
+      // the MATCH layer) keeps the pass single-writer under domain
+      // decomposition. CustomPostStep runs after the engine's FieldBoundaries
+      // (BC::E), i.e. after this step's MATCH(Bx) and Ampere updates, which
+      // matches where Aperture4 applies its damping boundary.
+      if (domain.mesh.flds_bc()[0].second != FldsBC::MATCH) {
+        return;
+      }
+      const auto ni1 = domain.mesh.n_active(in::x1);
+      Kokkos::parallel_for(
+        "PolarCapBoundaryExDamping",
+        static_cast<ncells_t>(boundary_ex_damping_cells),
+        polar_cap::BoundaryExDamper<M::Dim> {
+          domain.fields.em,
+          static_cast<cellidx_t>(ni1 - 1 + N_GHOSTS),
+          boundary_ex_damping_cells,
+          boundary_ex_damping_strength
+        });
     }
 
     void DebugPrintEdgeFields(timestep_t      step,

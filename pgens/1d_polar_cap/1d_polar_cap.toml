@@ -94,6 +94,19 @@
   # engine, otherwise the flux is counted twice.
   "polar_cap.boundary_flux_compensation.enable" = false
 
+  # Aperture4-style multiplicative damping of the longitudinal E_x inside the
+  # right MATCH layer, applied once per step in CustomPostStep (after the
+  # engine's MATCH(Bx) and Ampere passes). Suppresses the honest-sheath Ex
+  # that hard particle absorption leaves at the edge. Only Ex1 on the last
+  # `cells` active faces is scaled, by the cubic profile
+  # factor(d) = 1 - strength * ((cells - d)/cells)^3 with d the distance in
+  # active faces from the last active face (strongest at the edge, unity at
+  # d = cells). Requires fields = MATCH at x1 max; the engine's MATCH boundary
+  # keeps handling Bx1 alone. cells must be <= ni1 and strength in (0, 1).
+  "polar_cap.boundary_ex_damping.enable"   = false
+  "polar_cap.boundary_ex_damping.cells"    = 20
+  "polar_cap.boundary_ex_damping.strength" = 0.1
+
   # Keep the migration baseline inert until the physical normalization is fixed.
   "polar_cap.qed.enable"                        = false
   # Independent process switches; all are also gated by enable.
