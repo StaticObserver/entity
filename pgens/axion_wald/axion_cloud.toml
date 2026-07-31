@@ -1,5 +1,5 @@
 [simulation]
-  name    = "axion_vacuum"
+  name    = "axion_cloud_vacuum"
   engine  = "grpic"
   runtime = 10.0
 
@@ -8,7 +8,10 @@
   extent     = [[1.0, 8.0]]
 
   [grid.metric]
-    metric = "kerr_schild_0"
+    metric  = "qkerr_schild"
+    qsph_r0 = 0.0
+    qsph_h  = 0.0
+    ks_a    = 0.9
 
   [grid.boundaries]
     fields    = [["MATCH"]]
@@ -35,11 +38,12 @@
 
 [setup]
   init_field      = "wald"
-  axion_mode      = "sinusoid"
+  axion_mode      = "cloud"
   axion_eps       = 1.0
+  axion_alpha     = 0.6
+  axion_l         = 1
   axion_amplitude = 0.01
-  axion_omega     = 1.0
-  axion_k1        = 0.0
+  axion_phase     = 0.0
 
 [output]
   format = "BPFile"
