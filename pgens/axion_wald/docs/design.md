@@ -72,9 +72,16 @@ State: implemented（未验证）
 
 - `axion` functor（`AxionField<D>`）：引擎 trait `HasAxionField` 检测，
   每步在 aux（t=n）与 main（t=n+1/2）两次 Ampere pass 注入 J_a。
-  - `dot_a(x_Ph, t)` / `grad_a(x_Ph, t, g)`：物理坐标 (r,θ) 的 ȧ 与协变梯度；
-    kernel 内部经 `transform<Idx::PD, Idx::D>` 转到代码坐标梯度并组装。
+  - `a(x_Ph, t)` / `dot_a(x_Ph, t)` / `grad_a(x_Ph, t, g)`：物理坐标 (r,θ)
+    的场值、ȧ 与协变梯度；kernel 内部经 `transform<Idx::PD, Idx::D>` 转到
+    代码坐标梯度并组装。
   - `eps`：耦合强度 ε（≡ g_{aγ}·a₀ 的代码单位对应量，由平坦极限测试锁定）。
+- 屏蔽初始场（screened init）：`InitFields::dx1/2/3` 附加
+  −ε̃·a(x,0)·B(x,0)（ε̃ = (q0/B0)·eps，与注入 kernel 同系数），是
+  ∇·D = ρ_a 的精确特解（GR 下同样精确，见 axion-Komissarov 笔记
+  "screening field" 节）；B 分量直接复用 `bx1/2/3` 在 D 的 staggered
+  位置求值。开关 `setup.axion_screen_init`（默认 true；eps=0 时自动为零）。
+  开启后任意 phase 均满足初始约束，不必迁就 phase=π/2。
 - TOML 映射：
   - `setup.axion_mode` = "sinusoid" | "cloud"（默认 "sinusoid"）
   - `setup.axion_eps`（默认 0）
@@ -116,10 +123,9 @@ State: not-used
 - pending：Ledger run 登记（render-run/record 流程）；粒子接入与
   η_EM + η_prtl = 1 诊断（CustomStat）。
 - open：cloud 模式 l ≥ 2 扩展；α > 0.2 时解析本征态精度；
-  **初始约束**：引擎未实现 Gauss 源项 ρ_a = −g_{aγ}B·∇a。由轴子流守恒，
-  ∇·D − ρ_a 在演化中保持常数；a(0)≠0（phase=0）时初态偏离约束
-  −ρ_a(0) 且永久保持（不影响 D 的动力学，但影响电荷/能量诊断的解释）。
-  **建议生产运行取 phase=π/2（a(0)=0，ρ_a(0)=0）使约束自动精确成立。**
+  ~~初始约束~~ → 已由 screened init 解决（见 §6）：a(0)≠0 时
+  D(0) += −ε̃a(0)B(0) 使 ∇·D = ρ_a 在 t=0 精确成立（离散截断级别），
+  相位自由。`setup.axion_screen_init=false` 可退回旧行为做对照。
 
 ## 10. Important Changes
 
