@@ -120,6 +120,19 @@ State: not-used
     不平静）主导，属物理而非误差。
   - **回归**：axion=ON/OFF 与 upstream v1.4.5 短跑一致（最差 ~7e-7 相对，
     位于发电机放大的 Bph，三对差异同量级——roundoff 种子级）。
+  - **Gauss 约束（kerr_schild_0, cloud α=0.6 l=1, phase=0, eps=1, 70661460）**：
+    C ≡ ∇·D − ρ_a 由输出 D、B 直接计算（散度算子 (1/r²sinθ)[∂_r(r²sinθ D¹)
+    + ∂_θ(r²sinθ D²)]，注意该度规输出分量为物理逆变分量）。
+    `axion_screen_init=false`：max|C| = max|ρ_a|（relC = 1.000），全程守恒
+    （ρ_a 振荡衰减时 C 保持 1.322e-9 不变）——精确复现"未屏蔽初态偏离
+    −ρ_a(0) 且永久保持"的理论预言，同时证明 J_a 注入的离散连续性极好。
+    `axion_screen_init=true`（默认）：max|C| ≈ 4e-13（relC ≈ 3e-4，截断级别），
+    全程稳定——**∇·D = ρ_a 严格成立**，相位自由。
+- 备注：`kerr_schild_0` 在 Entity 中是平直球坐标（α=1、β=0、h_11=1，
+  见 metrics/kerr_schild_0.h），即 t1 系列是严格的平坦极限测试；
+  真 GR 测试用 `qkerr_schild`（t2 系列）。GR 下的 Gauss 验证需用对应
+  度规因子构造散度算子，方法相同（连续恒等式 ∇·(aB)=B·∇a 与度规无关，
+  pgen 屏蔽项按构造在任意度规下精确）。
 - pending：Ledger run 登记（render-run/record 流程）；粒子接入与
   η_EM + η_prtl = 1 诊断（CustomStat）。
 - open：cloud 模式 l ≥ 2 扩展；α > 0.2 时解析本征态精度；
@@ -134,3 +147,5 @@ State: not-used
   α²/(2M)（对照 arXiv:2506.16036 式 27）。
 - 2026-07-31：`setup.axion_l` 改按 int 读取（自定义 setup 整数以 int 存储，
   parameters.cpp:267）（10f35220）。m87 全测试矩阵通过（见 §9）。
+- 2026-07-31：新增 screened init（`AxionField::a` + `InitFields::screen`，
+  70661460）；m87 Gauss 约束验证通过（见 §9）。
