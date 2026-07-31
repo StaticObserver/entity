@@ -76,11 +76,12 @@ State: implemented（未验证）
     的场值、ȧ 与协变梯度；kernel 内部经 `transform<Idx::PD, Idx::D>` 转到
     代码坐标梯度并组装。
   - `eps`：耦合强度 ε（≡ g_{aγ}·a₀ 的代码单位对应量，由平坦极限测试锁定）。
-- 屏蔽初始场（screened init）：`InitFields::dx1/2/3` 附加
-  −ε̃·a(x,0)·B(x,0)（ε̃ = (q0/B0)·eps，与注入 kernel 同系数），是
-  ∇·D = ρ_a 的精确特解（GR 下同样精确，见 axion-Komissarov 笔记
-  "screening field" 节）；B 分量直接复用 `bx1/2/3` 在 D 的 staggered
-  位置求值。开关 `setup.axion_screen_init`（默认 true；eps=0 时自动为零）。
+- Gauss 一致初始化：`InitFields::dx1/2/3` 附加 −ε̃·a(x,0)·B(x,0)
+  （ε̃ = (q0/B0)·eps，与注入 kernel 同系数）——这就是广义 Gauss 定律
+  ∇·D = ρ_a 在真空中的精确特解（GR 下同样精确，见 axion-Komissarov 笔记
+  "D of a pure axion background" 节），不是什么额外的近似；
+  B 分量直接复用 `bx1/2/3` 在 D 的 staggered 位置求值。
+  开关 `setup.axion_gauss_init`（默认 true；eps=0 时自动为零）。
   开启后任意 phase 均满足初始约束，不必迁就 phase=π/2。
 - TOML 映射：
   - `setup.axion_mode` = "sinusoid" | "cloud"（默认 "sinusoid"）
@@ -106,6 +107,9 @@ State: not-used
 
 ## 9. Current Status
 
+**状态：正式通过测试（2026-07-31，用户确认）。** 注入归一化、GR 定性、
+upstream 回归、Gauss 约束四项全部通过，可用于正式物理 run。
+
 - implemented：sinusoid 模式、cloud 模式（m=0 本征态）、两个 TOML、Wald 初始场。
 - verified（m87, 2026-07-31, build-A sha256 0262b8da…）：
   - **注入验证（kerr_schild_0, a=0, cloud 模式）**：eps1−eps0 差分对照
@@ -123,10 +127,10 @@ State: not-used
   - **Gauss 约束（kerr_schild_0, cloud α=0.6 l=1, phase=0, eps=1, 70661460）**：
     C ≡ ∇·D − ρ_a 由输出 D、B 直接计算（散度算子 (1/r²sinθ)[∂_r(r²sinθ D¹)
     + ∂_θ(r²sinθ D²)]，注意该度规输出分量为物理逆变分量）。
-    `axion_screen_init=false`：max|C| = max|ρ_a|（relC = 1.000），全程守恒
+    `axion_gauss_init=false`：max|C| = max|ρ_a|（relC = 1.000），全程守恒
     （ρ_a 振荡衰减时 C 保持 1.322e-9 不变）——精确复现"未屏蔽初态偏离
     −ρ_a(0) 且永久保持"的理论预言，同时证明 J_a 注入的离散连续性极好。
-    `axion_screen_init=true`（默认）：max|C| ≈ 4e-13（relC ≈ 3e-4，截断级别），
+    `axion_gauss_init=true`（默认）：max|C| ≈ 4e-13（relC ≈ 3e-4，截断级别），
     全程稳定——**∇·D = ρ_a 严格成立**，相位自由。
 - 备注：`kerr_schild_0` 在 Entity 中是平直球坐标（α=1、β=0、h_11=1，
   见 metrics/kerr_schild_0.h），即 t1 系列是严格的平坦极限测试；
@@ -136,9 +140,9 @@ State: not-used
 - pending：Ledger run 登记（render-run/record 流程）；粒子接入与
   η_EM + η_prtl = 1 诊断（CustomStat）。
 - open：cloud 模式 l ≥ 2 扩展；α > 0.2 时解析本征态精度；
-  ~~初始约束~~ → 已由 screened init 解决（见 §6）：a(0)≠0 时
+  ~~初始约束~~ → 已由 Gauss 一致初始化解决（见 §6）：a(0)≠0 时
   D(0) += −ε̃a(0)B(0) 使 ∇·D = ρ_a 在 t=0 精确成立（离散截断级别），
-  相位自由。`setup.axion_screen_init=false` 可退回旧行为做对照。
+  相位自由。`setup.axion_gauss_init=false` 可退回旧行为做对照。
 
 ## 10. Important Changes
 
@@ -147,5 +151,5 @@ State: not-used
   α²/(2M)（对照 arXiv:2506.16036 式 27）。
 - 2026-07-31：`setup.axion_l` 改按 int 读取（自定义 setup 整数以 int 存储，
   parameters.cpp:267）（10f35220）。m87 全测试矩阵通过（见 §9）。
-- 2026-07-31：新增 screened init（`AxionField::a` + `InitFields::screen`，
+- 2026-07-31：新增 Gauss 一致初始化（`AxionField::a` + `InitFields::d_axion`，
   70661460）；m87 Gauss 约束验证通过（见 §9）。

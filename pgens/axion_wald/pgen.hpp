@@ -145,12 +145,12 @@ namespace user {
     InitFields(M metric_,
                const std::string&   init_field_geometry,
                const AxionField<D>& axion_,
-               real_t               screen_coeff_,
-               bool                 screen_init_)
+               real_t               eps_tilde_,
+               bool                 gauss_init_)
       : metric { metric_ }
       , axion { axion_ }
-      , screen_coeff { screen_coeff_ }
-      , screen_init { screen_init_ } {
+      , eps_tilde { eps_tilde_ }
+      , gauss_init { gauss_init_ } {
       if (init_field_geometry == "wald") {
         field_geometry = InitFieldGeometry::Wald;
       } else if (init_field_geometry == "vertical") {
@@ -240,12 +240,13 @@ namespace user {
       }
     }
 
-    // Gauss-consistent "screened" initialization of the D field:
+    // Gauss-consistent initialization of the D field:
     //   D(x, 0)  +=  -eps_tilde * a(x, 0) * B(x, 0),
-    // an exact particular solution of div D = rho_a = -eps_tilde * B.grad a
-    // (docs/design.md; axion-Komissarov notes, "screening field" section).
-    Inline auto screen(const coord_t<D>& x_Ph, real_t bx) const -> real_t {
-      return screen_init ? screen_coeff * axion.a(x_Ph, ZERO) * bx : ZERO;
+    // the exact particular solution of the generalized Gauss law
+    // div D = rho_a = -eps_tilde * B.grad a  (docs/design.md;
+    // axion-Komissarov notes, "D of a pure axion background" section).
+    Inline auto d_axion(const coord_t<D>& x_Ph, real_t bx) const -> real_t {
+      return gauss_init ? eps_tilde * axion.a(x_Ph, ZERO) * bx : ZERO;
     }
 
     Inline auto dx1(const coord_t<D>& x_Ph) const
@@ -278,9 +279,9 @@ namespace user {
         real_t D1u { metric.template h<1, 1>({ xi[0], xi[1] }) * D1d +
                      metric.template h<1, 3>({ xi[0], xi[1] }) * D3d };
 
-        return D1u - screen(x_Ph, bx1(x_Ph));
+        return D1u - d_axion(x_Ph, bx1(x_Ph));
       } else if (field_geometry == InitFieldGeometry::Vertical) {
-        return -screen(x_Ph, bx1(x_Ph));
+        return -d_axion(x_Ph, bx1(x_Ph));
       } else {
         raise::KernelError(HERE, "Unrecognized field geometry");
         return ZERO;
@@ -306,9 +307,9 @@ namespace user {
                      (A_1(x0p) - A_1(x0m)) * beta_ijP / alpha_ijP };
         real_t D2u { metric.template h<2, 2>({ xi[0], xi[1] }) * D2d };
 
-        return D2u - screen(x_Ph, bx2(x_Ph));
+        return D2u - d_axion(x_Ph, bx2(x_Ph));
       } else if (field_geometry == InitFieldGeometry::Vertical) {
-        return -screen(x_Ph, bx2(x_Ph));
+        return -d_axion(x_Ph, bx2(x_Ph));
       } else {
         raise::KernelError(HERE, "Unrecognized field geometry");
         return ZERO;
@@ -342,14 +343,14 @@ namespace user {
 
         if (cmp::AlmostZero(x_Ph[1])) {
           return metric.template h<1, 3>({ xi[0], xi[1] }) * D1d -
-                 screen(x_Ph, bx3(x_Ph));
+                 d_axion(x_Ph, bx3(x_Ph));
         } else {
           return metric.template h<3, 3>({ xi[0], xi[1] }) * D3d +
                  metric.template h<1, 3>({ xi[0], xi[1] }) * D1d -
-                 screen(x_Ph, bx3(x_Ph));
+                 d_axion(x_Ph, bx3(x_Ph));
         }
       } else if (field_geometry == InitFieldGeometry::Vertical) {
-        return -screen(x_Ph, bx3(x_Ph));
+        return -d_axion(x_Ph, bx3(x_Ph));
       } else {
         raise::KernelError(HERE, "Unrecognized field geometry");
         return ZERO;
@@ -359,8 +360,8 @@ namespace user {
   private:
     const M            metric;
     const AxionField<D> axion;
-    const real_t       screen_coeff;
-    const bool         screen_init;
+    const real_t       eps_tilde;
+    const bool         gauss_init;
     InitFieldGeometry  field_geometry;
   };
 
@@ -394,7 +395,7 @@ namespace user {
                     p.template get<real_t>("scales.q0") *
                       p.template get<real_t>("setup.axion_eps", ZERO) /
                       p.template get<real_t>("scales.B0"),
-                    p.template get<bool>("setup.axion_screen_init", true) } {}
+                    p.template get<bool>("setup.axion_gauss_init", true) } {}
   };
 
 } // namespace user
