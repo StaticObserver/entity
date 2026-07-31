@@ -99,15 +99,32 @@ State: not-used
 
 ## 9. Current Status
 
-- implemented：sinusoid 模式、cloud 模式（m=0 本征态）、两个 TOML
-  （axion_wald.toml 单元测试 / axion_cloud.toml GR 测试）、Wald 初始场。
-- pending：m87 编译；单元测试（归一化 + dt 二阶收敛）；GR 真空定性测试；
-  回归（axion=OFF/ON 对无 axion pgen 零影响）。
-- open：粒子接入与 η 诊断；cloud 模式 l ≥ 2 扩展；α > 0.2 时解析本征态
-  精度（测试用可接受，物理产出需评估）。
+- implemented：sinusoid 模式、cloud 模式（m=0 本征态）、两个 TOML、Wald 初始场。
+- verified（m87, 2026-07-31, build-A sha256 0262b8da…）：
+  - **注入验证（kerr_schild_0, a=0, cloud 模式）**：eps1−eps0 差分对照
+    −(q0/B0)·ε·[a(t)−a(0)]·B，早时逐点比率 1.0000±0.0002（全网格、Dr/Dth）；
+    归一化（q0/B0 与 eps）锁定；三档 CFL（0.5/0.25/0.125）偏差单调减小，
+    晚期 ~0.5% 偏差为 dt 无关的电磁响应物理（波动再分配 + ∇a×E 项），
+    非注入误差。
+  - **GR 真空（qkerr_schild, a=0.9, cloud α=0.6 l=1）**：早期模式投影
+    ~0.8（ȧB 主项）+ ~0.2（∇a×E 交叉项，a=0.9 时 Wald E≠0 被激活——
+    与 a=0 时比率恰为 1.000 对照一致）；轴/视界/MATCH 边界无伪模。
+    晚期（t≳6）eps1/eps0 差分被基线自身的非线性漂移（a=0.9 真空 Wald
+    不平静）主导，属物理而非误差。
+  - **回归**：axion=ON/OFF 与 upstream v1.4.5 短跑一致（最差 ~7e-7 相对，
+    位于发电机放大的 Bph，三对差异同量级——roundoff 种子级）。
+- pending：Ledger run 登记（render-run/record 流程）；粒子接入与
+  η_EM + η_prtl = 1 诊断（CustomStat）。
+- open：cloud 模式 l ≥ 2 扩展；α > 0.2 时解析本征态精度；
+  **初始约束**：引擎未实现 Gauss 源项 ρ_a = −g_{aγ}B·∇a。由轴子流守恒，
+  ∇·D − ρ_a 在演化中保持常数；a(0)≠0（phase=0）时初态偏离约束
+  −ρ_a(0) 且永久保持（不影响 D 的动力学，但影响电荷/能量诊断的解释）。
+  **建议生产运行取 phase=π/2（a(0)=0，ρ_a(0)=0）使约束自动精确成立。**
 
 ## 10. Important Changes
 
 - 2026-07-31：初版（sinusoid）+ 引擎 axion 通道（d02648bf）。
 - 2026-07-31：新增 cloud 模式（m=0 本征态）；修正本征态径向衰减率为
   α²/(2M)（对照 arXiv:2506.16036 式 27）。
+- 2026-07-31：`setup.axion_l` 改按 int 读取（自定义 setup 整数以 int 存储，
+  parameters.cpp:267）（10f35220）。m87 全测试矩阵通过（见 §9）。
