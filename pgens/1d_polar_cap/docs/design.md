@@ -87,27 +87,40 @@ density convention.
 
 ## 5. Boundaries
 
-Status: implemented through standard Entity boundaries, not runtime-verified.
+Status: implemented and runtime-verified (five-run A100/V100 boundary
+campaign, Phase 2).
 
 - `x1 min`: field and particle atmosphere.
-- `x1 max`: `B_x` is matched, longitudinal `E_x` is not matched, and particles
-  are absorbed.
-- The longitudinal `E_x` inside the right MATCH layer is instead handled by an
-  optional PGen-level damping pass (`boundary_ex_damping.enable`): once per
-  step, after the engine's MATCH(Bx) and Ampere updates, `CustomPostStep`
-  scales `E_x` on the last `cells` active faces by the cubic profile
-  `factor(d) = 1 - strength * ((cells - d)/cells)^3`, where `d` is the
-  distance in active faces from the last active face (`d = 0`). The profile
-  equals `1 - strength` at the edge and `1` at `d = cells`; faces beyond are
-  untouched. This is the Aperture4/TRISTAN-MP-style absorbing-layer damping,
-  implemented in the PGen rather than in the engine's MATCH kernel, which
-  keeps relaxing `B_x` alone. Only the domain whose fields bc at `x1 max` is
-  `MATCH` damps; internal MPI boundaries are `SYNC`, never `MATCH`.
-- Absorption at global `x1` boundaries is flux-conserving: the SR pusher
-  clamps boundary-crossing particles onto the boundary face, the standard
-  deposit counts their final displacement, and `srpic::BoundaryAbsorb` tags
-  them dead before particle communication. `x2`/`x3` absorb branches keep
-  the old kill-in-pusher behavior.
+- `x1 max`: three cooperating mechanisms, each owning one aspect of the
+  boundary:
+  - fields `MATCH`, relaxing `B_x` only (longitudinal `E_x` is excluded from
+    the match target);
+  - particles `ABSORB` with flux-conserving bookkeeping in the SR engine: the
+    pusher clamps boundary-crossing particles onto the boundary face, the
+    standard deposit counts their final displacement, and
+    `srpic::BoundaryAbsorb` (src/kernels/boundary_absorb.hpp) tags them dead
+    after `CurrentsDeposit`, before particle communication. `x2`/`x3` absorb
+    branches keep the old kill-in-pusher behavior;
+  - PGen-level cubic `E_x` damping over the whole MATCH layer
+    (`boundary_ex_damping`): once per step, after the engine's MATCH(Bx) and
+    Ampere updates, `CustomPostStep` scales `E_x` on the last `cells` active
+    faces by `factor(d) = 1 - strength * ((cells - d)/cells)^3`, with `d` the
+    distance in active faces from the last active face. This suppresses the
+    DC sheath that hard absorption leaves at the edge. Production setting:
+    `cells = 1000` covering the entire `ds = 0.1` layer, `strength = 0.1`.
+- Verified with the full-layer damping: 0.76% inward electron flux, edge
+  `E_x` sheath at ~1e-10, and no charge spike — the residual charge is
+  spread through the layer with a bounded integral (~1.08). A small ~3.1e-8
+  `E_x` bump at the layer onset is the expected parasitic fixed point of
+  graded damping and is harmless.
+- `cells` must cover the entire MATCH layer: damping a sub-layer only
+  relocates the sheath to the damping onset (the `cells = 20` experiment
+  leaked 21% inward and was rejected). `strength = 0.1` is the first
+  validated value, between the TRISTAN-MP edge scale (`K ~ 0.15`) and the
+  Aperture4 per-iteration scale (`0.001-0.003`).
+- Known bounded cost: charge is smeared through the layer (local Gauss
+  mismatch of order unity); a periodic Poisson cleaning pass can be added if
+  it ever matters (Zeltron precedent).
 - The optional PGen-local compensation (`boundary_flux_compensation.enable`)
   predates the engine fix and must stay disabled with it; see Custom
   Behavior.
@@ -263,6 +276,17 @@ Enabling the damping requires the 1D Cartesian build, `fields = MATCH` at
 `x1 max`, `0 < cells <= ni1`, and `0 < strength < 1`; with `enable = false`
 the pass is never launched and costs nothing.
 
+Two validated facts constrain the configuration. First, `cells` must span the
+whole MATCH layer: with `cells = 20` the sheath simply re-forms at the
+damping onset (21% inward electron flux, rejected), while `cells = 1000`
+covering the `ds = 0.1` production layer measures 0.76% inward flux and an
+edge `E_x` of ~1e-10. Second, the graded profile has a parasitic fixed point
+per face, `E* = S(1 - lambda)/lambda` with `lambda` the local damping rate,
+so `E_x` is pinned near the edge but a small bump (~3.1e-8, worst over the
+window) persists at the layer onset where `lambda -> 0`; it is static and
+harmless. The damping also decouples `E_x` from the stored `J_x` inside the
+layer, which is acceptable for a sponge.
+
 ## 7. Custom Output
 
 Status: not-used.
@@ -315,10 +339,11 @@ The case requests standard Entity fields and species densities. No
 - `boundary_flux_compensation.enable` requires `particles = ABSORB` at
   `x1 max` and is only valid for the 1D build; it defaults to `false`.
 - `boundary_ex_damping.enable` requires `fields = MATCH` at `x1 max` and the
-  1D Cartesian build; `boundary_ex_damping.cells` must lie in `(0, ni1]`
-  (default `20`, well inside the default 500-cell MATCH layer at
-  `ds = 0.05`), and `boundary_ex_damping.strength` in `(0, 1)` (default
-  `0.1`). It defaults to `false`.
+  1D Cartesian build; `boundary_ex_damping.cells` must lie in `(0, ni1]` and
+  `boundary_ex_damping.strength` in `(0, 1)`. It defaults to `false`. In
+  practice `cells` must cover the entire MATCH layer (`1000` for the
+  `ds = 0.1` production layer); sub-layer damping was measured to relocate
+  the sheath rather than remove it.
 - `debug_edge_fields` (default `false`, interval
   `debug_edge_fields_interval`) prints the per-step accumulated missing flux
   and the last eight active `E_x`/`J_x` faces to stdout for boundary-flux
@@ -345,9 +370,16 @@ Completed:
 - PGen-local boundary-flux compensation behind
   `boundary_flux_compensation.enable` (default off), restoring the deposit
   current dropped by right-edge absorption.
+- engine-level flux-conserving absorption (kill-after-deposit), verified on
+  A100/V100: edge `E_x` sheath 1.79e-6 -> 1.14e-6 and inward electron flux
+  23% -> 6.9% relative to the unrepaired no-`E_x`-match boundary;
+- full-layer cubic `E_x` damping (`boundary_ex_damping`, `cells = 1000`),
+  verified on A100/V100: 0.76% inward flux, edge `E_x` ~ 1e-10, bounded
+  in-layer charge (integral ~1.08), harmless ~3.1e-8 onset bump.
 
 Pending:
 
+- A100 production verification run 4b2cb7763820783a;
 - Entity compilation and runtime smoke tests for the photon-filter branch;
 - single-particle emission tests inside Kokkos;
 - discrete Gauss/Ampere checks for the initial state;
@@ -401,3 +433,10 @@ Pending:
   cubic edge-peaked profile (`boundary_ex_damping.*`), suppressing the
   honest-sheath `E_x` left by hard absorption while the engine's MATCH kernel
   keeps relaxing `B_x` alone.
+- Validated the right boundary model in a five-run A100/V100 campaign:
+  full-layer tanh `E_x` relaxation (inward-tight but locally
+  Gauss-inconsistent), no-`E_x`-match without repair (23% inward flux, edge
+  sheath 1.79e-6), engine kill-after-deposit (6.9%, 1.14e-6), local cubic
+  damping (`cells = 20`: sheath relocation, 21%, rejected), and full-layer
+  cubic damping (`cells = 1000`: 0.76% inward flux, edge `E_x` ~ 1e-10,
+  bounded in-layer charge) — the retained production configuration.
