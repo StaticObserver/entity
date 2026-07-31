@@ -357,7 +357,7 @@ namespace user {
                 p.template get<real_t>("setup.axion_omega", ONE),
                 p.template get<real_t>("setup.axion_k1", ZERO),
                 p.template get<real_t>("setup.axion_alpha", HALF),
-                p.template get<unsigned short>("setup.axion_l", 1),
+                (unsigned short)(p.template get<int>("setup.axion_l", 1)),
                 p.template get<real_t>("setup.axion_phase", ZERO) } {}
   };
 
