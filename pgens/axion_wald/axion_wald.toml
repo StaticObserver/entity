@@ -35,11 +35,12 @@
 
 [setup]
   init_field      = "wald"
-  axion_mode      = "sinusoid"
+  axion_mode      = "cloud"
   axion_eps       = 1.0
+  axion_alpha     = 0.6
+  axion_l         = 1
   axion_amplitude = 0.01
-  axion_omega     = 1.0
-  axion_k1        = 0.0
+  axion_phase     = 0.0
 
 [output]
   format = "BPFile"
