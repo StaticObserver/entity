@@ -526,6 +526,18 @@ namespace ntt {
         }
 
         /**
+         * em0::D <- (em0::D) <- J_a(n)  [axion, no-op when disabled]
+         *
+         * Now: em0::D at n+1/2
+         */
+        grpic::AmpereAxion(dom,
+                           m_params,
+                           this->engineParams(),
+                           m_pgen,
+                           grpic::gr_ampere::aux,
+                           time);
+
+        /**
          * em0::D, em::D <- boundary conditions
          */
         timers.start("Communications");
@@ -539,6 +551,11 @@ namespace ntt {
                                BC::D,
                                grpic::gr_bc::main);
         timers.stop("FieldBoundaries");
+
+        /**
+         * aux::E <- E at n+1/2  [axion, no-op when disabled]
+         */
+        grpic::AxionPrecomputeE(m_metadomain, dom, m_pgen, m_params);
 
         timers.start("FieldSolver");
         /**
@@ -587,6 +604,19 @@ namespace ntt {
                                 grpic::gr_ampere::main);
           timers.stop("FieldSolver");
         }
+
+        /**
+         * em0::D <- (em0::D) <- J_a(n+1/2)  [axion, no-op when disabled]
+         *
+         * Now: em0::D at n+1
+         */
+        grpic::AmpereAxion(dom,
+                           m_params,
+                           this->engineParams(),
+                           m_pgen,
+                           grpic::gr_ampere::main,
+                           time + HALF * dt);
+
         timers.start("FieldSolver");
         /**
          * em::D <-> em0::D

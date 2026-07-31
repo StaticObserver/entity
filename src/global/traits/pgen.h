@@ -9,6 +9,7 @@
  *   - traits::pgen::HasExternalFields<>
  *   - traits::pgen::HasInitPrtls<>
  *   - traits::pgen::HasExtCurrent<>
+ *   - traits::pgen::HasAxionField<>
  *   - traits::pgen::HasAtmFields<>
  *   - traits::pgen::HasMatchFields<>
  *   - traits::pgen::HasMatchFieldsInX1<>
@@ -69,6 +70,14 @@ namespace traits::pgen {
 
   template <class PG>
   concept HasExtCurrent = requires(const PG& pgen) { pgen.ext_current; };
+
+#ifdef AXION_ENABLED
+  template <class PG>
+  concept HasAxionField = requires(const PG& pgen) { pgen.axion; };
+#else
+  template <class PG>
+  concept HasAxionField = false;
+#endif
 
   template <class PG>
   concept HasAtmFields = requires(const PG& pgen, simtime_t time) {

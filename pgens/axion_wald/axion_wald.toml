@@ -1,0 +1,59 @@
+[simulation]
+  name    = "axion_vacuum"
+  engine  = "grpic"
+  runtime = 10.0
+
+[grid]
+  resolution = [256, 256]
+  extent     = [[1.0, 8.0]]
+
+  [grid.metric]
+    metric = "kerr_schild_0"
+
+  [grid.boundaries]
+    fields    = [["MATCH"]]
+    particles = [["ABSORB"]]
+
+    [grid.boundaries.absorb]
+      ds = 1.0
+
+[scales]
+  larmor0    = 0.0025
+  skindepth0 = 0.05
+
+[algorithms]
+  current_filters = 0
+
+  [algorithms.timestep]
+    CFL = 0.5
+
+  [algorithms.deposit]
+    enable = false
+
+[particles]
+  ppc0 = 2.0
+
+[setup]
+  init_field      = "wald"
+  axion_eps       = 1.0
+  axion_amplitude = 0.01
+  axion_omega     = 1.0
+  axion_k1        = 0.0
+
+[output]
+  format = "BPFile"
+
+  [output.fields]
+    interval_time = 0.25
+    quantities    = ["D", "H", "B", "A"]
+
+  [output.particles]
+    enable = false
+
+  [output.spectra]
+    enable = false
+
+[diagnostics]
+  interval        = 32
+  colored_stdout  = true
+  blocking_timers = true

@@ -23,8 +23,11 @@
 
 #include "utils/log.h"
 
+#include "traits/pgen.h"
+
 #include "framework/domain/domain.h"
 #include "framework/parameters/parameters.h"
+#include "kernels/ampere_axion_gr.hpp"
 #include "kernels/ampere_gr.hpp"
 #include "kernels/aux_fields_gr.hpp"
 #include "kernels/faraday_gr.hpp"
@@ -36,7 +39,8 @@ namespace ntt {
 
     enum class gr_getE : uint8_t {
       D0_B,
-      D_B0
+      D_B0,
+      D0_B0
     };
     enum class gr_getH : uint8_t {
       D_B0,
@@ -90,6 +94,13 @@ namespace ntt {
         Kokkos::parallel_for("ComputeAuxE",
                              range,
                              kernel::gr::ComputeAuxE_kernel<M>(domain.fields.em,
+                                                               domain.fields.em0,
+                                                               domain.fields.aux,
+                                                               domain.mesh.metric));
+      } else if (g == gr_getE::D0_B0) {
+        Kokkos::parallel_for("ComputeAuxE",
+                             range,
+                             kernel::gr::ComputeAuxE_kernel<M>(domain.fields.em0,
                                                                domain.fields.em0,
                                                                domain.fields.aux,
                                                                domain.mesh.metric));
@@ -260,6 +271,84 @@ namespace ntt {
         raise::Error("Wrong option for `g`", HERE);
       }
     }
+
+    /**
+     * @brief Adds the axion background current to the D field, aligned with the
+     * @brief two AmpereCurrents passes:
+     * @brief - aux  : J_a evaluated at t = time (B = (em::B + em0::B)/2, E = aux::E at n)
+     * @brief - main : J_a evaluated at t = time + dt/2 (B = em0::B, E = aux::E at n+1/2)
+     * @brief No-op unless compiled with -D axion=ON and the pgen provides an
+     * @brief `axion` functor (with `dot_a`/`grad_a` methods and member `eps`).
+     */
+#ifdef AXION_ENABLED
+    template <GRMetricClass M, class PG>
+    void AmpereAxion(Domain<SimEngine::GRPIC, M>& domain,
+                     const SimulationParams&      params,
+                     const prm::Parameters&       engine_params,
+                     const PG&                    pgen,
+                     const gr_ampere&             g,
+                     simtime_t                    time) {
+      if constexpr (traits::pgen::HasAxionField<PG>) {
+        logger::Checkpoint("Launching Ampere kernel for adding axion current", HERE);
+
+        const auto dt = engine_params.get<real_t>("dt");
+
+        const auto q0    = params.template get<real_t>("scales.q0");
+        const auto B0    = params.template get<real_t>("scales.B0");
+        const auto coeff = -dt * q0 * pgen.axion.eps / B0;
+        auto       range = CreateRangePolicy<Dim::_2D>(
+          { domain.mesh.i_min(in::x1), domain.mesh.i_min(in::x2) },
+          { domain.mesh.i_max(in::x1), domain.mesh.i_max(in::x2) + 1 });
+        const auto ni2 = domain.mesh.n_active(in::x2);
+
+        if (g == gr_ampere::aux) {
+          // Updates D0 with J_a(n): D0(n-1/2) -> D0(n+1/2), B <- (em + em0)/2 at n
+          Kokkos::parallel_for(
+            "AmpereAxionAux",
+            range,
+            kernel::gr::CurrentsAmpereAxion_kernel<M, decltype(pgen.axion), true>(
+              domain.fields.em0,
+              domain.fields.em,
+              domain.fields.em0,
+              domain.fields.aux,
+              domain.mesh.metric,
+              coeff,
+              pgen.axion,
+              time,
+              ni2,
+              domain.mesh.flds_bc()));
+        } else if (g == gr_ampere::main) {
+          // Updates D0 with J_a(n+1/2): D0(n) -> D0(n+1), B <- em0 at n+1/2
+          Kokkos::parallel_for(
+            "AmpereAxionMain",
+            range,
+            kernel::gr::CurrentsAmpereAxion_kernel<M, decltype(pgen.axion), false>(
+              domain.fields.em0,
+              domain.fields.em0,
+              domain.fields.em0,
+              domain.fields.aux,
+              domain.mesh.metric,
+              coeff,
+              pgen.axion,
+              time,
+              ni2,
+              domain.mesh.flds_bc()));
+        } else {
+          raise::Error("Wrong option for `g`", HERE);
+        }
+      }
+    }
+#else  // AXION_ENABLED
+    template <GRMetricClass M, class PG>
+    Inline void AmpereAxion(Domain<SimEngine::GRPIC, M>&,
+                            const SimulationParams&,
+                            const prm::Parameters&,
+                            const PG&,
+                            const gr_ampere&,
+                            simtime_t) {
+      /* no-op without -D axion=ON */
+    }
+#endif // AXION_ENABLED
 
   } // namespace grpic
 } // namespace ntt

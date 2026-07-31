@@ -26,6 +26,7 @@
 #include "kernels/fields_bcs.hpp"
 
 #include "engines/engine.hpp"
+#include "engines/grpic/fieldsolvers.h"
 
 #include <cstdint>
 
@@ -264,6 +265,48 @@ namespace ntt {
         }
       }
     }
+
+    /**
+     * @brief Precomputes aux::E at n+1/2 (from the current-consistent em0::D and
+     * @brief em0::B, both at n+1/2) for the axion current in the main Ampere pass,
+     * @brief then communicates and applies aux boundary conditions.
+     * @brief No-op unless compiled with -D axion=ON and the pgen provides an
+     * @brief `axion` functor.
+     */
+#ifdef AXION_ENABLED
+    template <class MD, GRMetricClass M, class PG>
+    void AxionPrecomputeE(MD&                             metadomain,
+                          Domain<SimEngine::GRPIC, M>&    domain,
+                          const PG&                       pgen,
+                          const SimulationParams&         params) {
+      if constexpr (traits::pgen::HasAxionField<PG>) {
+        /**
+         * aux::E <- alpha * em0::D + beta x em0::B
+         *
+         * Now: aux::E at n+1/2
+         */
+        grpic::ComputeAuxE(domain, grpic::gr_getE::D0_B0);
+        metadomain.CommunicateFields(domain, Comm::E);
+        /**
+         * aux::E <- boundary conditions
+         */
+        grpic::FieldBoundaries(domain,
+                               metadomain.mesh(),
+                               pgen,
+                               params,
+                               BC::E,
+                               grpic::gr_bc::aux);
+      }
+    }
+#else  // AXION_ENABLED
+    template <class MD, GRMetricClass M, class PG>
+    Inline void AxionPrecomputeE(MD&,
+                                 Domain<SimEngine::GRPIC, M>&,
+                                 const PG&,
+                                 const SimulationParams&) {
+      /* no-op without -D axion=ON */
+    }
+#endif // AXION_ENABLED
 
   } // namespace grpic
 } // namespace ntt

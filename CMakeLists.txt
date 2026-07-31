@@ -58,6 +58,10 @@ set(gpu_aware_mpi
     ${default_gpu_aware_mpi}
     CACHE BOOL "Enable GPU-aware MPI")
 
+set(axion
+    OFF
+    CACHE BOOL "Enable axion background current (GRPIC)")
+
 # -------------------------- Compilation settings -------------------------- #
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -162,6 +166,11 @@ if(${output})
   else()
     set(DEPENDENCIES ${DEPENDENCIES} adios2::cxx)
   endif()
+endif()
+
+# Axion
+if(${axion})
+  add_compile_options("-D AXION_ENABLED")
 endif()
 
 link_libraries(${DEPENDENCIES})
