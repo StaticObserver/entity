@@ -488,10 +488,12 @@ namespace user {
                       p.template get<real_t>("scales.B0"),
                     p.template get<bool>("setup.axion_gauss_init", true) }
       , params { p }
-      , xi_min { p.template get<std::vector<real_t>>("setup.xi_min",
-                                                     { ZERO, ZERO }) }
-      , xi_max { p.template get<std::vector<real_t>>("setup.xi_max",
-                                                     { ZERO, ZERO }) }
+      , xi_min { p.template get<std::vector<real_t>>(
+          "setup.xi_min",
+          std::vector<real_t> { ZERO, ZERO }) }
+      , xi_max { p.template get<std::vector<real_t>>(
+          "setup.xi_max",
+          std::vector<real_t> { ZERO, ZERO }) }
       , sigma0 { p.template get<real_t>("scales.sigma0") }
       , sigma_max { p.template get<real_t>("setup.sigma_max", 1e30) }
       , multiplicity { p.template get<real_t>("setup.multiplicity", ONE) }
