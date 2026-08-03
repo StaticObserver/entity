@@ -1,6 +1,6 @@
 {
   "card": {
-    "digest": "sha256:f55a994316d5f29f31e9ece4d664c0f51db48c0fbd0da4c10027837de78b019b",
+    "digest": "sha256:f9869ffcafdb20c4c700ff9774ba9e9552f43d0d67143fe09d62d0b6deec469e",
     "domain": "simulation",
     "fields": {
       "algorithms.timestep.CFL": {
@@ -86,10 +86,6 @@
         "tier": 1,
         "value": 200000000.0
       },
-      "setup.density_mult": {
-        "tier": 1,
-        "value": 10.0
-      },
       "setup.temperature": {
         "tier": 1,
         "value": 0.1
@@ -107,17 +103,17 @@
         "value": 100.0
       }
     },
-    "input_sha256": "2947747397d2c98f5e3c33f91cc8931d6a92113e541dc0fc693f5dc39fc58abb",
+    "input_sha256": "6dd507c891410e678283fe0f2a405ad3c5df1580e83a3b8558515182f9584ae9",
     "kind": "entity-parameter-card",
     "schema_version": 1,
     "warnings": [
       "tier-1 missing: boundary conditions (boundaries.fields, boundaries.particles)"
     ]
   },
-  "confirmed_at": "2026-07-27T03:40:40.179779+00:00",
+  "confirmed_at": "2026-08-03T06:20:05.417979+00:00",
   "confirmed_by": "codex",
   "defaults": false,
-  "input_sha256": "2947747397d2c98f5e3c33f91cc8931d6a92113e541dc0fc693f5dc39fc58abb",
+  "input_sha256": "6dd507c891410e678283fe0f2a405ad3c5df1580e83a3b8558515182f9584ae9",
   "kind": "entity-pgen.simulation-confirmation",
   "schema_version": 1
 }

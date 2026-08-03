@@ -81,59 +81,82 @@ namespace user {
     const real_t m_eps;
   };
 
-  template <Dimension D>
-  struct TargetDensityProfile {
-    const real_t density_floor_ref;
-    const real_t r_ref_pow;
+  template <GRMetricClass M>
+  struct DdotBWeightedPairs {
+    const M                  metric;
+    const ndfield_t<M::Dim, 6> em;
+    const ndfield_t<M::Dim, 3> density;
+    const real_t pair_creation_rate;
+    const real_t ddotb_threshold;
+    const real_t sigma_min_fraction;
+    const real_t nGJ;
+    const real_t ppc0;
 
-    TargetDensityProfile(real_t density_floor_ref_, real_t r_ref_)
-      : density_floor_ref { density_floor_ref_ }
-      , r_ref_pow { math::pow(r_ref_, static_cast<real_t>(1.5)) } {}
-
-    Inline auto operator()(const coord_t<D>& x_Ph) const -> real_t {
-      const auto r = x_Ph[0];
-      return density_floor_ref * r_ref_pow / (r * math::sqrt(r));
-    }
-  };
-
-  template <MetricClass M, int N, class T>
-  struct ReplenishFixedPairs {
-    const M                    metric;
-    const ndfield_t<M::Dim, N> density;
-    const idx_t                idx;
-    const T                    target_density;
-    const real_t               injection_density;
-
-    ReplenishFixedPairs(const M&                    metric_,
-                        const ndfield_t<M::Dim, N>& density_,
-                        idx_t                       idx_,
-                        const T&                    target_density_,
-                        real_t                      injection_density_)
+    DdotBWeightedPairs(const M&                    metric_,
+                       const ndfield_t<M::Dim, 6>& em_,
+                       const ndfield_t<M::Dim, 3>& density_,
+                       real_t pair_creation_rate_,
+                       real_t ddotb_threshold_,
+                       real_t sigma_min_fraction_,
+                       real_t nGJ_,
+                       real_t ppc0_)
       : metric { metric_ }
+      , em { em_ }
       , density { density_ }
-      , idx { idx_ }
-      , target_density { target_density_ }
-      , injection_density { injection_density_ } {}
+      , pair_creation_rate { pair_creation_rate_ }
+      , ddotb_threshold { ddotb_threshold_ }
+      , sigma_min_fraction { sigma_min_fraction_ }
+      , nGJ { nGJ_ }
+      , ppc0 { ppc0_ } {}
 
     Inline auto operator()(const coord_t<M::Dim>& x_Ph) const
       -> Kokkos::pair<real_t, real_t> {
-      coord_t<M::Dim> x_Cd { ZERO };
-      metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, x_Cd);
-
-      real_t dens { ZERO };
       if constexpr (M::Dim == Dim::_2D) {
-        dens = density(static_cast<ncells_t>(x_Cd[0]) + N_GHOSTS,
-                       static_cast<ncells_t>(x_Cd[1]) + N_GHOSTS,
-                       idx);
-      } else {
-        raise::KernelError(HERE, "ReplenishFixedPairs: only 2D supported");
-      }
+        coord_t<M::Dim> x_Cd { ZERO };
+        metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, x_Cd);
 
-      const auto target = target_density(x_Ph);
-      if (static_cast<real_t>(0.9) * target > dens) {
-        return { static_cast<real_t>(1.0), (target - dens) / injection_density };
+        const auto i1 = static_cast<int>(x_Cd[0]) + static_cast<int>(N_GHOSTS);
+        const auto i2 = static_cast<int>(x_Cd[1]) + static_cast<int>(N_GHOSTS);
+
+        // Deliberately use the local staggered-grid values without interpolation.
+        const vec_t<Dim::_3D> B_cntrv { em(i1, i2, em::bx1),
+                                        em(i1, i2, em::bx2),
+                                        em(i1, i2, em::bx3) };
+        const vec_t<Dim::_3D> D_cntrv { em(i1, i2, em::dx1),
+                                        em(i1, i2, em::dx2),
+                                        em(i1, i2, em::dx3) };
+        vec_t<Dim::_3D> B_cov { ZERO };
+        metric.template transform<Idx::U, Idx::D>(x_Cd, B_cntrv, B_cov);
+
+        const auto bsqr =
+          DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
+        if (not math::isfinite(bsqr) || bsqr <= ZERO || cmp::AlmostZero(bsqr)) {
+          return { ZERO, ZERO };
+        }
+
+        const auto ddotb =
+          DOT(D_cntrv[0], D_cntrv[1], D_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
+        const auto abs_ddotb = math::abs(ddotb);
+        const auto chi       = abs_ddotb / bsqr;
+        const auto dens      = density(i1, i2, 0);
+        if (not math::isfinite(chi) || chi <= ddotb_threshold ||
+            bsqr <= sigma_min_fraction * dens) {
+          return { ZERO, ZERO };
+        }
+
+        // delta_n is the normalized density represented by each member of the
+        // injected pair.  InjectNonUniform later applies sqrt(det(h))/V0 to the
+        // stored particle weight, which cancels in the normalized moment.
+        const auto delta_n = pair_creation_rate * nGJ * abs_ddotb / math::sqrt(bsqr);
+        const auto weight  = ppc0 * delta_n;
+        if (not math::isfinite(weight) || weight <= ZERO) {
+          return { ZERO, ZERO };
+        }
+        return { ONE, weight };
+      } else {
+        raise::KernelError(HERE, "DdotBWeightedPairs: only 2D supported");
+        return { ZERO, ZERO };
       }
-      return { ZERO, ZERO };
     }
   };
 
@@ -152,9 +175,8 @@ namespace user {
 
     const std::vector<real_t> xi_min;
     const std::vector<real_t> xi_max;
-    const int injection_pairs_per_cell;
-    const real_t density_mult, r_ref, temperature, flux0, m_eps;
-    const real_t density_floor_ref, injection_density_per_cell;
+    const real_t pair_creation_rate, ddotb_threshold, sigma_min_fraction;
+    const real_t nGJ, ppc0, temperature, flux0, m_eps;
 
     InitFields<M, D>        init_flds;
     const Metadomain<S, M>* metadomain;
@@ -163,30 +185,34 @@ namespace user {
       : params { p }
       , xi_min { params.template get<std::vector<real_t>>("setup.xi_min") }
       , xi_max { params.template get<std::vector<real_t>>("setup.xi_max") }
-      , injection_pairs_per_cell {
-          params.template get<int>("setup.injection_pairs_per_cell") }
-      , density_mult { params.template get<real_t>("setup.density_mult") }
-      , r_ref { params.template get<real_t>("setup.r_ref") }
+      , pair_creation_rate {
+          params.template get<real_t>("setup.pair_creation_rate") }
+      , ddotb_threshold { params.template get<real_t>("setup.ddotb_threshold") }
+      , sigma_min_fraction {
+          params.template get<real_t>("setup.sigma_min_fraction") }
+      , nGJ { params.template get<real_t>("scales.B0") *
+              SQR(params.template get<real_t>("scales.skindepth0")) }
+      , ppc0 { params.template get<real_t>("particles.ppc0") }
       , temperature { params.template get<real_t>("setup.temperature") }
       , flux0 { params.template get<real_t>("setup.flux0") }
       , m_eps { params.template get<real_t>("setup.m_eps") }
-      , density_floor_ref {
-          density_mult * params.template get<real_t>("scales.B0") *
-          SQR(params.template get<real_t>("scales.skindepth0")) }
-      , injection_density_per_cell {
-          TWO * static_cast<real_t>(injection_pairs_per_cell) /
-          params.template get<real_t>("particles.ppc0") }
       , init_flds { m.mesh().metric, flux0, m_eps }
       , metadomain { &m } {
-      raise::ErrorIf(injection_pairs_per_cell <= 0,
-                     "setup.injection_pairs_per_cell must be positive",
+      raise::ErrorIf(pair_creation_rate <= ZERO,
+                     "setup.pair_creation_rate must be positive",
+                     HERE);
+      raise::ErrorIf(ddotb_threshold <= ZERO,
+                     "setup.ddotb_threshold must be positive",
+                     HERE);
+      raise::ErrorIf(sigma_min_fraction < ZERO,
+                     "setup.sigma_min_fraction must be non-negative",
                      HERE);
     }
 
-    void InjectDensityFloor(
+    void InjectDdotBPairs(
       Domain<S, M>& local_domain,
       const boundaries_t<real_t>& injection_box = {}) {
-      arch::ComputeMomentWithSpecies<S, M, FldsID::N, 3>(
+      arch::ComputeMomentWithSpecies<S, M, FldsID::Rho, 3>(
         params,
         local_domain,
         { 1u, 2u },
@@ -196,15 +222,16 @@ namespace user {
         local_domain.random_pool(),
         temperature);
 
-      const auto target_profile =
-        TargetDensityProfile<D> { density_floor_ref, r_ref };
       const auto spatial_dist =
-        ReplenishFixedPairs<M, 3, TargetDensityProfile<D>>(
+        DdotBWeightedPairs<M>(
           local_domain.mesh.metric,
+          local_domain.fields.em,
           local_domain.fields.buff,
-          0u,
-          target_profile,
-          injection_density_per_cell);
+          pair_creation_rate,
+          ddotb_threshold,
+          sigma_min_fraction,
+          nGJ,
+          ppc0);
 
       arch::InjectNonUniform<S,
                              M,
@@ -216,22 +243,20 @@ namespace user {
         { 1, 2 },
         { energy_dist, energy_dist },
         spatial_dist,
-        injection_density_per_cell,
+        TWO / ppc0,
         true,
         injection_box);
     }
 
-    void InitPrtls(Domain<S, M>& local_domain) {
-      InjectDensityFloor(local_domain);
-    }
+    void InitPrtls(Domain<S, M>& /*local_domain*/) {}
 
     void CustomPostStep(timestep_t /*step*/,
                         simtime_t /*time*/,
                         Domain<S, M>& local_domain) {
-      boundaries_t<real_t> replenishment_box;
-      replenishment_box.emplace_back(xi_min[0], xi_max[0]);
-      replenishment_box.emplace_back(xi_min[1], xi_max[1]);
-      InjectDensityFloor(local_domain, replenishment_box);
+      boundaries_t<real_t> injection_box;
+      injection_box.emplace_back(xi_min[0], xi_max[0]);
+      injection_box.emplace_back(xi_min[1], xi_max[1]);
+      InjectDdotBPairs(local_domain, injection_box);
     }
   };
 
