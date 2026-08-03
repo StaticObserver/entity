@@ -152,7 +152,7 @@ namespace user {
         if (not math::isfinite(weight) || weight <= ZERO) {
           return { ZERO, ZERO };
         }
-        return { ONE, weight };
+        return { static_cast<real_t>(1.0), weight };
       } else {
         raise::KernelError(HERE, "DdotBWeightedPairs: only 2D supported");
         return { ZERO, ZERO };
