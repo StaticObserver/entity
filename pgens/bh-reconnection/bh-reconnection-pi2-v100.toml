@@ -1,0 +1,86 @@
+[simulation]
+  name    = "bh-reconnection"
+  engine  = "grpic"
+  runtime = 100.0
+
+[grid]
+  resolution = [2048, 1024]
+  extent     = [[1.0, 15.0]]
+
+  [grid.metric]
+    metric  = "qkerr_schild"
+    qsph_r0 = 0.0
+    qsph_h  = 0.0
+    ks_a    = 0.95
+
+  [grid.boundaries]
+    fields    = [["MATCH"]]
+    particles = [["ABSORB"]]
+
+    [grid.boundaries.match]
+      ds = 1.0
+
+    [grid.boundaries.absorb]
+      ds = 1.0
+
+[scales]
+  larmor0    = 1e-4
+  skindepth0 = 1e-3
+
+[algorithms]
+  current_filters = 16
+
+  [algorithms.gr]
+    pusher_niter = 10
+    pusher_eps   = 1e-2
+
+  [algorithms.timestep]
+    CFL        = 0.5
+    correction = 1.0
+
+[particles]
+  ppc0           = 4.0
+  use_weights    = true
+  clear_interval = 100
+
+  [[particles.species]]
+    label    = "e-"
+    mass     = 1.0
+    charge   = -1.0
+    maxnpart = 2e8
+    pusher   = "Boris"
+
+  [[particles.species]]
+    label    = "e+"
+    mass     = 1.0
+    charge   = 1.0
+    maxnpart = 2e8
+    pusher   = "Boris"
+
+[setup]
+  flux0                    = 1.0
+  density_mult             = 10.0
+  r_ref                    = 1.0
+  temperature              = 0.1
+  injection_pairs_per_cell = 1
+  xi_min                    = [1.2, 1e-2]
+  xi_max                    = [10.0, 3.14159264]
+  m_eps                     = 1.0
+
+[output]
+  format = "BPFile"
+
+  [output.fields]
+    interval_time = 1.0
+    quantities    = ["D", "B", "J", "N_1", "N_2", "A"]
+
+  [output.particles]
+    enable = false
+
+  [output.spectra]
+    enable = false
+
+[diagnostics]
+  interval        = 2
+  colored_stdout  = true
+  blocking_timers = true
