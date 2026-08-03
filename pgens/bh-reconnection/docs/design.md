@@ -106,14 +106,15 @@ No custom output hook is defined. TOML requests built-in `D`, `B`, `J`, `N_1`, `
 | Electron then positron species indices | first and second `particles.species` tables |
 | Matched field / absorbed particles and layer widths | `grid.boundaries`, `grid.boundaries.match.ds`, `grid.boundaries.absorb.ds` |
 
-`flux0`, `m_eps`, `pair_creation_rate`, and `ddotb_threshold` must be positive; `sigma_min_fraction` must be non-negative. The coordinate vectors have two entries, species order is fixed, and weighted injection requires `particles.use_weights = true`. With `grid.extent = [1, 15]` and `grid.boundaries.absorb.ds = 1`, `xi_max[0] = 10` stays well inside the largest allowed radial injection edge of 14, and `xi_min[1] = 0.01`/`xi_max[1] = \pi - 0.01` keep injection away from the polar axis.
+`flux0`, `m_eps`, `pair_creation_rate`, and `ddotb_threshold` must be positive; `sigma_min_fraction` must be non-negative. The coordinate vectors have two entries, species order is fixed, and weighted injection requires `particles.use_weights = true`. The production card keeps `grid.extent = [1, 15]` and boundary `ds = 1`; the astro V100 test card uses `grid.extent = [1, 12]` and boundary `ds = 0.1`. In both cards `xi_max[0] = 10` remains inside the allowed radial injection edge, while `xi_min[1] = 0.01`/`xi_max[1] = \pi - 0.01` keep injection away from the polar axis.
 
 ## 9. Current Status
 
 - Implemented: canonical PGen, TOML, split-monopole field, vacuum particle initialization, local \(D\cdot B/B^2\)-triggered fixed-pair weighted injection, and boundaries.
 - Statically verified: direct coordinate-basis contractions, one-pair count, weight normalization, metric-volume cancellation, density normalization, and the PGen-TOML-design contract.
 - Locally verified: Entity v1.4.4 CPU/Serial, single precision, MPI/OFF, output/OFF, debug build compiled successfully. A 16x8 two-step smoke run from vacuum completed normally; the electron and positron counts remained paired and grew from 56 each after step 0 to 121 each after step 1, demonstrating that the local trigger and fixed-pair injection path execute.
-- Not verified: production V100 compilation, production-scale numerical stability, relaxed-state properties, or reconnection physics.
+- V100 verified: commit `1049c3f7` compiled successfully on astro `gpu1` with CUDA/VOLTA70, single precision, MPI/OFF, and output/ON. The 512x512 runtime card is prepared but not yet submitted.
+- Not verified: production-scale numerical stability, relaxed-state properties, or reconnection physics.
 
 ## 10. Important Changes
 
@@ -126,3 +127,4 @@ No custom output hook is defined. TOML requests built-in `D`, `B`, `J`, `N_1`, `
 - Used direct coordinate-basis metric contractions and local EM-array grid values without tetrad conversion or staggered interpolation.
 - Set both the outer MATCH field layer and ABSORB particle layer widths to `ds = 1.0`.
 - Kept the 2048x1024 production geometry and scales unchanged while setting `pair_creation_rate = 0.5`, `ddotb_threshold = 1e-2`, `sigma_min_fraction = 0.05`, `temperature = 0.1`, and injection box `xi_min = [1.2, 1e-2]` / `xi_max = [10.0, 3.14159264]`.
+- Added `bh-reconnection-astro-v100-512.toml` for the confirmed astro test geometry: 512x512, `ppc0 = 2`, `runtime = 50`, radial extent `[1, 12]`, boundary `ds = 0.1`, `maxnpart = 4e8` per species, and field-output interval `0.2`.

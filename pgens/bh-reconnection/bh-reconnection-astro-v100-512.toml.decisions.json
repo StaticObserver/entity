@@ -1,0 +1,119 @@
+{
+  "card": {
+    "digest": "sha256:c1de9bcccf76766e6c54520c351e4c39ce138ccc0ea820579c129faeb674971c",
+    "domain": "simulation",
+    "fields": {
+      "algorithms.timestep.CFL": {
+        "tier": 1,
+        "value": 0.5
+      },
+      "grid.extent": {
+        "tier": 1,
+        "value": [
+          [
+            1.0,
+            12.0
+          ]
+        ]
+      },
+      "grid.resolution": {
+        "tier": 1,
+        "value": [
+          512,
+          512
+        ]
+      },
+      "output.fields.interval_time": {
+        "tier": 2,
+        "value": 0.2
+      },
+      "output.fields.quantities": {
+        "tier": 2,
+        "value": [
+          "D",
+          "B",
+          "J",
+          "N_1",
+          "N_2",
+          "A"
+        ]
+      },
+      "output.format": {
+        "tier": 2,
+        "value": "BPFile"
+      },
+      "output.particles.enable": {
+        "tier": 2,
+        "value": false
+      },
+      "output.spectra.enable": {
+        "tier": 2,
+        "value": false
+      },
+      "particles.ppc0": {
+        "tier": 1,
+        "value": 2.0
+      },
+      "particles.species.0.charge": {
+        "tier": 1,
+        "value": -1.0
+      },
+      "particles.species.0.label": {
+        "tier": 1,
+        "value": "e-"
+      },
+      "particles.species.0.mass": {
+        "tier": 1,
+        "value": 1.0
+      },
+      "particles.species.0.maxnpart": {
+        "tier": 1,
+        "value": 400000000.0
+      },
+      "particles.species.1.charge": {
+        "tier": 1,
+        "value": 1.0
+      },
+      "particles.species.1.label": {
+        "tier": 1,
+        "value": "e+"
+      },
+      "particles.species.1.mass": {
+        "tier": 1,
+        "value": 1.0
+      },
+      "particles.species.1.maxnpart": {
+        "tier": 1,
+        "value": 400000000.0
+      },
+      "setup.temperature": {
+        "tier": 1,
+        "value": 0.1
+      },
+      "simulation.engine": {
+        "tier": 2,
+        "value": "grpic"
+      },
+      "simulation.name": {
+        "tier": 2,
+        "value": "bh-reconnection"
+      },
+      "simulation.runtime": {
+        "tier": 1,
+        "value": 50.0
+      }
+    },
+    "input_sha256": "6849953a8ec8ffa8e2916ac88981413462b96342cd24840470fb9f138d9a0218",
+    "kind": "entity-parameter-card",
+    "schema_version": 1,
+    "warnings": [
+      "tier-1 missing: boundary conditions (boundaries.fields, boundaries.particles)"
+    ]
+  },
+  "confirmed_at": "2026-08-03T07:24:43.223022+00:00",
+  "confirmed_by": "SoulDancer",
+  "defaults": false,
+  "input_sha256": "6849953a8ec8ffa8e2916ac88981413462b96342cd24840470fb9f138d9a0218",
+  "kind": "entity-pgen.simulation-confirmation",
+  "schema_version": 1
+}
