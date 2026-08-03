@@ -295,8 +295,8 @@ namespace user {
         metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
         x0m[0] = xi[0];
         x0m[1] = xi[1] - HALF;
-        x0p[0] = xi[0] + HALF;
-        x0p[1] = xi[1];
+        x0p[0] = xi[0];
+        x0p[1] = xi[1] + HALF;
         real_t inv_sqrt_detH_ijP { ONE / metric.sqrt_det_h({ xi[0], xi[1] }) };
         real_t sqrt_detH_ijP { metric.sqrt_det_h({ xi[0], xi[1] }) };
         real_t alpha_ijP { metric.alpha({ xi[0], xi[1] }) };
