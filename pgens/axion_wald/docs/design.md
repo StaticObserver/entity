@@ -53,10 +53,18 @@ State: implemented（沿用 wald，未验证）
 
 ## 4. Initial Particles
 
-State: not-used
+State: implemented（照搬 accretion pgen，plasma baseline 测试中）
 
-- 真空算例，`algorithms.deposit.enable = false`。粒子接入属后续工作
-  （η_EM + η_prtl 诊断）。
+- `PointDistribution`（逐字复制自 pgens/accretion）：注入盒
+  `setup.xi_min`–`setup.xi_max`（物理坐标）内，对 B² > σ_thr·ρ 或
+  ρ < ρ_thr 的格子补注 e± 对；σ_thr = sigma_max/σ0，ρ_thr = multiplicity·n_GJ，
+  n_GJ = B0·skindepth0²。密度由 `ComputeMomentWithSpecies` 实时重算，
+  注入自调节（top-up）。
+- `InitPrtls` 与 `CustomPostStep` 调用同一 `InjectPlasma`：Maxwellian
+  （`setup.temperature`）+ `InjectNonUniform`（species {1,2}, use_weights=true）。
+- 注入盒缺省或非法（xi_min ≥ xi_max）时整体跳过，真空算例行为不变。
+- 物理要点：pusher 直接插值代码 D 场作 E（tetrad 系），而本约定的 D 已是
+  含轴子修正的场，故粒子自动感受正确的物理 Lorentz 力，引擎零改动。
 
 ## 5. Boundaries
 
@@ -89,6 +97,10 @@ State: implemented（未验证）
   - sinusoid：`setup.axion_amplitude`、`setup.axion_omega`、`setup.axion_k1`
   - cloud：`setup.axion_alpha`（α，默认 0.5）、`setup.axion_l`（0|1，默认 1）、
     `setup.axion_amplitude`（A）、`setup.axion_phase`（默认 0）
+  - plasma（照搬 accretion）：`setup.xi_min`、`setup.xi_max`（注入盒，缺省 =
+    不注入）、`setup.multiplicity`（默认 1）、`setup.sigma_max`（默认 1e30）、
+    `setup.temperature`（默认 0.01）；需配 `[particles]` species {1,2} 与
+    `use_weights = true`
 
 ## 7. Custom Output
 
@@ -153,3 +165,6 @@ upstream 回归、Gauss 约束四项全部通过，可用于正式物理 run。
   parameters.cpp:267）（10f35220）。m87 全测试矩阵通过（见 §9）。
 - 2026-07-31：新增 Gauss 一致初始化（`AxionField::a` + `InitFields::d_axion`，
   70661460）；m87 Gauss 约束验证通过（见 §9）。
+- 2026-08-03：新增 accretion 式等离子体注入（`PointDistribution` +
+  `InitPrtls`/`CustomPostStep`，注入盒缺省跳过保持真空兼容）；
+  新增 `axion_plasma.toml`（ε=0 baseline，extent [1,7]，256²，runtime 50）。

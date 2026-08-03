@@ -15,9 +15,14 @@
 #include "utils/formatting.h"
 #include "utils/numeric.h"
 
+#include "archetypes/energy_dist.h"
+#include "archetypes/particle_injector.h"
+#include "archetypes/utils.h"
 #include "framework/domain/metadomain.h"
+#include "framework/parameters/parameters.h"
 
 #include <string>
+#include <vector>
 
 enum class InitFieldGeometry : uint8_t {
   Wald,
@@ -365,6 +370,86 @@ namespace user {
     InitFieldGeometry  field_geometry;
   };
 
+  /**
+   * @brief Plasma injection spatial distribution, copied verbatim from the
+   * @brief `accretion` pgen: inject (as 1) only inside the [x_min, x_max] box
+   * @brief (physical coords) in cells where the magnetization exceeds
+   * @brief `sigma_thr` times the local density, or the density falls below
+   * @brief `dens_thr` (multiplicity * n_GJ). The density is recomputed from
+   * @brief the current particles at construction, so injection self-regulates.
+   */
+  template <GRMetricClass M>
+  struct PointDistribution {
+    PointDistribution(const std::vector<real_t>&   xi_min,
+                      const std::vector<real_t>&   xi_max,
+                      const real_t                 sigma_thr,
+                      const real_t                 dens_thr,
+                      const SimulationParams&      params,
+                      Domain<SimEngine::GRPIC, M>* domain_ptr)
+      : metric { domain_ptr->mesh.metric }
+      , EM { domain_ptr->fields.em }
+      , density { domain_ptr->fields.buff }
+      , sigma_thr { sigma_thr }
+      , dens_thr { dens_thr }
+      , inv_n0 { ONE / params.template get<real_t>("scales.n0") } {
+      std::copy(xi_min.begin(), xi_min.end(), x_min);
+      std::copy(xi_max.begin(), xi_max.end(), x_max);
+
+      std::vector<spidx_t> specs {};
+      for (auto& sp : domain_ptr->species) {
+        if (sp.mass() > 0) {
+          specs.push_back(sp.index());
+        }
+      }
+
+      arch::ComputeMomentWithSpecies<SimEngine::GRPIC, M, FldsID::Rho, 3>(
+        params,
+        *domain_ptr,
+        specs,
+        density);
+    }
+
+    Inline auto sigma_crit(const coord_t<M::Dim>& x_Ph) const -> bool {
+      coord_t<M::Dim> xi { ZERO };
+      if constexpr (M::Dim == Dim::_2D) {
+        metric.template convert<Crd::Ph, Crd::Cd>(x_Ph, xi);
+        const auto i1 = static_cast<int>(xi[0]) + static_cast<int>(N_GHOSTS);
+        const auto i2 = static_cast<int>(xi[1]) + static_cast<int>(N_GHOSTS);
+        const vec_t<Dim::_3D> B_cntrv { EM(i1, i2, em::bx1),
+                                        EM(i1, i2, em::bx2),
+                                        EM(i1, i2, em::bx3) };
+        const vec_t<Dim::_3D> D_cntrv { EM(i1, i2, em::dx1),
+                                        EM(i1, i2, em::dx2),
+                                        EM(i1, i2, em::dx3) };
+        vec_t<Dim::_3D>       B_cov { ZERO };
+        metric.template transform<Idx::U, Idx::D>(xi, B_cntrv, B_cov);
+        const auto bsqr =
+          DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
+        const auto dens = density(i1, i2, 0);
+        return (bsqr > sigma_thr * dens) || (dens < dens_thr);
+      }
+      return false;
+    }
+
+    Inline auto operator()(const coord_t<M::Dim>& x_Ph) const -> real_t {
+      auto fill = true;
+      for (auto d = 0u; d < M::Dim; ++d) {
+        fill &= x_Ph[d] > x_min[d] and x_Ph[d] < x_max[d] and sigma_crit(x_Ph);
+      }
+      return fill ? ONE : ZERO;
+    }
+
+  private:
+    const M                 metric;
+    ndfield_t<M::Dim, 6>    EM;
+    ndfield_t<M::Dim, 3>    density;
+    tuple_t<real_t, M::Dim> x_min { ZERO };
+    tuple_t<real_t, M::Dim> x_max { ZERO };
+    const real_t            sigma_thr;
+    const real_t            dens_thr;
+    const real_t            inv_n0;
+  };
+
   template <SimEngine::type S, class M>
   struct PGen {
     static constexpr auto D { M::Dim };
@@ -379,6 +464,12 @@ namespace user {
 
     AxionField<D>    axion;
     InitFields<M, D> init_flds;
+
+    const SimulationParams&   params;
+    // plasma injection (accretion-style top-up); an empty/invalid box disables it
+    const std::vector<real_t> xi_min;
+    const std::vector<real_t> xi_max;
+    const real_t              sigma0, sigma_max, multiplicity, nGJ, temperature;
 
     PGen(const SimulationParams& p, const Metadomain<S, M>& m)
       : axion { p.template get<std::string>("setup.axion_mode", "sinusoid"),
@@ -395,7 +486,57 @@ namespace user {
                     p.template get<real_t>("scales.q0") *
                       p.template get<real_t>("setup.axion_eps", ZERO) /
                       p.template get<real_t>("scales.B0"),
-                    p.template get<bool>("setup.axion_gauss_init", true) } {}
+                    p.template get<bool>("setup.axion_gauss_init", true) }
+      , params { p }
+      , xi_min { p.template get<std::vector<real_t>>("setup.xi_min",
+                                                     { ZERO, ZERO }) }
+      , xi_max { p.template get<std::vector<real_t>>("setup.xi_max",
+                                                     { ZERO, ZERO }) }
+      , sigma0 { p.template get<real_t>("scales.sigma0") }
+      , sigma_max { p.template get<real_t>("setup.sigma_max", 1e30) }
+      , multiplicity { p.template get<real_t>("setup.multiplicity", ONE) }
+      , nGJ { p.template get<real_t>("scales.B0") *
+              SQR(p.template get<real_t>("scales.skindepth0")) }
+      , temperature { p.template get<real_t>("setup.temperature", 0.01) } {}
+
+    void InitPrtls(Domain<S, M>& local_domain) {
+      InjectPlasma(local_domain);
+    }
+
+    void CustomPostStep(timestep_t /*step*/,
+                        simtime_t /*time*/,
+                        Domain<S, M>& local_domain) {
+      InjectPlasma(local_domain);
+    }
+
+  private:
+    void InjectPlasma(Domain<S, M>& local_domain) {
+      // no injection box configured -> vacuum run, skip entirely
+      auto no_box = true;
+      for (auto d = 0u; d < D; ++d) {
+        no_box &= xi_min[d] >= xi_max[d];
+      }
+      if (no_box) {
+        return;
+      }
+      const auto energy_dist = arch::energy_dist::Maxwellian<M::Dim, M::CoordType>(
+        local_domain.random_pool(),
+        temperature);
+      const auto spatial_dist = PointDistribution<M>(xi_min,
+                                                     xi_max,
+                                                     sigma_max / sigma0,
+                                                     multiplicity * nGJ,
+                                                     params,
+                                                     &local_domain);
+      arch::InjectNonUniform<S, M, decltype(energy_dist), decltype(energy_dist), decltype(spatial_dist)>(
+        params,
+        local_domain,
+        { 1, 2 },
+        { energy_dist, energy_dist },
+        spatial_dist,
+        ONE,
+        true);
+    }
   };
 
 } // namespace user
