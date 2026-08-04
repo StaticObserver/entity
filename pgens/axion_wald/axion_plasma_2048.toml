@@ -5,7 +5,7 @@
 
 [grid]
   resolution = [2048, 2048]
-  extent     = [[1.0, 7.0]]
+  extent     = [[1.0, 10.0]]
 
   [grid.metric]
     metric  = "qkerr_schild"
@@ -25,7 +25,7 @@
   skindepth0 = 0.01
 
 [algorithms]
-  current_filters = 4
+  current_filters = 16
 
   [algorithms.gr]
     pusher_niter = 10
@@ -36,7 +36,7 @@
     correction = 1.0
 
 [particles]
-  ppc0           = 4.0
+  ppc0           = 2.0
   use_weights    = true
   clear_interval = 100
 
@@ -67,10 +67,10 @@
 
   # accretion-style plasma top-up injection
   multiplicity = 1.0
-  sigma_max    = 1000.0
+  sigma_max    = 100.0
   temperature  = 0.01
-  xi_min       = [1.5, 0.0]
-  xi_max       = [4.0, 3.14159265]
+  xi_min       = [1.0, 0.0]
+  xi_max       = [8.0, 3.14159265]
 
 [output]
   format = "BPFile"
