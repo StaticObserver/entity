@@ -1,0 +1,91 @@
+[simulation]
+  name    = "wald_plasma1024_axion"
+  engine  = "grpic"
+  runtime = 50.0
+
+[grid]
+  resolution = [1024, 1024]
+  extent     = [[1.0, 10.0]]
+
+  [grid.metric]
+    metric  = "qkerr_schild"
+    qsph_r0 = 0.0
+    qsph_h  = 0.0
+    ks_a    = 0.95
+
+  [grid.boundaries]
+    fields    = [["MATCH"]]
+    particles = [["ABSORB"]]
+
+    [grid.boundaries.absorb]
+      ds = 1.0
+
+[scales]
+  larmor0    = 0.001
+  skindepth0 = 0.01
+
+[algorithms]
+  current_filters = 16
+
+  [algorithms.gr]
+    pusher_niter = 10
+    pusher_eps   = 1e-2
+
+  [algorithms.timestep]
+    CFL        = 0.5
+    correction = 1.0
+
+[particles]
+  ppc0           = 2.0
+  use_weights    = true
+  clear_interval = 100
+
+  [[particles.species]]
+    label    = "e-"
+    mass     = 1.0
+    charge   = -1.0
+    maxnpart = 2e8
+    pusher   = "Boris"
+
+  [[particles.species]]
+    label    = "e+"
+    mass     = 1.0
+    charge   = 1.0
+    maxnpart = 2e8
+    pusher   = "Boris"
+
+[setup]
+  init_field = "wald"
+
+  # axion background present but coupling switched off (baseline run)
+  axion_mode      = "cloud"
+  axion_eps       = 20.0
+  axion_alpha     = 0.6
+  axion_l         = 0
+  axion_amplitude = 0.01
+  axion_phase     = 0.0
+
+  # accretion-style plasma top-up injection
+  multiplicity = 1.0
+  sigma_max    = 100.0
+  temperature  = 0.01
+  xi_min       = [1.0, 0.0]
+  xi_max       = [8.0, 3.14159265]
+
+[output]
+  format = "BPFile"
+
+  [output.fields]
+    interval_time = 1.0
+    quantities    = ["D", "B", "N_1", "N_2", "A"]
+
+  [output.particles]
+    enable = false
+
+  [output.spectra]
+    enable = false
+
+[diagnostics]
+  interval        = 32
+  colored_stdout  = true
+  blocking_timers = true
