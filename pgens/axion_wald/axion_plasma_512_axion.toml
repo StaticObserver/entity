@@ -65,12 +65,12 @@
   axion_amplitude = 0.01
   axion_phase     = 0.0
 
-  # accretion-style plasma top-up injection
+  # accretion-style plasma top-up injection (theta margin 0.01 rad off the axis)
   multiplicity = 1.0
   sigma_max    = 100.0
   temperature  = 0.01
-  xi_min       = [1.0, 0.0]
-  xi_max       = [8.0, 3.14159265]
+  xi_min       = [1.0, 0.01]
+  xi_max       = [8.0, 3.13159265]
 
 [output]
   format = "BPFile"
