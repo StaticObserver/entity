@@ -371,26 +371,25 @@ namespace user {
   };
 
   /**
-   * @brief Plasma injection spatial distribution, copied verbatim from the
-   * @brief `accretion` pgen: inject (as 1) only inside the [x_min, x_max] box
+   * @brief Plasma injection spatial distribution, adapted from the
+   * @brief `accretion` pgen: inject only inside the [x_min, x_max] box
    * @brief (physical coords) in cells where the magnetization exceeds
-   * @brief `sigma_thr` times the local density, or the density falls below
-   * @brief `dens_thr` (multiplicity * n_GJ). The density is recomputed from
-   * @brief the current particles at construction, so injection self-regulates.
+   * @brief `sigma_thr` times the local density. The injected number density
+   * @brief scales as r^{-3/2} (normalized to unity at r = 1). The density is
+   * @brief recomputed from the current particles at construction, so injection
+   * @brief self-regulates.
    */
   template <GRMetricClass M>
   struct PointDistribution {
     PointDistribution(const std::vector<real_t>&   xi_min,
                       const std::vector<real_t>&   xi_max,
                       const real_t                 sigma_thr,
-                      const real_t                 dens_thr,
                       const SimulationParams&      params,
                       Domain<SimEngine::GRPIC, M>* domain_ptr)
       : metric { domain_ptr->mesh.metric }
       , EM { domain_ptr->fields.em }
       , density { domain_ptr->fields.buff }
       , sigma_thr { sigma_thr }
-      , dens_thr { dens_thr }
       , inv_n0 { ONE / params.template get<real_t>("scales.n0") } {
       std::copy(xi_min.begin(), xi_min.end(), x_min);
       std::copy(xi_max.begin(), xi_max.end(), x_max);
@@ -426,7 +425,7 @@ namespace user {
         const auto bsqr =
           DOT(B_cntrv[0], B_cntrv[1], B_cntrv[2], B_cov[0], B_cov[1], B_cov[2]);
         const auto dens = density(i1, i2, 0);
-        return (bsqr > sigma_thr * dens) || (dens < dens_thr);
+        return bsqr > sigma_thr * dens;
       }
       return false;
     }
@@ -436,7 +435,8 @@ namespace user {
       for (auto d = 0u; d < M::Dim; ++d) {
         fill &= x_Ph[d] > x_min[d] and x_Ph[d] < x_max[d] and sigma_crit(x_Ph);
       }
-      return fill ? ONE : ZERO;
+      const auto r = x_Ph[0];
+      return fill ? ONE / math::sqrt(r * r * r) : ZERO;
     }
 
   private:
@@ -446,7 +446,6 @@ namespace user {
     tuple_t<real_t, M::Dim> x_min { ZERO };
     tuple_t<real_t, M::Dim> x_max { ZERO };
     const real_t            sigma_thr;
-    const real_t            dens_thr;
     const real_t            inv_n0;
   };
 
@@ -466,10 +465,11 @@ namespace user {
     InitFields<M, D> init_flds;
 
     const SimulationParams&   params;
-    // plasma injection (accretion-style top-up); an empty/invalid box disables it
+    // plasma injection (accretion-style top-up, n_inj ∝ r^{-3/2}); an
+    // empty/invalid box disables it
     const std::vector<real_t> xi_min;
     const std::vector<real_t> xi_max;
-    const real_t              sigma0, sigma_max, multiplicity, nGJ, temperature;
+    const real_t              sigma0, sigma_max, temperature;
 
     PGen(const SimulationParams& p, const Metadomain<S, M>& m)
       : axion { p.template get<std::string>("setup.axion_mode", "sinusoid"),
@@ -496,9 +496,6 @@ namespace user {
           std::vector<real_t> { ZERO, ZERO }) }
       , sigma0 { p.template get<real_t>("scales.sigma0") }
       , sigma_max { p.template get<real_t>("setup.sigma_max", 1e30) }
-      , multiplicity { p.template get<real_t>("setup.multiplicity", ONE) }
-      , nGJ { p.template get<real_t>("scales.B0") *
-              SQR(p.template get<real_t>("scales.skindepth0")) }
       , temperature { p.template get<real_t>("setup.temperature", 0.01) } {}
 
     void InitPrtls(Domain<S, M>& local_domain) {
@@ -527,7 +524,6 @@ namespace user {
       const auto spatial_dist = PointDistribution<M>(xi_min,
                                                      xi_max,
                                                      sigma_max / sigma0,
-                                                     multiplicity * nGJ,
                                                      params,
                                                      &local_domain);
       arch::InjectNonUniform<S, M, decltype(energy_dist), decltype(energy_dist), decltype(spatial_dist)>(

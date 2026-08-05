@@ -53,12 +53,13 @@ State: implemented（沿用 wald，未验证）
 
 ## 4. Initial Particles
 
-State: implemented（照搬 accretion pgen，plasma baseline 测试中）
+State: implemented（改编自 accretion pgen：仅磁化判据 + r^{-3/2} 剖面）
 
-- `PointDistribution`（逐字复制自 pgens/accretion）：注入盒
-  `setup.xi_min`–`setup.xi_max`（物理坐标）内，对 B² > σ_thr·ρ 或
-  ρ < ρ_thr 的格子补注 e± 对；σ_thr = sigma_max/σ0，ρ_thr = multiplicity·n_GJ，
-  n_GJ = B0·skindepth0²。密度由 `ComputeMomentWithSpecies` 实时重算，
+- `PointDistribution`（改编自 pgens/accretion）：注入盒
+  `setup.xi_min`–`setup.xi_max`（物理坐标）内，仅对 B² > σ_thr·ρ 的格子
+  补注 e± 对（σ_thr = sigma_max/σ0；已去掉 accretion 的密度阈值条件）。
+  注入数密度 ∝ r^{-3/2}（r=1 处归一为 1，即注入率与原 accretion 版在
+  内边界一致）。密度由 `ComputeMomentWithSpecies` 实时重算，
   注入自调节（top-up）。
 - `InitPrtls` 与 `CustomPostStep` 调用同一 `InjectPlasma`：Maxwellian
   （`setup.temperature`）+ `InjectNonUniform`（species {1,2}, use_weights=true）。
@@ -97,10 +98,10 @@ State: implemented（未验证）
   - sinusoid：`setup.axion_amplitude`、`setup.axion_omega`、`setup.axion_k1`
   - cloud：`setup.axion_alpha`（α，默认 0.5）、`setup.axion_l`（0|1，默认 1）、
     `setup.axion_amplitude`（A）、`setup.axion_phase`（默认 0）
-  - plasma（照搬 accretion）：`setup.xi_min`、`setup.xi_max`（注入盒，缺省 =
-    不注入）、`setup.multiplicity`（默认 1）、`setup.sigma_max`（默认 1e30）、
+  - plasma（改编自 accretion）：`setup.xi_min`、`setup.xi_max`（注入盒，缺省 =
+    不注入）、`setup.sigma_max`（默认 1e30）、
     `setup.temperature`（默认 0.01）；需配 `[particles]` species {1,2} 与
-    `use_weights = true`
+    `use_weights = true`（`setup.multiplicity` 已弃用，toml 中保留无害）
 
 ## 7. Custom Output
 
