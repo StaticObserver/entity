@@ -46,10 +46,14 @@ Wald（或 vertical）背景磁场 + 轴子有效电流 J_a = eps·(ȧB + ∇a×
 
 ## 3. Initial Electromagnetic Fields
 
-State: implemented（沿用 wald，未验证）
+State: implemented（wald 已验证；bhac 型新增，待验证）
 
-- `InitFields`（复制自 pgens/wald）：`init_field = "wald" | "vertical"`，
+- `InitFields`（复制自 pgens/wald）：`init_field = "wald" | "vertical" | "bhac"`，
   Wald 精确真空解，供 MATCH 边界每步弛豫。
+- `init_field = "bhac"`（移植自 pgens/bhac）：B 来自
+  A_φ = field_B0·r·exp(−r/r_decay)·sin²θ（极区解析正则化），
+  参数 `setup.field_B0`（默认 1.0）、`setup.r_decay`（默认 200.0）；
+  D 只含轴子 Gauss 项 −ε̃·a·B（与 "vertical" 分支同一形式，不含真空 D）。
 
 ## 4. Initial Particles
 

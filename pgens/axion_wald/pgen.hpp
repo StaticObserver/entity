@@ -27,6 +27,7 @@
 enum class InitFieldGeometry : uint8_t {
   Wald,
   Vertical,
+  Bhac,
 };
 
 namespace user {
@@ -151,15 +152,21 @@ namespace user {
                const std::string&   init_field_geometry,
                const AxionField<D>& axion_,
                real_t               eps_tilde_,
-               bool                 gauss_init_)
+               bool                 gauss_init_,
+               real_t               field_B0_   = ONE,
+               real_t               r_decay_    = 200.0)
       : metric { metric_ }
       , axion { axion_ }
       , eps_tilde { eps_tilde_ }
-      , gauss_init { gauss_init_ } {
+      , gauss_init { gauss_init_ }
+      , field_B0 { field_B0_ }
+      , r_decay { r_decay_ } {
       if (init_field_geometry == "wald") {
         field_geometry = InitFieldGeometry::Wald;
       } else if (init_field_geometry == "vertical") {
         field_geometry = InitFieldGeometry::Vertical;
+      } else if (init_field_geometry == "bhac") {
+        field_geometry = InitFieldGeometry::Bhac;
       } else {
         raise::Error(fmt::format("Unrecognized field geometry: %s",
                                  init_field_geometry.c_str()),
@@ -171,6 +178,15 @@ namespace user {
       return HALF * (metric.template h_<3, 3>(x_Cd) +
                      TWO * metric.spin() * metric.template h_<1, 3>(x_Cd) *
                        metric.beta1(x_Cd));
+    }
+
+    // bhac-style azimuthal potential (pgens/bhac):
+    //   A_phi = B0 * r * exp(-r / r_decay) * sin^2(theta)
+    Inline auto A_3_bhac(const coord_t<D>& x_Cd) const -> real_t {
+      coord_t<D> x_Ph { ZERO };
+      metric.template convert<Crd::Cd, Crd::Ph>(x_Cd, x_Ph);
+      return field_B0 * x_Ph[0] * math::exp(-x_Ph[0] / r_decay) *
+             SQR(math::sin(x_Ph[1]));
     }
 
     Inline auto A_1(const coord_t<D>& x_Cd) const -> real_t {
@@ -199,6 +215,18 @@ namespace user {
 
       real_t inv_sqrt_detH_ijP { ONE / metric.sqrt_det_h({ xi[0], xi[1] }) };
 
+      if (field_geometry == InitFieldGeometry::Bhac) {
+        if (cmp::AlmostZero(x_Ph[1])) {
+          // Regularized limit at pole:
+          // bx1 -> 2 * B0 * r * exp(-r/r_decay) / sqrt[(r^2+a^2)(r^2+a^2+2r)]
+          const real_t r_ph  = x_Ph[0];
+          const real_t a     = metric.spin();
+          const real_t r2pa2 = SQR(r_ph) + SQR(a);
+          return TWO * field_B0 * r_ph * math::exp(-r_ph / r_decay) /
+                 math::sqrt(r2pa2 * (r2pa2 + TWO * r_ph));
+        }
+        return (A_3_bhac(x0p) - A_3_bhac(x0m)) * inv_sqrt_detH_ijP;
+      }
       if (cmp::AlmostZero(x_Ph[1])) {
         return ONE;
       } else {
@@ -217,6 +245,12 @@ namespace user {
       x0p[1] = xi[1];
 
       real_t inv_sqrt_detH_ijP { ONE / metric.sqrt_det_h({ xi[0], xi[1] }) };
+      if (field_geometry == InitFieldGeometry::Bhac) {
+        if (cmp::AlmostZero(x_Ph[1])) {
+          return ZERO;
+        }
+        return -(A_3_bhac(x0p) - A_3_bhac(x0m)) * inv_sqrt_detH_ijP;
+      }
       if (cmp::AlmostZero(x_Ph[1])) {
         return ZERO;
       } else {
@@ -237,7 +271,8 @@ namespace user {
 
         real_t inv_sqrt_detH_iPjP { ONE / metric.sqrt_det_h({ xi[0], xi[1] }) };
         return -(A_1(x0p) - A_1(x0m)) * inv_sqrt_detH_iPjP;
-      } else if (field_geometry == InitFieldGeometry::Vertical) {
+      } else if (field_geometry == InitFieldGeometry::Vertical ||
+                 field_geometry == InitFieldGeometry::Bhac) {
         return ZERO;
       } else {
         raise::KernelError(HERE, "Unrecognized field geometry");
@@ -285,7 +320,8 @@ namespace user {
                      metric.template h<1, 3>({ xi[0], xi[1] }) * D3d };
 
         return D1u - d_axion(x_Ph, bx1(x_Ph));
-      } else if (field_geometry == InitFieldGeometry::Vertical) {
+      } else if (field_geometry == InitFieldGeometry::Vertical ||
+                 field_geometry == InitFieldGeometry::Bhac) {
         return -d_axion(x_Ph, bx1(x_Ph));
       } else {
         raise::KernelError(HERE, "Unrecognized field geometry");
@@ -313,7 +349,8 @@ namespace user {
         real_t D2u { metric.template h<2, 2>({ xi[0], xi[1] }) * D2d };
 
         return D2u - d_axion(x_Ph, bx2(x_Ph));
-      } else if (field_geometry == InitFieldGeometry::Vertical) {
+      } else if (field_geometry == InitFieldGeometry::Vertical ||
+                 field_geometry == InitFieldGeometry::Bhac) {
         return -d_axion(x_Ph, bx2(x_Ph));
       } else {
         raise::KernelError(HERE, "Unrecognized field geometry");
@@ -354,7 +391,8 @@ namespace user {
                  metric.template h<1, 3>({ xi[0], xi[1] }) * D1d -
                  d_axion(x_Ph, bx3(x_Ph));
         }
-      } else if (field_geometry == InitFieldGeometry::Vertical) {
+      } else if (field_geometry == InitFieldGeometry::Vertical ||
+                 field_geometry == InitFieldGeometry::Bhac) {
         return -d_axion(x_Ph, bx3(x_Ph));
       } else {
         raise::KernelError(HERE, "Unrecognized field geometry");
@@ -367,6 +405,8 @@ namespace user {
     const AxionField<D> axion;
     const real_t       eps_tilde;
     const bool         gauss_init;
+    const real_t       field_B0;
+    const real_t       r_decay;
     InitFieldGeometry  field_geometry;
   };
 
@@ -486,7 +526,9 @@ namespace user {
                     p.template get<real_t>("scales.q0") *
                       p.template get<real_t>("setup.axion_eps", ZERO) /
                       p.template get<real_t>("scales.B0"),
-                    p.template get<bool>("setup.axion_gauss_init", true) }
+                    p.template get<bool>("setup.axion_gauss_init", true),
+                    p.template get<real_t>("setup.field_B0", ONE),
+                    p.template get<real_t>("setup.r_decay", 200.0) }
       , params { p }
       , xi_min { p.template get<std::vector<real_t>>(
           "setup.xi_min",
