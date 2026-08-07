@@ -57,7 +57,9 @@
 [setup]
   init_field = "wald"
 
-  # axion background present but coupling switched off (baseline run)
+  # axion cloud background: l=0|1, gravitational coupling alpha = mu*M,
+  # effective D-field coupling g = (q0/B0)*eps ~ 1.16e-6*eps
+  # (J_a ~ J_GJ requires eps ~ 1e8, see docs/design.md)
   axion_mode      = "cloud"
   axion_eps       = 0.0
   axion_alpha     = 0.6
