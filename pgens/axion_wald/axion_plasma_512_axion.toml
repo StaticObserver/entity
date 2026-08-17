@@ -67,10 +67,13 @@
   axion_amplitude = 0.01
   axion_phase     = 0.0
 
-  # accretion-style plasma top-up injection (theta margin 0.01 rad off the axis)
-  multiplicity = 1.0
-  sigma_max    = 100.0
-  temperature  = 0.01
+  # local D.B-triggered pair injection (Parfrey-style, one e+/e- pair per
+  # triggered cell per step, physical density carried by particle weights)
+  multiplicity       = 1.0
+  pair_creation_rate = 0.5
+  ddotb_threshold    = 1e-2
+  sigma_min_fraction = 0.05
+  temperature        = 0.01
   xi_min       = [1.0, 0.01]
   xi_max       = [8.0, 3.13159265]
 

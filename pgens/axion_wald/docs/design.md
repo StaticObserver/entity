@@ -57,14 +57,23 @@ State: implemented（wald 已验证；bhac 型新增，待验证）
 
 ## 4. Initial Particles
 
-State: implemented（改编自 accretion pgen：仅磁化判据 + r^{-3/2} 剖面）
+State: implemented（本地 D·B 触发注入，移植自 bh-reconnection pgen，
+Parfrey et al. 2019 处方）
 
-- `PointDistribution`（改编自 pgens/accretion）：注入盒
-  `setup.xi_min`–`setup.xi_max`（物理坐标）内，仅对 B² > σ_thr·ρ 的格子
-  补注 e± 对（σ_thr = sigma_max/σ0；已去掉 accretion 的密度阈值条件）。
-  注入数密度 ∝ r^{-3/2}（r=1 处归一为 1，即注入率与原 accretion 版在
-  内边界一致）。密度由 `ComputeMomentWithSpecies` 实时重算，
-  注入自调节（top-up）。
+- `DdotBWeightedPairs`：注入盒 `setup.xi_min`–`setup.xi_max`（物理坐标，
+  作为 `InjectNonUniform` 的 box 限制迭代范围）内，直接用本地
+  staggered EM 数组值（不插值、不转 tetrad），以空间度规降指标计算
+  D·B 与 B²，对满足
+    |D·B|/B² > ddotb_threshold  且  B² > sigma_min_fraction·ρ
+  的格子每次调用恰好注入一对 e±（`number_density = 2/ppc0`）。
+  ρ = `FldsID::Rho`（species {1,2}），每次注入前由
+  `ComputeMomentWithSpecies` 实时重算，注入自调节。
+- 注入密度编码在粒子权重里（Parfrey 本地处方）：
+    Δñ = pair_creation_rate · ñ_GJ · |D·B|/√B²，  ñ_GJ = B0·skindepth0²
+    weight = ppc0 · Δñ
+  非笛卡尔注入器存的 weight 会乘 √det(h)/V0，密度矩又除 n0·√det(h)
+  （n0 = ppc0/V0），二者相消，每个粒子恰好沉积 Δñ——ppc0 只影响
+  采样容量，不改变物理注入密度。
 - `InitPrtls` 与 `CustomPostStep` 调用同一 `InjectPlasma`：Maxwellian
   （`setup.temperature`）+ `InjectNonUniform`（species {1,2}, use_weights=true）。
 - 注入盒缺省或非法（xi_min ≥ xi_max）时整体跳过，真空算例行为不变。
@@ -102,10 +111,13 @@ State: implemented（未验证）
   - sinusoid：`setup.axion_amplitude`、`setup.axion_omega`、`setup.axion_k1`
   - cloud：`setup.axion_alpha`（α，默认 0.5）、`setup.axion_l`（0|1，默认 1）、
     `setup.axion_amplitude`（A）、`setup.axion_phase`（默认 0）
-  - plasma（改编自 accretion）：`setup.xi_min`、`setup.xi_max`（注入盒，缺省 =
-    不注入）、`setup.sigma_max`（默认 1e30）、
-    `setup.temperature`（默认 0.01）；需配 `[particles]` species {1,2} 与
-    `use_weights = true`（`setup.multiplicity` 已弃用，toml 中保留无害）
+  - plasma（本地 D·B 触发注入，见 §4）：`setup.xi_min`、`setup.xi_max`
+    （注入盒，缺省 = 不注入）、`setup.pair_creation_rate`（默认 0.5）、
+    `setup.ddotb_threshold`（默认 1e-2）、`setup.sigma_min_fraction`
+    （默认 0.05）、`setup.temperature`（默认 0.01）；需配 `[particles]`
+    species {1,2} 与 `use_weights = true`（`setup.multiplicity` 已弃用，
+    toml 中保留无害；旧的 `setup.sigma_max`/r^{-3/2} 剖面已被 D·B
+    触发注入取代）
 
 ## 7. Custom Output
 
@@ -173,3 +185,11 @@ upstream 回归、Gauss 约束四项全部通过，可用于正式物理 run。
 - 2026-08-03：新增 accretion 式等离子体注入（`PointDistribution` +
   `InitPrtls`/`CustomPostStep`，注入盒缺省跳过保持真空兼容）；
   新增 `axion_plasma.toml`（ε=0 baseline，extent [1,7]，256²，runtime 50）。
+- 2026-08-17：注入方法更换为本地 D·B 触发的 Parfrey 式固定对注入
+  （`DdotBWeightedPairs`，移植自 bh-reconnection pgen；触发条件
+  |D·B|/B² > ddotb_threshold 且 B² > sigma_min_fraction·ρ，每格每步
+  恰好一对 e±，物理密度由权重 Δñ = R·ñ_GJ·|D·B|/√B² 携带）。
+  取代旧的磁化判据 + r^{-3/2} 剖面；`setup.sigma_max` 移除，新增
+  `setup.pair_creation_rate` / `setup.ddotb_threshold` /
+  `setup.sigma_min_fraction`，5 个 plasma toml 同步更新
+  （分支 dev/axion-grpic-ddotb-inj）。
