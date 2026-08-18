@@ -1,11 +1,11 @@
 [simulation]
   name    = "wald_plasma512_ddotb"
   engine  = "grpic"
-  runtime = 100.0
+  runtime = 50.0
 
 [grid]
   resolution = [512, 512]
-  extent     = [[1.0, 10.0]]
+  extent     = [[1.0, 7.0]]
 
   [grid.metric]
     metric  = "qkerr_schild"
@@ -21,11 +21,11 @@
       ds = 1.0
 
 [scales]
-  larmor0    = 0.001
-  skindepth0 = 0.01
+  larmor0    = 0.025
+  skindepth0 = 0.5
 
 [algorithms]
-  current_filters = 16
+  current_filters = 4
 
   [algorithms.gr]
     pusher_niter = 10
@@ -36,7 +36,7 @@
     correction = 1.0
 
 [particles]
-  ppc0           = 2.0
+  ppc0           = 4.0
   use_weights    = true
   clear_interval = 100
 
@@ -44,14 +44,14 @@
     label    = "e-"
     mass     = 1.0
     charge   = -1.0
-    maxnpart = 2e8
+    maxnpart = 4e7
     pusher   = "Boris"
 
   [[particles.species]]
     label    = "e+"
     mass     = 1.0
     charge   = 1.0
-    maxnpart = 2e8
+    maxnpart = 4e7
     pusher   = "Boris"
 
 [setup]
@@ -74,8 +74,8 @@
   ddotb_threshold    = 1e-2
   sigma_min_fraction = 0.05
   temperature        = 0.01
-  xi_min       = [1.0, 0.01]
-  xi_max       = [8.0, 3.13159265]
+  xi_min       = [1.5, 0.0]
+  xi_max       = [4.0, 3.14159265]
 
 [output]
   format = "BPFile"
