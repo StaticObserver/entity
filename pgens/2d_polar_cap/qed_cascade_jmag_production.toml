@@ -42,7 +42,7 @@
 
   [grid.boundaries]
     fields    = [["ATMOSPHERE", "MATCH"], ["PERIODIC"]]
-    particles = [["ATMOSPHERE", "ABSORB"]]
+    particles = [["ATMOSPHERE", "ABSORB"], ["PERIODIC"]]
 
     [grid.boundaries.match]
       ds = [[0.05], []]

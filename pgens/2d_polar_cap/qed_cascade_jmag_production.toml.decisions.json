@@ -155,17 +155,17 @@
         "value": 3.0
       }
     },
-    "input_sha256": "ed0088d2bcab2834e9d8cbc1d3259437a58a89859172c90bee7ae5e0d87ca496",
+    "input_sha256": "250595a63ec07456aa67e7c5b2771e02f1cf0eaf18e7fd3869a4c1fdfe46d074",
     "kind": "entity-parameter-card",
     "schema_version": 1,
     "warnings": [
       "tier-1 missing: boundary conditions (boundaries.fields, boundaries.particles)"
     ]
   },
-  "confirmed_at": "2026-08-24T12:58:53.031721+00:00",
+  "confirmed_at": "2026-08-24T13:07:58.137597+00:00",
   "confirmed_by": "kimi-code",
   "defaults": false,
-  "input_sha256": "ed0088d2bcab2834e9d8cbc1d3259437a58a89859172c90bee7ae5e0d87ca496",
+  "input_sha256": "250595a63ec07456aa67e7c5b2771e02f1cf0eaf18e7fd3869a4c1fdfe46d074",
   "kind": "entity-pgen.simulation-confirmation",
   "schema_version": 1
 }
