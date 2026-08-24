@@ -5,35 +5,36 @@
 #   - Legacy trigger test: larmor0 = 2.5e-7, skindepth0 = 5e-4, n_GJ = 1 n0,
 #     dx = 1e-4 (d_e^GJ = 5 dx). Full cap at that normalization does not fit
 #     one H100 (quasi-steady macro count scales as n_GJ * cells).
-#   - This run: skindepth0 = 1.25e-3 (dx = 2.5e-4, d_e^GJ = 2 dx), larmor0
+#   - v2 (8000x18000, dx = 2.5e-4, d_e^GJ = 2 dx, n_GJ = 6.25 n0): cascade
+#     ignited and stayed localized, but photons overflowed 2e8 maxnpart at
+#     t ~ 0.24 while still growing exponentially (run-40e1bf95f17bc1e3).
+#   - This run (v3): skindepth0 = 2.5e-3 (dx = 5e-4, d_e^GJ = 1 dx), larmor0
 #     unchanged, so gamma_PC = 8e6, omega_B0, the E/B0 normalization and all
-#     code-time dynamics are identical to the trigger test. n_GJ = 6.25 n0
-#     (scales as skindepth0^2), so GJ-normalized densities/currents are x6.25
-#     and the QED emission/pair coefficients are x2.5 (per-code-length rate
-#     invariance: runtime divides both by skindepth0).
+#     code-time dynamics are identical to the trigger test. n_GJ = 25 n0
+#     (scales as skindepth0^2), so GJ-normalized densities/currents are x25
+#     and the QED emission/pair coefficients are x5 vs the trigger test
+#     (per-code-length rate invariance: runtime divides both by skindepth0).
+#     Macro counts drop by ~4x vs v2, buying the headroom to run through a
+#     full discharge cycle (runtime 3.0, ~40 gap crossing times after
+#     ignition at t ~ 0.02) instead of dying in the growth phase.
 #   - Initial E uses the fixed Gauss closure (pgen.hpp InitialFields,
 #     2026-08-24): dE/dx = rho * larmor0/skindepth0^2.
 #   - ppc0 = 0.02 with weights: initial fill floors at minimum_ppc = 1
-#     macro/cell/species with weight 0.625 n0, keeping ~1.6e8 macros/species
-#     at t = 0 and leaving headroom for the cascade (multiplicity ~ 3-4x,
-#     measured on the trigger test).
+#     macro/cell/species with weight 2.5 n0.
 #
-# Grid: 8000 x 18000 cells over [0,2] x [-2.25,2.25]; cap spans [-2,2]
+# Grid: 4000 x 9000 cells over [0,2] x [-2.25,2.25]; cap spans [-2,2]
 # (halfwidth = R_PC = 2), 0.125 R_PC vacuum margin each side.
-# dt = CFL*dx/sqrt(2) = 4.42e-5; runtime 0.6 = 13576 steps (ignition at
-# t ~ 0.02 measured by the sanity probe run-2781b6b88c1cb989).
-# Domain width is set by the initial-fill budget: the e+ initial fill needs
-# ~2.5 macros/cell (base + excess + atmosphere prefill, measured by the
-# first attempt's npart overflow), so cells * 2.5 must stay well below
-# maxnpart.
+# dt = CFL*dx/sqrt(2) = 8.84e-5; runtime 3.0 = ~34k steps.
+# Initial fill: ~2.5 macros/cell/species (base + excess + atmosphere
+# prefill) -> ~9e7 macros, well below maxnpart.
 
 [simulation]
   name    = "polar_cap_2d_qedon_jmag_philippov2024"
   engine  = "srpic"
-  runtime = 0.6
+  runtime = 3.0
 
 [grid]
-  resolution = [8000, 18000]
+  resolution = [4000, 9000]
   extent     = [[0.0, 2.0], [-2.25, 2.25]]
 
   [grid.metric]
@@ -41,23 +42,23 @@
 
   [grid.boundaries]
     fields    = [["ATMOSPHERE", "MATCH"], ["PERIODIC"]]
-    particles = [["ATMOSPHERE", "ABSORB"], ["PERIODIC"]]
+    particles = [["ATMOSPHERE", "ABSORB"]]
 
     [grid.boundaries.match]
       ds = [[0.05], []]
 
     [grid.boundaries.atmosphere]
       temperature = 0.1
-      # 40 n_GJ (n_GJ = 6.25 n0 at this normalization). Reduced from
-      density     = 250.0
+      # 40 n_GJ (n_GJ = 25 n0 at this normalization).
+      density     = 1000.0
       height      = 0.130288344571
       species     = [1, 2]
       ds          = 0.6
 
 [scales]
-  # d_e(n0) = 5 dx = 1.25e-3; d_e^GJ = d_e/sqrt(6.25) = 5e-4 = 2 dx.
+  # d_e(n0) = 5 dx = 2.5e-3; d_e^GJ = d_e/5 = 5e-4 = 1 dx.
   larmor0    = 2.5e-7
-  skindepth0 = 1.25e-3
+  skindepth0 = 2.5e-3
 
 [algorithms]
   current_filters = 16
@@ -91,7 +92,7 @@
     label           = "gamma"
     mass            = 0.0
     charge          = 0.0
-    maxnpart        = 2e8
+    maxnpart        = 3e8
     pusher          = "Photon"
     emission        = "none"
     # CustomPostStep reclaims photons after pair conversion.
@@ -102,14 +103,14 @@
 [setup]
   "polar_cap.B0"                       = -1.0
   "polar_cap.temperature"              = 0.01
-  # j_scale = 1 j_GJ = 6.25 n0 q0 c; philippov2024 peak j(0) = 2 j_GJ.
-  "polar_cap.external_current"         = 6.25
+  # j_scale = 1 j_GJ = 25 n0 q0 c; philippov2024 peak j(0) = 2 j_GJ.
+  "polar_cap.external_current"         = 25.0
   "polar_cap.current_profile"          = "philippov2024"
   "polar_cap.current_profile_center"   = 0.0
   "polar_cap.current_profile_halfwidth" = 2.0
   # n_GJ in code units.
-  "polar_cap.initial_e_coefficient"    = 6.25
-  "polar_cap.extra_positron_density"   = 6.25
+  "polar_cap.initial_e_coefficient"    = 25.0
+  "polar_cap.extra_positron_density"   = 25.0
 
   "polar_cap.initial_injection.minimum_density" = 1e-6
   "polar_cap.initial_injection.minimum_ppc"     = 1
@@ -125,9 +126,9 @@
   "polar_cap.qed.gamma_rad"                     = 1.6e5
   "polar_cap.qed.reference_electric_field"      = 2.0
   "polar_cap.qed.photon_energy_min"             = 2.0
-  # x2.5 vs the trigger test: keeps per-code-length rates invariant.
-  "polar_cap.qed.emission_coefficient"          = 1.587827219e8
-  "polar_cap.qed.pair_coefficient"              = 1.587827219e8
+  # x5 vs the trigger test: keeps per-code-length rates invariant.
+  "polar_cap.qed.emission_coefficient"          = 3.175654438e8
+  "polar_cap.qed.pair_coefficient"              = 3.175654438e8
   "polar_cap.qed.b_over_bq"                     = 0.2
   "polar_cap.qed.max_photons_per_particle_step" = 100
   "polar_cap.qed.max_drag_fraction"             = 0.2
@@ -140,7 +141,7 @@
 
 [output]
   format        = "bp"
-  interval_time = 0.02
+  interval_time = 0.05
 
   [output.fields]
     quantities = ["N_1", "N_2", "N_3", "E", "B", "J"]

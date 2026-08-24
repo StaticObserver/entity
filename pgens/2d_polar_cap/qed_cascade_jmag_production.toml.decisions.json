@@ -1,6 +1,6 @@
 {
   "card": {
-    "digest": "sha256:451d4e17d109cacbc818a682e8449dcea03388d1890af9e3421154588a5e6b43",
+    "digest": "sha256:35f6000aeaeed5364195be1bb6517bded08f41a91bde7647670ce91923f12c26",
     "domain": "simulation",
     "fields": {
       "algorithms.timestep.CFL": {
@@ -23,8 +23,8 @@
       "grid.resolution": {
         "tier": 1,
         "value": [
-          8000,
-          18000
+          4000,
+          9000
         ]
       },
       "output.fields.quantities": {
@@ -52,7 +52,7 @@
       },
       "output.interval_time": {
         "tier": 2,
-        "value": 0.02
+        "value": 0.05
       },
       "output.particles.enable": {
         "tier": 2,
@@ -128,11 +128,11 @@
       },
       "particles.species.2.maxnpart": {
         "tier": 1,
-        "value": 200000000.0
+        "value": 300000000.0
       },
       "setup.polar_cap.extra_positron_density": {
         "tier": 1,
-        "value": 6.25
+        "value": 25.0
       },
       "setup.polar_cap.initial_injection.minimum_density": {
         "tier": 1,
@@ -152,20 +152,20 @@
       },
       "simulation.runtime": {
         "tier": 1,
-        "value": 0.6
+        "value": 3.0
       }
     },
-    "input_sha256": "09ae8965c6a3960be8a20a506d264dc877e77c30895e526e850079705ea69056",
+    "input_sha256": "ed0088d2bcab2834e9d8cbc1d3259437a58a89859172c90bee7ae5e0d87ca496",
     "kind": "entity-parameter-card",
     "schema_version": 1,
     "warnings": [
       "tier-1 missing: boundary conditions (boundaries.fields, boundaries.particles)"
     ]
   },
-  "confirmed_at": "2026-08-24T08:40:25.396561+00:00",
+  "confirmed_at": "2026-08-24T12:58:53.031721+00:00",
   "confirmed_by": "kimi-code",
   "defaults": false,
-  "input_sha256": "09ae8965c6a3960be8a20a506d264dc877e77c30895e526e850079705ea69056",
+  "input_sha256": "ed0088d2bcab2834e9d8cbc1d3259437a58a89859172c90bee7ae5e0d87ca496",
   "kind": "entity-pgen.simulation-confirmation",
   "schema_version": 1
 }
