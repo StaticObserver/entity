@@ -1,6 +1,6 @@
 {
   "card": {
-    "digest": "sha256:94eb564ca5519803b45db178e75394f93d99b1206dec763a24bb58de031f29aa",
+    "digest": "sha256:451d4e17d109cacbc818a682e8449dcea03388d1890af9e3421154588a5e6b43",
     "domain": "simulation",
     "fields": {
       "algorithms.timestep.CFL": {
@@ -80,7 +80,7 @@
       },
       "particles.ppc0": {
         "tier": 1,
-        "value": 0.04
+        "value": 0.02
       },
       "particles.species.0.charge": {
         "tier": 1,
@@ -155,17 +155,17 @@
         "value": 0.6
       }
     },
-    "input_sha256": "ca3b1afd9b723d616c30bd8f63880c5ce3e209f03784b316ce1cae832030dfa2",
+    "input_sha256": "09ae8965c6a3960be8a20a506d264dc877e77c30895e526e850079705ea69056",
     "kind": "entity-parameter-card",
     "schema_version": 1,
     "warnings": [
       "tier-1 missing: boundary conditions (boundaries.fields, boundaries.particles)"
     ]
   },
-  "confirmed_at": "2026-08-24T06:05:17.565315+00:00",
+  "confirmed_at": "2026-08-24T08:40:25.396561+00:00",
   "confirmed_by": "kimi-code",
   "defaults": false,
-  "input_sha256": "ca3b1afd9b723d616c30bd8f63880c5ce3e209f03784b316ce1cae832030dfa2",
+  "input_sha256": "09ae8965c6a3960be8a20a506d264dc877e77c30895e526e850079705ea69056",
   "kind": "entity-pgen.simulation-confirmation",
   "schema_version": 1
 }
