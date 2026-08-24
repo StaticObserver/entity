@@ -50,13 +50,22 @@ Deferred (planned, not in v1):
 
 ## 3. Initial Electromagnetic Fields
 
-State: implemented (ported from 1D)
+State: implemented (ported from 1D; Gauss normalization fixed 2026-08-24)
 
 - Uniform `B_x1 = B0`.
 - `E_x1(x1)` is the same analytic profile as 1D (logistic excess-positron
   profile minus fixed GJ background), transversely uniform. With
   `extra_positron_density = initial_e_coefficient` it satisfies the per-column
   Gauss closure `dE_x1/dx1 = rho_excess - rho_GJ`.
+- Gauss-law normalization: with E in units of B0 and x in code lengths,
+  `dE/dx = (larmor0/skindepth0^2) * rho` for `rho` in units of n0. The
+  `InitialFields` constructor therefore receives
+  `initial_e_coefficient * larmor0/skindepth0^2` as the field-side
+  coefficient; the particle-side densities keep `initial_e_coefficient`
+  (n0 units). The factor is 1 for the legacy normalization
+  (`larmor0 = skindepth0^2`, satisfied by all pre-2026-08-24 TOMLs), so the
+  fix leaves the smoke and trigger-test setups bit-identical; without it the
+  initial E was wrong by `skindepth0^2/larmor0` for any other normalization.
 - Transverse field components are initially zero.
 
 ## 4. Initial Particles
@@ -149,9 +158,26 @@ post-processing on the 2D output, not PGen code.
     x2 midpoint) and `setup.polar_cap.current_profile_halfwidth` (default:
     half the domain x2 extent) define the profile mapping.
 - `extra_positron_density = initial_e_coefficient` for the Gauss closure.
-- `external_current` is the interior tetrad-normalized current; for
-  `"philippov2024"` it multiplies the dimensionless profile (i.e. it is the
-  GJ-unit scale j_gj).
+- `external_current` is the interior tetrad-normalized current in units of
+  `n0 q0 c`; for `"philippov2024"` it multiplies the dimensionless profile.
+- GJ-unit scaling (derived 2026-08-24, anchored by the validated trigger
+  test): at fixed `larmor0`, the Goldreich-Julian density in code units
+  scales as `n_GJ/n0 = (skindepth0/5e-4)^2` (= 1 for the legacy
+  normalization `larmor0 = 2.5e-7, skindepth0 = 5e-4`, which also fixes the
+  factor-2 convention). All GJ-normalized inputs must be rescaled
+  accordingly: `initial_e_coefficient`, `extra_positron_density`,
+  `external_current` (`j_GJ = n_GJ q0 c`), and `grid.boundaries.atmosphere
+  .density` (100 n_GJ in the validated setups). Conversely, the QED
+  `emission_coefficient`/`pair_coefficient` scale linearly with
+  `skindepth0` to keep the per-code-length photon emission rate and
+  conversion opacity invariant (the runtime divides both by `skindepth0`),
+  while `gamma_emit`, `gamma_rad`, `rho_c`, `b_over_bq`,
+  `reference_electric_field` and the drag normalization
+  (`dt * omegaB0 * E_ref / gamma_rad^4` with `omegaB0` fixed by `larmor0`)
+  are unchanged. WARNING: `larmor0/skindepth0^2` (the
+  `initial_e_coefficient` fallback formula) is the *inverse* of the true
+  n_GJ scaling and equals it only at the legacy normalization; do not use
+  it as a scaling law.
 - `boundary_ex_damping` requires fields MATCH at x1 max and Cartesian
   coordinates, as in 1D, but is valid for the 2D build.
 - QED validation rules (positive `rho_c`, `gamma_emit > 1`, even
@@ -203,3 +229,16 @@ x2-dependent curvature, transverse pair momentum, 3D).
   works for both build modes. Smoke TOML also adds the QED keys
   `gamma_rad = 6.7e5` and `reference_electric_field = 2.0`, which the QED-on
   constructor requires but the 1D smoke TOML lacked.
+- 2026-08-24: `InitialFields` Gauss normalization fix. The initial `E_x1`
+  slope was `initial_e_coefficient` regardless of `larmor0/skindepth0`,
+  which is only correct when `larmor0 = skindepth0^2` (all legacy TOMLs);
+  the field-side coefficient is now `initial_e_coefficient *
+  larmor0/skindepth0^2`. Legacy TOMLs are bit-identical; any other
+  normalization previously got an initial E wrong by `skindepth0^2/larmor0`.
+  Found when a rescaled production TOML (`skindepth0 = 10x` legacy) showed
+  an initial E 700x weaker than the trigger test and no cascade ignition.
+- 2026-08-24: added `qed_cascade_test.toml` (20000x16 j=1.5 trigger test,
+  validated on lambda H100: photons 0 -> 2.4e7 quasi-steady, pair spectra
+  cut off at `gamma_rad = 1.6e5`) and `qed_cascade_jmag_production.toml`
+  (full-cap philippov2024 run; see Sec. 8 for the GJ scaling law used to
+  set its densities, current, and QED coefficients).

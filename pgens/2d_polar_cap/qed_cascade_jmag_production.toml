@@ -1,37 +1,36 @@
 # 2D QED cascade production run: full polar cap with the CPT2024
 # (arXiv:2409.15409) transverse current profile j_mag.
 #
-# Same artificial-QED model as the validated cascade trigger test
-# (qed_cascade_test.toml), rescaled to a coarser absolute grid so the full
-# cap fits on one H100:
+# Normalization (see docs/design.md Sec. 8 for the scaling laws):
+#   - Legacy trigger test: larmor0 = 2.5e-7, skindepth0 = 5e-4, n_GJ = 1 n0,
+#     dx = 1e-4 (d_e^GJ = 5 dx). Full cap at that normalization does not fit
+#     one H100 (quasi-steady macro count scales as n_GJ * cells).
+#   - This run: skindepth0 = 1.25e-3 (dx = 2.5e-4, d_e^GJ = 2 dx), larmor0
+#     unchanged, so gamma_PC = 8e6, omega_B0, the E/B0 normalization and all
+#     code-time dynamics are identical to the trigger test. n_GJ = 6.25 n0
+#     (scales as skindepth0^2), so GJ-normalized densities/currents are x6.25
+#     and the QED emission/pair coefficients are x2.5 (per-code-length rate
+#     invariance: runtime divides both by skindepth0).
+#   - Initial E uses the fixed Gauss closure (pgen.hpp InitialFields,
+#     2026-08-24): dE/dx = rho * larmor0/skindepth0^2.
+#   - ppc0 = 0.1 with weights: initial fill floors at minimum_ppc = 1
+#     macro/cell/species with weight 0.625 n0, keeping ~1.6e8 macros/species
+#     at t = 0 and leaving headroom for the cascade (multiplicity ~ 3-4x,
+#     measured on the trigger test).
 #
-#   - dx = 1e-3 (d_e^GJ = 5 dx, as before); R_PC/d_e = 400 (was 4000).
-#   - larmor0 kept at 2.5e-7, so gamma_PC = R_PC^2/(2 larmor0) = 8e6 and the
-#     acceleration/drag microphysics in code units are unchanged
-#     (omega_B0*dt invariant). omega_p/omega_B = 5e-5 (more magnetized).
-#   - n_GJ in code units = larmor0/skindepth0^2 = 0.01; all GJ-normalized
-#     densities/currents are divided by 100 relative to the trigger test:
-#     initial_e_coefficient = extra_positron_density = 0.01 (= n_GJ),
-#     atmosphere density 1.0 (= 100 n_GJ), j_scale below.
-#   - emission/pair coefficients x10 so the per-code-length photon emission
-#     rate and conversion opacity are identical to the trigger test
-#     (emission_step = coeff*dt/skindepth0, opacity ~ coeff/skindepth0).
-#   - philippov2024 profile with halfwidth = R_PC = 2.0, center = 0.0,
-#     j_scale = 0.01 code = 1 j_GJ: peak j(0) = 2 j_GJ, zero at |x|~0.54,
-#     return current beyond, j = 0 outside the cap (clamp).
-#
-# Grid: 2000 x 6000 cells over [0,2] x [-3,3] (cap spans [-2,2], 0.5 R_PC
-# vacuum margin on each side). dt = CFL*dx/sqrt(2) = 1.768e-4;
-# runtime 2.0 = 11313 steps = one full R_PC light crossing.
+# Grid: 8000 x 20000 cells over [0,2] x [-2.5,2.5]; cap spans [-2,2]
+# (halfwidth = R_PC = 2), 0.25 R_PC vacuum margin each side.
+# dt = CFL*dx/sqrt(2) = 4.42e-5; runtime 1.0 = 22626 steps (ignition at
+# t ~ 0.1-0.2 by trigger-test calibration, so ~5 post-ignition evolutions).
 
 [simulation]
   name    = "polar_cap_2d_qedon_jmag_philippov2024"
   engine  = "srpic"
-  runtime = 2.0
+  runtime = 1.0
 
 [grid]
-  resolution = [2000, 6000]
-  extent     = [[0.0, 2.0], [-3.0, 3.0]]
+  resolution = [8000, 20000]
+  extent     = [[0.0, 2.0], [-2.5, 2.5]]
 
   [grid.metric]
     metric = "minkowski"
@@ -45,16 +44,16 @@
 
     [grid.boundaries.atmosphere]
       temperature = 0.1
-      # 100 n_GJ (n_GJ = 0.01 n0 at this normalization).
-      density     = 1.0
+      # 100 n_GJ (n_GJ = 6.25 n0 at this normalization).
+      density     = 625.0
       height      = 0.130288344571
       species     = [1, 2]
       ds          = 0.6
 
 [scales]
-  # d_e^GJ = 5 dx = 5e-3, larmor0 = 2.5e-7 (gamma_PC = 8e6 unchanged).
+  # d_e(n0) = 5 dx = 1.25e-3; d_e^GJ = d_e/sqrt(6.25) = 5e-4 = 2 dx.
   larmor0    = 2.5e-7
-  skindepth0 = 5.0e-3
+  skindepth0 = 1.25e-3
 
 [algorithms]
   current_filters = 32
@@ -63,7 +62,7 @@
     CFL = 0.25
 
 [particles]
-  ppc0                     = 10.0
+  ppc0                     = 0.1
   use_weights              = true
   clear_interval           = 100
   spatial_sorting_interval = 0
@@ -72,7 +71,7 @@
     label    = "e-"
     mass     = 1.0
     charge   = -1.0
-    maxnpart = 5e8
+    maxnpart = 4e8
     pusher   = "Boris"
     emission = "custom"
 
@@ -80,7 +79,7 @@
     label    = "e+"
     mass     = 1.0
     charge   = 1.0
-    maxnpart = 5e8
+    maxnpart = 4e8
     pusher   = "Boris"
     emission = "custom"
 
@@ -88,7 +87,7 @@
     label           = "gamma"
     mass            = 0.0
     charge          = 0.0
-    maxnpart        = 3e8
+    maxnpart        = 2e8
     pusher          = "Photon"
     emission        = "none"
     # CustomPostStep reclaims photons after pair conversion.
@@ -99,17 +98,17 @@
 [setup]
   "polar_cap.B0"                       = -1.0
   "polar_cap.temperature"              = 0.01
-  # j_scale = 1 j_GJ = 0.01 n0 q0 c; philippov2024 peak j(0) = 2 j_GJ.
-  "polar_cap.external_current"         = 0.01
+  # j_scale = 1 j_GJ = 6.25 n0 q0 c; philippov2024 peak j(0) = 2 j_GJ.
+  "polar_cap.external_current"         = 6.25
   "polar_cap.current_profile"          = "philippov2024"
   "polar_cap.current_profile_center"   = 0.0
   "polar_cap.current_profile_halfwidth" = 2.0
   # n_GJ in code units.
-  "polar_cap.initial_e_coefficient"    = 0.01
-  "polar_cap.extra_positron_density"   = 0.01
+  "polar_cap.initial_e_coefficient"    = 6.25
+  "polar_cap.extra_positron_density"   = 6.25
 
   "polar_cap.initial_injection.minimum_density" = 1e-6
-  "polar_cap.initial_injection.minimum_ppc"     = 5
+  "polar_cap.initial_injection.minimum_ppc"     = 1
 
   "polar_cap.qed.enable"                        = true
   "polar_cap.qed.curvature_drag"                = true
@@ -122,9 +121,9 @@
   "polar_cap.qed.gamma_rad"                     = 1.6e5
   "polar_cap.qed.reference_electric_field"      = 2.0
   "polar_cap.qed.photon_energy_min"             = 2.0
-  # x10 vs the trigger test: keeps per-code-length rates invariant.
-  "polar_cap.qed.emission_coefficient"          = 6.351308875e8
-  "polar_cap.qed.pair_coefficient"              = 6.351308875e8
+  # x2.5 vs the trigger test: keeps per-code-length rates invariant.
+  "polar_cap.qed.emission_coefficient"          = 1.587827219e8
+  "polar_cap.qed.pair_coefficient"              = 1.587827219e8
   "polar_cap.qed.b_over_bq"                     = 0.2
   "polar_cap.qed.max_photons_per_particle_step" = 100
   "polar_cap.qed.max_drag_fraction"             = 0.2

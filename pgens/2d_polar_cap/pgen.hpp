@@ -62,6 +62,14 @@ namespace user {
     // to the validated 1D setup. The electric field is the analytic integral
     // of the excess-positron charge minus the fixed Goldreich-Julian
     // background used by ExtraPositronDensity below.
+    //
+    // Gauss-law normalization: with E in units of B0 and x in code lengths,
+    // dE/dx = (larmor0/skindepth0^2) * rho, where rho is the charge density
+    // in units of n0. The constructor therefore receives e_coefficient =
+    // initial_e_coefficient * larmor0/skindepth0^2, i.e. the charge density
+    // coefficient converted to field units; all ex1 slopes below are in this
+    // converted normalization. The factor is 1 for the legacy normalization
+    // (larmor0 = skindepth0^2), so historical TOMLs are unaffected.
     template <Dimension D>
     struct InitialFields {
       const real_t b0, e_coefficient, x_surface, atmosphere_width;
@@ -98,8 +106,10 @@ namespace user {
         //   f(s) = 1 / (1 + exp(s)),
         //   s    = (x - atmosphere_edge) / transition.
         //
-        // dE_x/dx = e_coefficient * (f - 1).  The primitive (charge_primitive)
-        // is zero at s = -inf, giving E_x -> 0 deep inside the atmosphere.
+        // dE_x/dx = e_coefficient * (f - 1), with e_coefficient already in
+        // field units (see the struct comment).  The primitive
+        // (charge_primitive) is zero at s = -inf, giving E_x -> 0 deep inside
+        // the atmosphere.
         const auto atmosphere_edge = x_surface + atmosphere_width;
         const auto transition = static_cast<real_t>(0.03) * atmosphere_width;
         const auto cutoff_s = static_cast<real_t>(11.0);
@@ -462,7 +472,14 @@ namespace user {
       , boundary_ex_damping_strength { params.template get<real_t>(
           "setup.polar_cap.boundary_ex_damping.strength",
           static_cast<real_t>(0.1)) }
-      , init_flds { b0, initial_e_coefficient, x_surface, atmosphere_width }
+      , init_flds { b0,
+                    // Convert the charge-density coefficient (n0 units) to
+                    // field units: dE/dx = rho * larmor0/skindepth0^2.
+                    initial_e_coefficient *
+                      (params.template get<real_t>("scales.larmor0") /
+                       SQR(params.template get<real_t>("scales.skindepth0"))),
+                    x_surface,
+                    atmosphere_width }
       , ext_current { polar_cap::ParseCurrentProfile(
                         params.template get<std::string>(
                           "setup.polar_cap.current_profile",

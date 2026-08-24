@@ -1,6 +1,6 @@
 {
   "card": {
-    "digest": "sha256:75a9f5ea2e5fd0a28a59ae9b68d4dbc8d4e00ee36ba087422e60466d6bdaf12c",
+    "digest": "sha256:58e4f74e5bc76569dd1f1b12db4eb49ca55329e4028f1e39d71a8527448541be",
     "domain": "simulation",
     "fields": {
       "algorithms.timestep.CFL": {
@@ -15,16 +15,16 @@
             2.0
           ],
           [
-            -3.0,
-            3.0
+            -2.5,
+            2.5
           ]
         ]
       },
       "grid.resolution": {
         "tier": 1,
         "value": [
-          2000,
-          6000
+          8000,
+          20000
         ]
       },
       "output.fields.quantities": {
@@ -80,7 +80,7 @@
       },
       "particles.ppc0": {
         "tier": 1,
-        "value": 10.0
+        "value": 0.1
       },
       "particles.species.0.charge": {
         "tier": 1,
@@ -96,7 +96,7 @@
       },
       "particles.species.0.maxnpart": {
         "tier": 1,
-        "value": 500000000.0
+        "value": 400000000.0
       },
       "particles.species.1.charge": {
         "tier": 1,
@@ -112,7 +112,7 @@
       },
       "particles.species.1.maxnpart": {
         "tier": 1,
-        "value": 500000000.0
+        "value": 400000000.0
       },
       "particles.species.2.charge": {
         "tier": 1,
@@ -128,11 +128,11 @@
       },
       "particles.species.2.maxnpart": {
         "tier": 1,
-        "value": 300000000.0
+        "value": 200000000.0
       },
       "setup.polar_cap.extra_positron_density": {
         "tier": 1,
-        "value": 0.01
+        "value": 6.25
       },
       "setup.polar_cap.initial_injection.minimum_density": {
         "tier": 1,
@@ -152,20 +152,20 @@
       },
       "simulation.runtime": {
         "tier": 1,
-        "value": 2.0
+        "value": 1.0
       }
     },
-    "input_sha256": "93932424f08d7443f4506db186847eae6973c536584b24fa585c46fc4fafd414",
+    "input_sha256": "e4da9707001d71c1a9718bd722701c49048c1b330fa8a3b8afea218b76b09c37",
     "kind": "entity-parameter-card",
     "schema_version": 1,
     "warnings": [
       "tier-1 missing: boundary conditions (boundaries.fields, boundaries.particles)"
     ]
   },
-  "confirmed_at": "2026-08-24T03:51:58.866829+00:00",
+  "confirmed_at": "2026-08-24T04:19:24.723111+00:00",
   "confirmed_by": "kimi-code",
   "defaults": false,
-  "input_sha256": "93932424f08d7443f4506db186847eae6973c536584b24fa585c46fc4fafd414",
+  "input_sha256": "e4da9707001d71c1a9718bd722701c49048c1b330fa8a3b8afea218b76b09c37",
   "kind": "entity-pgen.simulation-confirmation",
   "schema_version": 1
 }
