@@ -20,8 +20,8 @@
 #
 # Grid: 8000 x 18000 cells over [0,2] x [-2.25,2.25]; cap spans [-2,2]
 # (halfwidth = R_PC = 2), 0.125 R_PC vacuum margin each side.
-# dt = CFL*dx/sqrt(2) = 4.42e-5; runtime 1.0 = 22626 steps (ignition at
-# t ~ 0.1-0.2 by trigger-test calibration, so ~5 post-ignition evolutions).
+# dt = CFL*dx/sqrt(2) = 4.42e-5; runtime 0.6 = 13576 steps (ignition at
+# t ~ 0.02 measured by the sanity probe run-2781b6b88c1cb989).
 # Domain width is set by the initial-fill budget: the e+ initial fill needs
 # ~2.5 macros/cell (base + excess + atmosphere prefill, measured by the
 # first attempt's npart overflow), so cells * 2.5 must stay well below
@@ -30,7 +30,7 @@
 [simulation]
   name    = "polar_cap_2d_qedon_jmag_philippov2024"
   engine  = "srpic"
-  runtime = 1.0
+  runtime = 0.6
 
 [grid]
   resolution = [8000, 18000]
@@ -48,8 +48,8 @@
 
     [grid.boundaries.atmosphere]
       temperature = 0.1
-      # 100 n_GJ (n_GJ = 6.25 n0 at this normalization).
-      density     = 625.0
+      # 40 n_GJ (n_GJ = 6.25 n0 at this normalization). Reduced from
+      density     = 250.0
       height      = 0.130288344571
       species     = [1, 2]
       ds          = 0.6
@@ -60,7 +60,7 @@
   skindepth0 = 1.25e-3
 
 [algorithms]
-  current_filters = 32
+  current_filters = 16
 
   [algorithms.timestep]
     CFL = 0.25
