@@ -1,6 +1,6 @@
 {
   "card": {
-    "digest": "sha256:8020872e3ab4b49cdb30fd4df99e9f697e68ccf00a063beb5efbbad04ca23ee9",
+    "digest": "sha256:ac4f15558ce1115d94d22e0c1251fa702b9a2d3b5e31516d742bf5875e1a6d15",
     "domain": "simulation",
     "fields": {
       "algorithms.timestep.CFL": {
@@ -80,7 +80,7 @@
       },
       "particles.ppc0": {
         "tier": 1,
-        "value": 0.1
+        "value": 0.04
       },
       "particles.species.0.charge": {
         "tier": 1,
@@ -96,7 +96,7 @@
       },
       "particles.species.0.maxnpart": {
         "tier": 1,
-        "value": 500000000.0
+        "value": 400000000.0
       },
       "particles.species.1.charge": {
         "tier": 1,
@@ -112,7 +112,7 @@
       },
       "particles.species.1.maxnpart": {
         "tier": 1,
-        "value": 500000000.0
+        "value": 400000000.0
       },
       "particles.species.2.charge": {
         "tier": 1,
@@ -155,17 +155,17 @@
         "value": 1.0
       }
     },
-    "input_sha256": "b6257de9b92dda0987487bed2fb23779643aec6cd5a2d5d021e23a19c2e4a4fb",
+    "input_sha256": "c802eb286ee3951a103663a58b351d56320da1a6fc7c42f331db64a9601bf248",
     "kind": "entity-parameter-card",
     "schema_version": 1,
     "warnings": [
       "tier-1 missing: boundary conditions (boundaries.fields, boundaries.particles)"
     ]
   },
-  "confirmed_at": "2026-08-24T04:32:27.351947+00:00",
+  "confirmed_at": "2026-08-24T05:26:38.678310+00:00",
   "confirmed_by": "kimi-code",
   "defaults": false,
-  "input_sha256": "b6257de9b92dda0987487bed2fb23779643aec6cd5a2d5d021e23a19c2e4a4fb",
+  "input_sha256": "c802eb286ee3951a103663a58b351d56320da1a6fc7c42f331db64a9601bf248",
   "kind": "entity-pgen.simulation-confirmation",
   "schema_version": 1
 }

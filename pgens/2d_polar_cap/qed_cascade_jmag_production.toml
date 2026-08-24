@@ -13,7 +13,7 @@
 #     invariance: runtime divides both by skindepth0).
 #   - Initial E uses the fixed Gauss closure (pgen.hpp InitialFields,
 #     2026-08-24): dE/dx = rho * larmor0/skindepth0^2.
-#   - ppc0 = 0.1 with weights: initial fill floors at minimum_ppc = 1
+#   - ppc0 = 0.04 with weights: initial fill floors at minimum_ppc = 1
 #     macro/cell/species with weight 0.625 n0, keeping ~1.6e8 macros/species
 #     at t = 0 and leaving headroom for the cascade (multiplicity ~ 3-4x,
 #     measured on the trigger test).
@@ -66,7 +66,7 @@
     CFL = 0.25
 
 [particles]
-  ppc0                     = 0.1
+  ppc0                     = 0.04
   use_weights              = true
   clear_interval           = 100
   spatial_sorting_interval = 0
@@ -75,7 +75,7 @@
     label    = "e-"
     mass     = 1.0
     charge   = -1.0
-    maxnpart = 5e8
+    maxnpart = 4e8
     pusher   = "Boris"
     emission = "custom"
 
@@ -83,7 +83,7 @@
     label    = "e+"
     mass     = 1.0
     charge   = 1.0
-    maxnpart = 5e8
+    maxnpart = 4e8
     pusher   = "Boris"
     emission = "custom"
 
