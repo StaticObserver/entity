@@ -1,0 +1,86 @@
+# =============================================================================
+# Vacuum test: ∇a×E forced wave (ON)
+# =============================================================================
+# Uniform Ex3 seed E0_x3, B0 = 0 (ȧB term vanishes), vacuum.
+# Only ∇a×E acts: dE2/dt = -ε·k·sin(k·x1 - ω·t)·E0
+#   → E2 = (ε·k·E0/ω)·[cos(k·x1 - ωt) - cos(k·x1)]
+#   → max_t ⟨E2²⟩ = 2·(ε·k·E0/ω)²  at ωt = π
+# With ε=1e-2, k=0.1, E0=1e-2, ω=1:  max⟨E2²⟩ = 2.0e-10.
+# Pair with test_gradaE_off.toml (expect E2 ≡ 0 there).
+# =============================================================================
+
+[simulation]
+  name    = "test_gradaE_on"
+  engine  = "SRPIC"
+  runtime = 7.0            # covers ωt = π (t = 3.14) with margin
+
+[grid]
+  resolution = [512, 8]
+  extent     = [[0.0, 62.831853], [0.0, 4.0]]   # one axion wavelength in x1
+
+  [grid.metric]
+    metric = "Minkowski"
+
+  [grid.boundaries]
+    fields    = [["PERIODIC"], ["PERIODIC"]]
+    particles = [["PERIODIC"], ["PERIODIC"]]
+
+[scales]
+  larmor0    = 1e-2
+  skindepth0 = 0.5        # omega = omega_ratio/skindepth0 = 1.0
+
+[algorithms]
+  current_filters = 0
+
+  [algorithms.timestep]
+    CFL = 1.413           # Cowan 2D
+
+  [algorithms.fieldsolver]
+    delta_x = 0.0
+    delta_y = 0.0
+    beta_xy = 0.125
+    beta_yx = 0.125
+
+[particles]
+  ppc0        = 16.0
+  use_weights = true
+
+  [[particles.species]]
+    label    = "e-"
+    mass     = 1.0
+    charge   = -1.0
+    maxnpart = 100000.0
+
+  [[particles.species]]
+    label    = "e+"
+    mass     = 1.0
+    charge   = 1.0
+    maxnpart = 100000.0
+
+[setup]
+  epsilon     = 1e-2
+  omega_ratio = 0.5
+  k           = 0.1
+  B0          = 0.0       # ȧB term off; isolate ∇a×E
+  temperature = 0.01
+  density     = 0.0       # vacuum
+  E0_x3       = 1e-2      # uniform Ex3 seed
+  use_grad_a_cross_e = true
+
+[output]
+  interval_time = 0.05    # fine sampling to catch the ωt=π peak
+  format        = "BPFile"
+
+  [output.fields]
+    quantities = ["E", "B", "J", "divE"]
+
+    [output.fields.smoothing]
+      order  = 3
+      method = "spline"
+
+  [output.stats]
+    enable        = true
+    interval_time = 0.1
+
+[diagnostics]
+  log_level = "VERBOSE"

@@ -1,0 +1,82 @@
+# =============================================================================
+# Vacuum test: ∇a×E forced wave (OFF control)
+# =============================================================================
+# Identical to test_gradaE_on.toml except use_grad_a_cross_e = false.
+# Expect E2 ≡ 0 (no source); any E2 growth indicates leakage from ȧB path.
+# =============================================================================
+
+[simulation]
+  name    = "test_gradaE_off"
+  engine  = "SRPIC"
+  runtime = 7.0
+
+[grid]
+  resolution = [512, 8]
+  extent     = [[0.0, 62.831853], [0.0, 4.0]]
+
+  [grid.metric]
+    metric = "Minkowski"
+
+  [grid.boundaries]
+    fields    = [["PERIODIC"], ["PERIODIC"]]
+    particles = [["PERIODIC"], ["PERIODIC"]]
+
+[scales]
+  larmor0    = 1e-2
+  skindepth0 = 0.5
+
+[algorithms]
+  current_filters = 0
+
+  [algorithms.timestep]
+    CFL = 1.413
+
+  [algorithms.fieldsolver]
+    delta_x = 0.0
+    delta_y = 0.0
+    beta_xy = 0.125
+    beta_yx = 0.125
+
+[particles]
+  ppc0        = 16.0
+  use_weights = true
+
+  [[particles.species]]
+    label    = "e-"
+    mass     = 1.0
+    charge   = -1.0
+    maxnpart = 100000.0
+
+  [[particles.species]]
+    label    = "e+"
+    mass     = 1.0
+    charge   = 1.0
+    maxnpart = 100000.0
+
+[setup]
+  epsilon     = 1e-2
+  omega_ratio = 0.5
+  k           = 0.1
+  B0          = 0.0
+  temperature = 0.01
+  density     = 0.0
+  E0_x3       = 1e-2
+  use_grad_a_cross_e = false
+
+[output]
+  interval_time = 0.05
+  format        = "BPFile"
+
+  [output.fields]
+    quantities = ["E", "B", "J", "divE"]
+
+    [output.fields.smoothing]
+      order  = 3
+      method = "spline"
+
+  [output.stats]
+    enable        = true
+    interval_time = 0.1
+
+[diagnostics]
+  log_level = "VERBOSE"

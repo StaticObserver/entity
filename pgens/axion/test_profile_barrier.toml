@@ -1,0 +1,88 @@
+# =============================================================================
+# Smoke test: barrier density profile along x1
+# =============================================================================
+# n(x1): n_min = 0.15 outside [40, 60], n_max = 1.0 plateau inside,
+# tanh shoulders of width ~ 1/ramp_W = 2.
+# Injection varies ppc (probability), particle weights stay 1.
+# Check: initial N_1(x1) matches the analytic profile; short runtime only.
+# =============================================================================
+
+[simulation]
+  name    = "test_profile_barrier"
+  engine  = "SRPIC"
+  runtime = 1.0
+
+[grid]
+  resolution = [256, 8]
+  extent     = [[0.0, 100.0], [0.0, 4.0]]
+
+  [grid.metric]
+    metric = "Minkowski"
+
+  [grid.boundaries]
+    fields    = [["PERIODIC"], ["PERIODIC"]]
+    particles = [["PERIODIC"], ["PERIODIC"]]
+
+[scales]
+  larmor0    = 1e-2
+  skindepth0 = 0.5
+
+[algorithms]
+  current_filters = 0
+
+  [algorithms.timestep]
+    CFL = 1.413
+
+  [algorithms.fieldsolver]
+    delta_x = 0.0
+    delta_y = 0.0
+    beta_xy = 0.125
+    beta_yx = 0.125
+
+[particles]
+  ppc0        = 16.0
+  use_weights = true
+
+  [[particles.species]]
+    label    = "e-"
+    mass     = 1.0
+    charge   = -1.0
+    maxnpart = 100000.0
+
+  [[particles.species]]
+    label    = "e+"
+    mass     = 1.0
+    charge   = 1.0
+    maxnpart = 100000.0
+
+[setup]
+  epsilon     = 1e-2
+  omega_ratio = 0.5
+  k           = 0.1
+  B0          = 1.0
+  temperature = 0.01
+  density     = 1.0
+  profile     = "barrier"
+  n_min       = 0.15
+  n_max       = 1.0
+  ramp_W      = 0.5
+  ramp_xa     = 40.0
+  ramp_xb     = 60.0
+
+[output]
+  interval_time = 0.5
+  format        = "BPFile"
+
+  [output.fields]
+    quantities = ["E", "B", "N"]
+
+    [output.fields.smoothing]
+      order  = 3
+      method = "spline"
+
+  [output.stats]
+    enable        = true
+    interval_time = 0.5
+
+[diagnostics]
+  log_level = "VERBOSE"
