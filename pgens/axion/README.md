@@ -93,3 +93,16 @@ PGen 的 `jx1/jx2/jx3(ctx)` 方法通过 ctx 访问实时 EM 场和当前时间�
 - 注入概率 ∝ n(x₁)/n_max，粒子权重恒为 1 → N_D 沿梯度恒定
 - `profile = "uniform"` 时代码路径与引入剖面前逐字一致（回归安全）
 - 测试 TOML：`test_profile_barrier.toml`
+
+## 测试
+
+- `test_adotb_wave.toml` / `test_k0.toml` / `test_b0perp.toml` / `test_gradaE_on.toml` /
+  `test_gradaE_off.toml` / `test_profile_barrier.toml` / `test_profile_ramp.toml`：
+  真空 J_a 各通道与密度剖面的解析对照测试。
+- `test_invalid_*.toml`：5 个参数校验负测试（应报 `raise::ErrorIf`）。
+- 检查脚本 `scripts/check_pgen_suite.py`（仓库外，本地 `axion-pic/scripts/` 与
+  m87 `~/entity/axion-pic/scripts/` 同步）。
+- 横向 E2 的解析参考是受迫波动方程解（见 `check_pgen_suite.py` 模块注释），
+  不是局域 ODE——忽略波传播会引入 ~10% 虚假偏差。
+- 验证报告：`analysis_results/pgen-verification-2026-09-01/reports/`
+  （2026-09-01 全部 PASS，commit a65cf7d3）。
