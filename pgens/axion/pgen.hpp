@@ -164,7 +164,8 @@ namespace user {
         const auto right = HALF * (ONE + math::tanh(W * (xb - x[0])));
         n = n_min + (n_max - n_min) * left * right;
       }
-      return { n / n_max, ONE };
+      const real_t w { ONE }; // local copy: ONE must not be odr-used in device code
+      return { n / n_max, w };
     }
   };
 
