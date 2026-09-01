@@ -1,0 +1,56 @@
+# T6a: expect raise::ErrorIf "omega*dt >= 1: cannot resolve axion oscillation"
+[simulation]
+  name    = "test_invalid_omega_dt"
+  engine  = "SRPIC"
+  runtime = 0.1
+
+[grid]
+  resolution = [8, 8]
+  extent     = [[0.0, 1.0], [0.0, 1.0]]
+
+  [grid.metric]
+    metric = "Minkowski"
+
+  [grid.boundaries]
+    fields    = [["PERIODIC"], ["PERIODIC"]]
+    particles = [["PERIODIC"], ["PERIODIC"]]
+
+[scales]
+  larmor0    = 1e-2
+  skindepth0 = 0.5
+
+[algorithms]
+  current_filters = 0
+
+  [algorithms.timestep]
+    CFL = 1.413
+
+[particles]
+  ppc0        = 16.0
+  use_weights = true
+
+  [[particles.species]]
+    label    = "e-"
+    mass     = 1.0
+    charge   = -1.0
+    maxnpart = 10000.0
+
+  [[particles.species]]
+    label    = "e+"
+    mass     = 1.0
+    charge   = 1.0
+    maxnpart = 10000.0
+
+[setup]
+  epsilon     = 1e-2
+  omega_ratio = 1000.0    # omega = 2000, omega*dt ~ 250 >= 1 -> must be rejected
+  k           = 0.1
+  B0          = 1.0
+  density     = 0.0
+
+[output]
+  interval_time = 0.05
+  format        = "BPFile"
+
+[diagnostics]
+  log_level = "ERROR"

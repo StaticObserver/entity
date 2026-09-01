@@ -1,0 +1,61 @@
+# T6e: expect raise::ErrorIf "setup.ramp_xb must be > setup.ramp_xa for density profiles"
+[simulation]
+  name    = "test_invalid_ramp_xb"
+  engine  = "SRPIC"
+  runtime = 0.1
+
+[grid]
+  resolution = [8, 8]
+  extent     = [[0.0, 1.0], [0.0, 1.0]]
+
+  [grid.metric]
+    metric = "Minkowski"
+
+  [grid.boundaries]
+    fields    = [["PERIODIC"], ["PERIODIC"]]
+    particles = [["PERIODIC"], ["PERIODIC"]]
+
+[scales]
+  larmor0    = 1e-2
+  skindepth0 = 0.5
+
+[algorithms]
+  current_filters = 0
+
+  [algorithms.timestep]
+    CFL = 1.413
+
+[particles]
+  ppc0        = 16.0
+  use_weights = true
+
+  [[particles.species]]
+    label    = "e-"
+    mass     = 1.0
+    charge   = -1.0
+    maxnpart = 10000.0
+
+  [[particles.species]]
+    label    = "e+"
+    mass     = 1.0
+    charge   = 1.0
+    maxnpart = 10000.0
+
+[setup]
+  epsilon     = 1e-2
+  omega_ratio = 0.5
+  k           = 0.1
+  B0          = 1.0
+  density     = 1.0
+  profile     = "ramp"
+  n_min       = 0.2
+  n_max       = 1.0
+  ramp_xa     = 0.8
+  ramp_xb     = 0.2       # xb < xa -> must be rejected
+
+[output]
+  interval_time = 0.05
+  format        = "BPFile"
+
+[diagnostics]
+  log_level = "ERROR"
