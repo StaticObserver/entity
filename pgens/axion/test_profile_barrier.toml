@@ -14,7 +14,7 @@
 
 [grid]
   resolution = [256, 8]
-  extent     = [[0.0, 100.0], [0.0, 4.0]]
+  extent     = [[0.0, 100.0], [0.0, 3.125]]   # square cells dx = 0.390625
 
   [grid.metric]
     metric = "Minkowski"

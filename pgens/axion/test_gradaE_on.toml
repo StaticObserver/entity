@@ -5,7 +5,7 @@
 # Only ∇a×E acts: dE2/dt = -ε·k·sin(k·x1 - ω·t)·E0
 #   → E2 = (ε·k·E0/ω)·[cos(k·x1 - ωt) - cos(k·x1)]
 #   → max_t ⟨E2²⟩ = 2·(ε·k·E0/ω)²  at ωt = π
-# With ε=1e-2, k=0.1, E0=1e-2, ω=1:  max⟨E2²⟩ = 2.0e-10.
+# With ε=1e-2, k=2π/64, E0=1e-2, ω=1:  max⟨E2²⟩ = 2.0e-10 × (k/0.1)² = 1.928e-10.
 # Pair with test_gradaE_off.toml (expect E2 ≡ 0 there).
 # =============================================================================
 
@@ -16,7 +16,7 @@
 
 [grid]
   resolution = [512, 8]
-  extent     = [[0.0, 62.831853], [0.0, 4.0]]   # one axion wavelength in x1
+  extent     = [[0.0, 64.0], [0.0, 1.0]]   # square cells dx = 0.125; one axion wavelength
 
   [grid.metric]
     metric = "Minkowski"
@@ -60,7 +60,7 @@
 [setup]
   epsilon     = 1e-2
   omega_ratio = 0.5
-  k           = 0.1
+  k           = 0.09817477042468103   # 2π/64: one wavelength in the box
   B0          = 0.0       # ȧB term off; isolate ∇a×E
   temperature = 0.01
   density     = 0.0       # vacuum

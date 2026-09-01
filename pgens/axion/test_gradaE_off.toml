@@ -12,7 +12,7 @@
 
 [grid]
   resolution = [512, 8]
-  extent     = [[0.0, 62.831853], [0.0, 4.0]]
+  extent     = [[0.0, 64.0], [0.0, 1.0]]
 
   [grid.metric]
     metric = "Minkowski"
@@ -56,7 +56,7 @@
 [setup]
   epsilon     = 1e-2
   omega_ratio = 0.5
-  k           = 0.1
+  k           = 0.09817477042468103   # 2π/64: one wavelength in the box
   B0          = 0.0
   temperature = 0.01
   density     = 0.0
