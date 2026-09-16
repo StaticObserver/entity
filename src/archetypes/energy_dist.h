@@ -175,7 +175,11 @@ namespace arch::energy_dist {
 
   template <Dimension D, Coord::type C, class DriftF = void>
   struct Maxwellian {
+    static_assert(std::is_void_v<DriftF> || std::is_trivially_copyable_v<DriftF>,
+                  "Maxwellian DriftF must be trivially copyable (GPU-safe)");
+
     /// Constant drift via std::vector (default, backward compatible).
+    /// NOTE: constant drift is applied only for Cartesian coordinates.
     template <class DF = DriftF, std::enable_if_t<std::is_void_v<DF>, int> = 0>
     Maxwellian(random_number_pool_t&      pool,
                real_t                     temperature,
@@ -208,6 +212,9 @@ namespace arch::energy_dist {
     }
 
     /// Custom (e.g. spatially-dependent) drift profile.
+    /// DriftF::operator()(x_Ph, d) sets the drift 4-velocity `d` at x_Ph.
+    /// Basis convention: Cartesian components when C == Coord::Cartesian;
+    /// otherwise orthonormal tetrad (hat) components at x_Ph (e.g. for GR).
     template <class DF = DriftF, std::enable_if_t<!std::is_void_v<DF>, int> = 0>
     Maxwellian(random_number_pool_t& pool, real_t temperature, const DF& df)
       : pool { pool }, temperature { temperature }, drift_f { df } {
@@ -255,60 +262,75 @@ namespace arch::energy_dist {
             }
           }
         } else {
-          // Position-dependent drift via functor
+          // Position-dependent drift via functor (Cartesian components)
           vec_t<Dim::_3D> drift_4v;
           drift_f(x_Ph, drift_4v);
-          const auto drift_mag = NORM(drift_4v[0], drift_4v[1], drift_4v[2]);
-          if (not cmp::AlmostZero(drift_mag)) {
-            const auto drift_3v = drift_mag / math::sqrt(ONE + SQR(drift_mag));
-            short dir = 4;
-            for (auto d { 0u }; d < 3u; ++d) {
-              const auto dprev = (d + 2) % 3;
-              const auto dnext = (d + 1) % 3;
-              if (cmp::AlmostZero(drift_4v[dprev]) and
-                  cmp::AlmostZero(drift_4v[dnext])) {
-                dir = static_cast<short>(
-                  SIGN(drift_4v[d]) * static_cast<real_t>(d + 1));
-                break;
-              }
-            }
-            const auto gamma { U2GAMMA(v[0], v[1], v[2]) };
-            auto       rand_gen = pool.get_state();
-            if (-drift_3v * v[0] > gamma * Random<real_t>(rand_gen)) {
-              v[0] = -v[0];
-            }
-            pool.free_state(rand_gen);
-            v[0] = math::sqrt(ONE + SQR(drift_mag)) * (v[0] + drift_3v * gamma);
-            if (dir == -1) {
-              v[0] = -v[0];
-            } else if (dir == 2 || dir == -2) {
-              const auto tmp = v[1];
-              v[1]           = dir > 0 ? v[0] : -v[0];
-              v[0]           = tmp;
-            } else if (dir == 3 || dir == -3) {
-              const auto tmp = v[2];
-              v[2]           = dir > 0 ? v[0] : -v[0];
-              v[0]           = tmp;
-            } else if (dir == 4) {
-              const auto d1 = drift_4v[0] / drift_mag;
-              const auto d2 = drift_4v[1] / drift_mag;
-              const auto d3 = drift_4v[2] / drift_mag;
-              vec_t<Dim::_3D> v_old;
-              v_old[0] = v[0]; v_old[1] = v[1]; v_old[2] = v[2];
-              v[0] = v_old[0] * d1 - v_old[1] * d2 - v_old[2] * d3;
-              v[1] = (v_old[0] * d2 * (d1 + ONE) +
-                      v_old[1] * (SQR(d1) + d1 + SQR(d3)) -
-                      v_old[2] * d2 * d3) / (d1 + ONE);
-              v[2] = (v_old[0] * d3 * (d1 + ONE) -
-                      v_old[1] * d2 * d3 -
-                      v_old[2] * (-d1 + SQR(d3) - ONE)) / (d1 + ONE);
-            }
-          }
+          boost_with_drift(v, drift_4v);
         }
+      } else if constexpr (!std::is_void_v<DriftF>) {
+        // Non-Cartesian metrics (spherical/GR): `v` holds 4-velocity components
+        // in the local orthonormal tetrad (hat) frame at x_Ph, and DriftF must
+        // return the drift 4-velocity in that same tetrad frame. The hat frame
+        // is locally Minkowski, so the same flipping boost applies unchanged.
+        vec_t<Dim::_3D> drift_4v;
+        drift_f(x_Ph, drift_4v);
+        boost_with_drift(v, drift_4v);
       }
     }
 
   private:
+    // Zenitani flipping + Lorentz boost along the drift 4-velocity.
+    // Valid in any orthonormal (locally Minkowski) basis: Cartesian components,
+    // or tetrad (hat) components for non-Cartesian metrics.
+    Inline void boost_with_drift(vec_t<Dim::_3D>&       v,
+                                 const vec_t<Dim::_3D>& drift_4v) const {
+      const auto drift_mag = NORM(drift_4v[0], drift_4v[1], drift_4v[2]);
+      if (cmp::AlmostZero(drift_mag)) {
+        return;
+      }
+      const auto drift_3v = drift_mag / math::sqrt(ONE + SQR(drift_mag));
+      short       dir = 4;
+      for (auto d { 0u }; d < 3u; ++d) {
+        const auto dprev = (d + 2) % 3;
+        const auto dnext = (d + 1) % 3;
+        if (cmp::AlmostZero(drift_4v[dprev]) and cmp::AlmostZero(drift_4v[dnext])) {
+          dir = static_cast<short>(SIGN(drift_4v[d]) * static_cast<real_t>(d + 1));
+          break;
+        }
+      }
+      const auto gamma { U2GAMMA(v[0], v[1], v[2]) };
+      auto       rand_gen = pool.get_state();
+      if (-drift_3v * v[0] > gamma * Random<real_t>(rand_gen)) {
+        v[0] = -v[0];
+      }
+      pool.free_state(rand_gen);
+      v[0] = math::sqrt(ONE + SQR(drift_mag)) * (v[0] + drift_3v * gamma);
+      if (dir == -1) {
+        v[0] = -v[0];
+      } else if (dir == 2 || dir == -2) {
+        const auto tmp = v[1];
+        v[1]           = dir > 0 ? v[0] : -v[0];
+        v[0]           = tmp;
+      } else if (dir == 3 || dir == -3) {
+        const auto tmp = v[2];
+        v[2]           = dir > 0 ? v[0] : -v[0];
+        v[0]           = tmp;
+      } else if (dir == 4) {
+        const auto d1 = drift_4v[0] / drift_mag;
+        const auto d2 = drift_4v[1] / drift_mag;
+        const auto d3 = drift_4v[2] / drift_mag;
+        vec_t<Dim::_3D> v_old;
+        v_old[0] = v[0]; v_old[1] = v[1]; v_old[2] = v[2];
+        v[0] = v_old[0] * d1 - v_old[1] * d2 - v_old[2] * d3;
+        v[1] = (v_old[0] * d2 * (d1 + ONE) +
+                v_old[1] * (SQR(d1) + d1 + SQR(d3)) -
+                v_old[2] * d2 * d3) / (d1 + ONE);
+        v[2] = (v_old[0] * d3 * (d1 + ONE) -
+                v_old[1] * d2 * d3 -
+                v_old[2] * (-d1 + SQR(d3) - ONE)) / (d1 + ONE);
+      }
+    }
+
     random_number_pool_t pool;
     const real_t         temperature;
 
