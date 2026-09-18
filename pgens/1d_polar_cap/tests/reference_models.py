@@ -595,35 +595,112 @@ class PolarCapReferenceTests(unittest.TestCase):
         )
         self.assertIn('"scales.dx0"', pgen_source)
 
-    def test_external_current_matches_right_boundary_taper(self) -> None:
-        """Match J_ext to the electric-field MATCH retained fraction."""
-        match_ds = self.config["grid"]["boundaries"]["match"]["ds"]
-        x_max = self.config["grid"]["extent"][0][1]
+    def test_external_current_is_constant_across_match_layer(self) -> None:
+        """The external current is deliberately NOT tapered in the MATCH layer.
 
-        def retained_fraction(x: float) -> float:
-            if x >= x_max:
-                return 0.0
-            distance = x_max - x
-            if distance >= match_ds:
-                return 1.0
-            return math.tanh(4.0 * distance / match_ds)
-
-        self.assertEqual(retained_fraction(x_max), 0.0)
-        self.assertAlmostEqual(
-            retained_fraction(x_max - 0.5 * match_ds),
-            math.tanh(2.0),
-        )
-        self.assertEqual(retained_fraction(x_max - match_ds), 1.0)
-        self.assertEqual(retained_fraction(x_max - 2.0 * match_ds), 1.0)
-
+        A spatial taper would introduce dJ_ext/dx != 0 without an evolving
+        prescribed charge satisfying continuity (design.md, 2026-07 rewrite).
+        """
         pgen_source = (CASE_DIR / "pgen.hpp").read_text()
-        self.assertIn('"grid.boundaries.match.ds"', pgen_source)
-        self.assertRegex(
-            pgen_source,
-            re.compile(
-                r"math::tanh\(\s*FOUR\s*\*\s*distance\s*/\s*match_ds\s*\)"
-            ),
+        current_block = pgen_source.split("struct MagnetosphericCurrent", 1)[1]
+        self.assertIn(
+            "current_x1_contravariant { current_x1_tetrad / dx }",
+            current_block,
         )
+        self.assertNotIn("tanh", current_block)
+        self.assertNotIn("match_ds", current_block)
+
+    def test_filled_start_toml_contract(self) -> None:
+        """The three filled-start ladder inputs parse with the expected deltas."""
+        ladder = (
+            ("filled_start_e1_ic.toml", 0.0, -1.5, 100.0, 0.1),
+            ("filled_start_e2_atmosphere.toml", 0.0, -1.5, 10.0, 0.01),
+            ("filled_start_e3_cpt2024.toml", 0.8, -2.0, 10.0, 0.01),
+        )
+        for name, gradient, current, atm_density, atm_temp in ladder:
+            with (CASE_DIR / name).open("rb") as stream:
+                config = tomllib.load(stream)
+            setup = config["setup"]
+            atmosphere = config["grid"]["boundaries"]["atmosphere"]
+            self.assertEqual(setup["polar_cap.initial_condition"], "filled")
+            self.assertEqual(
+                setup["polar_cap.initial_injection.fill_density"], 10.0
+            )
+            self.assertEqual(setup["polar_cap.rho_gj_gradient"], gradient)
+            self.assertEqual(setup["polar_cap.external_current"], current)
+            self.assertEqual(atmosphere["density"], atm_density)
+            self.assertEqual(atmosphere["temperature"], atm_temp)
+            self.assertTrue(setup["polar_cap.qed.enable"])
+            self.assertEqual(
+                [item["label"] for item in config["particles"]["species"]],
+                ["e-", "e+", "gamma"],
+            )
+
+    def test_filled_start_gauss_closure_with_gradient(self) -> None:
+        """rho_net(x) == rho_GJ(x) pointwise implies the E_x = 0 closure."""
+        with (CASE_DIR / "filled_start_e3_cpt2024.toml").open("rb") as stream:
+            config = tomllib.load(stream)
+        setup = config["setup"]
+        gradient = setup["polar_cap.rho_gj_gradient"]
+        rho_gj0 = setup["polar_cap.extra_positron_density"]
+        extent = config["grid"]["extent"][0]
+        resolution = config["grid"]["resolution"][0]
+        buffer_cells = max(config["algorithms"]["current_filters"] + 2, 5)
+        dx = (extent[1] - extent[0]) / resolution
+        x_surface = buffer_cells * dx
+        length = extent[1] - x_surface
+
+        x = np.linspace(x_surface, extent[1], 10_001)
+        excess_profile = 1.0 + gradient * (x - x_surface) / length
+        deposited_net = rho_gj0 * excess_profile
+        prescribed_gj = rho_gj0 * (1.0 + gradient * (x - x_surface) / length)
+        np.testing.assert_allclose(deposited_net, prescribed_gj, atol=1.0e-15)
+        # Below the surface the deposited excess charge vanishes.
+        self.assertEqual(gradient, 0.8)
+        self.assertAlmostEqual(excess_profile[-1], 1.8, places=12)
+
+    def test_filled_start_atmosphere_hydrostatic_balance(self) -> None:
+        """g = T / height is engine-derived; check the E2/E3 values balance."""
+        for name in ("filled_start_e2_atmosphere.toml", "filled_start_e3_cpt2024.toml"):
+            with (CASE_DIR / name).open("rb") as stream:
+                config = tomllib.load(stream)
+            atmosphere = config["grid"]["boundaries"]["atmosphere"]
+            # height = ds / ln(density / n_edge) with n_edge = 1.
+            self.assertAlmostEqual(
+                atmosphere["height"],
+                atmosphere["ds"] / math.log(atmosphere["density"]),
+                places=15,
+            )
+            gravity = atmosphere["temperature"] / atmosphere["height"]
+            self.assertAlmostEqual(gravity, 3.8376418216567427, places=12)
+            self.assertNotIn("g", atmosphere)
+
+    def test_filled_start_pgen_validation_and_defaults(self) -> None:
+        """New keys default to the vacuum-gap behavior and are validated."""
+        pgen_source = (CASE_DIR / "pgen.hpp").read_text()
+        self.assertIn('"setup.polar_cap.initial_condition"', pgen_source)
+        self.assertIn('"vacuum_gap"', pgen_source)
+        self.assertIn(
+            "initial_condition must be \\\"vacuum_gap\\\" or \\\"filled\\\"",
+            pgen_source,
+        )
+        self.assertIn(
+            "rho_gj_gradient requires initial_condition",
+            pgen_source,
+        )
+        self.assertIn(
+            "initial_injection.fill_density must be non-negative",
+            pgen_source,
+        )
+        self.assertIn("struct FillDensity", pgen_source)
+        # The checked-in default and smoke inputs stay in vacuum-gap mode.
+        for name in ("1d_polar_cap.toml", "realistic_qedon_smoke.toml"):
+            with (CASE_DIR / name).open("rb") as stream:
+                config = tomllib.load(stream)
+            self.assertNotIn("polar_cap.initial_condition", config["setup"])
+            self.assertNotIn(
+                "polar_cap.initial_injection.fill_density", config["setup"]
+            )
 
     def test_qed_off_toml_has_no_photon_allocation(self) -> None:
         species = self.config["particles"]["species"]

@@ -72,6 +72,16 @@ of this excess component: for total neutral surface density `n0` and requested
 neutral edge density `n_edge`, use
 `height = ds / log(n0 / n_edge)`.
 
+An alternative filled-start initial condition
+(`setup.polar_cap.initial_condition = "filled"`) follows the CPT2024 /
+Witte+2026 (arXiv:2609.08840) 1D setup: the domain is plasma-filled with a
+uniform neutral bulk (`initial_injection.fill_density`), the deposited net
+charge equals the GJ background pointwise (with optional gradient
+`rho_gj_gradient`), and `E_x = 0` initially, so the discharge develops from
+the prescribed current rather than from a vacuum field. The engine derives
+the atmosphere confinement gravity itself (`g = temperature / height`); it is
+not a TOML key. See `docs/design.md` Sec. 3.
+
 ## Radiation model
 
 The charged species use `emission = "custom"`. Entity v1.4.4 also provides

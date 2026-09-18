@@ -1,0 +1,17 @@
+{
+  "case": "1d-filled-start",
+  "kind": "entity-pgen.decision-card",
+  "schema_version": 1,
+  "recorded_at": "2026-09-18",
+  "recorded_by": "kimi",
+  "experiment": "E1: isolate the initial-condition effect (filled start only)",
+  "baseline": "work/runs/run-astro-a100-noex1-nodamp-f0-ds0p1-r2p5-ppc5-jm1p5-001/input.toml",
+  "reference": "Witte+2026 (arXiv:2609.08840) Sec. IV / CPT2024 (arXiv:2409.15409) 1D Tristan v2 setup",
+  "parameters": {
+    "setup.polar_cap.initial_condition": "filled",
+    "setup.polar_cap.initial_injection.fill_density": 10.0,
+    "setup.polar_cap.rho_gj_gradient": 0.0,
+    "unchanged": "atmosphere 100 n_GJ / T=0.1, external_current=-1.5, QED and grid identical to baseline"
+  },
+  "acceptance": "E_x(x,t) stack plot: post-collapse oscillations damp and discharge cycles turn quasi-periodic (paper Fig. 12 behavior) vs the never-damping broadband baseline"
+}

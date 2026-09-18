@@ -52,6 +52,27 @@ background is `rho_GJ = initial_e_coefficient`. The default parameters satisfy
 this continuous relation. The background is part of the physical
 interpretation and is not represented by a dynamic Entity species.
 
+### Filled start (`setup.polar_cap.initial_condition = "filled"`)
+
+The alternative CPT2024-style initial condition (Chernoglazov, Philippov &
+Timokhin 2024; Witte et al. 2026, arXiv:2609.08840 Sec. IV): the domain is
+plasma-filled and Gauss-consistent with `E_x = 0` everywhere. The deposited
+net charge equals the prescribed GJ background pointwise,
+
+```text
+rho_net(x) = rho_GJ0 * (1 + rho_gj_gradient * (x - x_surface) / L),
+L = x_max - x_surface,
+```
+
+so `dE_x/dx = rho_deposited - rho_GJ = 0` and the discharge is driven out of
+equilibrium by the prescribed `external_current` through Ampere's law, not by
+an initial vacuum field. `rho_gj_gradient = 0.8` reproduces the reference
+`(1 + 0.8x/L)` Lense-Thirring-inspired gradient; `0` gives the uniform
+background. The prescribed external current stays spatially constant in both
+modes: a graded static background charge plus a graded prescribed current
+would violate continuity (the same argument that removed the MATCH-layer
+current taper).
+
 ## 4. Initial Particles
 
 Status: implemented, not runtime-verified.
@@ -85,12 +106,30 @@ the global `particles.use_weights` setting, which is enabled for this case, so
 atmosphere replenishment and standard `N_*` moments use the same weighted
 density convention.
 
+In the filled-start mode, two additions apply. First, a uniform neutral
+electron-positron bulk fill of `initial_injection.fill_density` (in n0 units)
+is injected from `x_surface` through the active domain via the same
+`InjectNonUniform` path, mimicking the plasma left behind by a previous
+discharge (the reference value is 10 n_GJ). Second, the excess-positron
+profile no longer declines: it extends through the whole domain following the
+prescribed GJ gradient (Sec. 3), so the deposited net charge equals the GJ
+background pointwise. All filled particles use the same non-relativistic
+Maxwellian (`setup.polar_cap.temperature`), matching the reference practice of
+initializing charges at non-relativistic velocities.
+
 ## 5. Boundaries
 
 Status: implemented and runtime-verified (five-run A100/V100 boundary
 campaign, Phase 2).
 
-- `x1 min`: field and particle atmosphere.
+- `x1 min`: field and particle atmosphere. The engine additionally confines
+  the atmosphere with a constant gravity inside the layer
+  (`x <= x_surface + ds`): `g = temperature / height` is derived from the
+  atmosphere parameters (not a separate TOML key) and applied as a
+  Strang-split half-kick bracketing the Boris push
+  (`engines/srpic/particle_pusher.h`, `kernels/pushers/sr.hpp`). This is the
+  same hydrostatic confinement the reference Tristan setup applies explicitly
+  via `userDriveParticles`.
 - `x1 max`: three cooperating mechanisms, each owning one aspect of the
   boundary:
   - fields `MATCH`, relaxing `B_x` only (longitudinal `E_x` is excluded from
@@ -329,6 +368,14 @@ The case requests standard Entity fields and species densities. No
 - `external_current` is the interior tetrad current normalized to `n0 q0 c`;
   the PGen converts it to a spatially constant internal contravariant `x1`
   component using `scales.dx0`.
+- `initial_condition` is `"vacuum_gap"` (default) or `"filled"`. The filled
+  start requires `extra_positron_density > 0` (the GJ net-charge scale) and
+  keeps every other contract item unchanged.
+- `initial_injection.fill_density` (default `0`) is the uniform neutral bulk
+  fill density in n0 units, used only in the filled start.
+- `rho_gj_gradient` (default `0`, must be non-negative) is the GJ charge
+  gradient amplitude. It is valid only with `initial_condition = "filled"`;
+  with the vacuum-gap start it would break the documented Gauss closure.
 - `initial_injection.minimum_density` must be non-negative and
   `initial_injection.minimum_ppc` must be a positive integer.
 - Production builds use `deposit=esirkepov` and `shape_order=3`; matching TOML
@@ -376,6 +423,12 @@ Completed:
 - full-layer cubic `E_x` damping (`boundary_ex_damping`, `cells = 1000`),
   verified on A100/V100: 0.76% inward flux, edge `E_x` ~ 1e-10, bounded
   in-layer charge (integral ~1.08), harmless ~3.1e-8 onset bump.
+- filled-start initial condition (`initial_condition = "filled"`, CPT2024 /
+  Witte+2026 style): E_x = 0 plasma-filled Gauss-consistent start with uniform
+  neutral bulk fill (`initial_injection.fill_density`) and optional GJ charge
+  gradient (`rho_gj_gradient`); three ladder inputs `filled_start_e1_ic.toml`,
+  `filled_start_e2_atmosphere.toml`, `filled_start_e3_cpt2024.toml` with
+  decision cards; Python reference checks. Not yet compiled or run.
 
 Pending:
 
@@ -388,6 +441,22 @@ Pending:
 - clean process teardown after output closure.
 
 ## 10. Important Changes
+
+- 2026-09-18: added the filled-start initial condition (branch
+  `dev/1d-filled-start`), following the CPT2024 / Witte+2026 (arXiv:2609.08840)
+  1D Tristan setup: plasma-filled Gauss-consistent start with `E_x = 0`,
+  uniform neutral bulk fill (`initial_injection.fill_density`, reference
+  10 n_GJ), and an optional GJ charge gradient (`rho_gj_gradient`, reference
+  0.8) applied to the excess-charge profile. `InitialFields` returns `E_x = 0`
+  in this mode. The external current stays spatially constant (continuity).
+  Motivation: the vacuum-gap start drives a large initial spark and the
+  discharged region never damps its broadband electrostatic oscillations,
+  while the reference setup settles into damped quasi-periodic cycles. The
+  atmosphere confinement gravity turned out to be engine-built-in
+  (`g = temperature / height`, derived in `parameters/grid.cpp` and applied in
+  the pusher), so the quiet-atmosphere experiment only changes density,
+  temperature, and height. All new keys default to the vacuum-gap behavior;
+  existing inputs are bit-identical.
 
 - Replaced old global pusher/engine modifications with PGen-local v1.4.4
   policies.

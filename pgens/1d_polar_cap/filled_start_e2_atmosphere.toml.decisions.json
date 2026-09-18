@@ -1,0 +1,18 @@
+{
+  "case": "1d-filled-start",
+  "kind": "entity-pgen.decision-card",
+  "schema_version": 1,
+  "recorded_at": "2026-09-18",
+  "recorded_by": "kimi",
+  "experiment": "E2: quiet gravity-confined atmosphere on top of E1",
+  "baseline": "filled_start_e1_ic.toml",
+  "reference": "Witte+2026 (arXiv:2609.08840): atmosphere n_peak = 10 n_GJ, temp = 1e-2, gravity-confined Boltzmann",
+  "parameters": {
+    "grid.boundaries.atmosphere.density": 10.0,
+    "grid.boundaries.atmosphere.temperature": 0.01,
+    "grid.boundaries.atmosphere.height": 0.002605766891419511,
+    "derived": "confinement gravity g = T/height = 3.8376 auto-computed by the engine (not a TOML key)",
+    "unchanged": "filled start + fill_density=10, external_current=-1.5, no gradient"
+  },
+  "acceptance": "same E_x(x,t) damping diagnostic; E2 isolates the atmosphere contribution on top of the filled IC"
+}

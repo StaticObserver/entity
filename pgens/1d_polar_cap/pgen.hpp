@@ -61,18 +61,23 @@ namespace user {
     // Prescribed 1D polar-cap background. The electric field is the analytic
     // integral of the excess-positron charge minus the fixed
     // Goldreich-Julian background used by ExtraPositronDensity below.
+    // In the filled-start mode the initial state is the CPT2024-style
+    // plasma-filled, Gauss-consistent configuration with E_x = 0.
     template <Dimension D>
     struct InitialFields {
       const real_t b0, e_coefficient, x_surface, atmosphere_width;
+      const bool   filled;
 
       InitialFields(real_t b0,
                     real_t e_coefficient,
                     real_t x_surface,
-                    real_t atmosphere_width)
+                    real_t atmosphere_width,
+                    bool   filled)
         : b0 { b0 }
         , e_coefficient { e_coefficient }
         , x_surface { x_surface }
-        , atmosphere_width { atmosphere_width } {}
+        , atmosphere_width { atmosphere_width }
+        , filled { filled } {}
 
       Inline auto bx1(const coord_t<D>&) const -> real_t {
         return b0;
@@ -87,6 +92,11 @@ namespace user {
       }
 
       Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
+        // Filled start: the deposited net charge equals the prescribed GJ
+        // background everywhere, so the Gauss-consistent field vanishes.
+        if (filled) {
+          return ZERO;
+        }
         if (x_Ph[0] < x_surface) {
           return ZERO;
         }
@@ -167,21 +177,56 @@ namespace user {
       }
     };
 
-    // The excess positrons fill the atmosphere at unit normalized density.
-    // The S-shaped decline is centered at the atmosphere edge (f = 0.5) and
-    // is truncated after 0.33 atmosphere widths. With peak density equal to
-    // initial_e_coefficient, InitialFields closes the prescribed Gauss law.
+    // Uniform bulk neutral fill for the filled-start mode (CPT2024-style):
+    // constant density from the surface through the active domain. The near-star
+    // atmosphere is injected separately and adds on top of this floor.
     template <Dimension D>
-    struct ExtraPositronDensity {
-      const real_t x_surface, atmosphere_width;
+    struct FillDensity {
+      const real_t fill_density, x_surface;
 
-      ExtraPositronDensity(real_t x_surface, real_t atmosphere_width)
-        : x_surface { x_surface }
-        , atmosphere_width { atmosphere_width } {}
+      FillDensity(real_t fill_density, real_t x_surface)
+        : fill_density { fill_density }
+        , x_surface { x_surface } {}
 
       Inline auto operator()(const coord_t<D>& x_Ph) const -> real_t {
         if (x_Ph[0] < x_surface) {
           return ZERO;
+        }
+        return fill_density;
+      }
+    };
+
+    // The excess positrons fill the atmosphere at unit normalized density.
+    // The S-shaped decline is centered at the atmosphere edge (f = 0.5) and
+    // is truncated after 0.33 atmosphere widths. With peak density equal to
+    // initial_e_coefficient, InitialFields closes the prescribed Gauss law.
+    // In the filled-start mode the profile instead extends through the whole
+    // domain and follows the prescribed GJ charge gradient,
+    // rho(x) = 1 + rho_gj_gradient * (x - x_surface) / L, so that the total
+    // initial charge equals the GJ background pointwise and E_x = 0.
+    template <Dimension D>
+    struct ExtraPositronDensity {
+      const real_t x_surface, atmosphere_width;
+      const bool   filled;
+      const real_t gradient, inv_length;
+
+      ExtraPositronDensity(real_t x_surface,
+                           real_t atmosphere_width,
+                           bool   filled,
+                           real_t gradient,
+                           real_t inv_length)
+        : x_surface { x_surface }
+        , atmosphere_width { atmosphere_width }
+        , filled { filled }
+        , gradient { gradient }
+        , inv_length { inv_length } {}
+
+      Inline auto operator()(const coord_t<D>& x_Ph) const -> real_t {
+        if (x_Ph[0] < x_surface) {
+          return ZERO;
+        }
+        if (filled) {
+          return ONE + gradient * (x_Ph[0] - x_surface) * inv_length;
         }
 
         const auto atmosphere_edge = x_surface + atmosphere_width;
@@ -247,6 +292,8 @@ namespace user {
     const real_t b0, temperature;
     const real_t x_surface, atmosphere_width;
     const real_t initial_e_coefficient, extra_positron_density;
+    const bool   filled_start;
+    const real_t fill_density, rho_gj_gradient;
 
     const bool           qed_enabled, curvature_drag_enabled;
     const bool           curvature_emission_enabled, pair_creation_enabled;
@@ -296,6 +343,15 @@ namespace user {
       , extra_positron_density { params.template get<real_t>(
           "setup.polar_cap.extra_positron_density",
           initial_e_coefficient) }
+      , filled_start { params.template get<std::string>(
+                           "setup.polar_cap.initial_condition",
+                           "vacuum_gap") == "filled" }
+      , fill_density { params.template get<real_t>(
+          "setup.polar_cap.initial_injection.fill_density",
+          ZERO) }
+      , rho_gj_gradient { params.template get<real_t>(
+          "setup.polar_cap.rho_gj_gradient",
+          ZERO) }
       , qed_enabled { params.template get<bool>("setup.polar_cap.qed.enable", false) }
       , curvature_drag_enabled { params.template get<bool>(
           "setup.polar_cap.qed.curvature_drag",
@@ -450,7 +506,11 @@ namespace user {
           params.template get<int>(
             "setup.polar_cap.debug_edge_fields_interval",
             1000)) }
-      , init_flds { b0, initial_e_coefficient, x_surface, atmosphere_width }
+      , init_flds { b0,
+                    initial_e_coefficient,
+                    x_surface,
+                    atmosphere_width,
+                    filled_start }
       , ext_current { params.template get<real_t>(
                         "setup.polar_cap.external_current"),
                       params.template get<real_t>("scales.dx0") }
@@ -474,6 +534,30 @@ namespace user {
                      HERE);
       raise::ErrorIf(extra_positron_density < ZERO,
                      "extra_positron_density must be non-negative",
+                     HERE);
+      {
+        const auto initial_condition = params.template get<std::string>(
+          "setup.polar_cap.initial_condition",
+          "vacuum_gap");
+        raise::ErrorIf(initial_condition != "vacuum_gap" and
+                         initial_condition != "filled",
+                       "initial_condition must be \"vacuum_gap\" or \"filled\"",
+                       HERE);
+      }
+      raise::ErrorIf(not filled_start and rho_gj_gradient != ZERO,
+                     "rho_gj_gradient requires initial_condition = \"filled\": "
+                     "a graded GJ background with the vacuum-gap start breaks "
+                     "the documented initial Gauss closure",
+                     HERE);
+      raise::ErrorIf(fill_density < ZERO,
+                     "initial_injection.fill_density must be non-negative",
+                     HERE);
+      raise::ErrorIf(rho_gj_gradient < ZERO,
+                     "rho_gj_gradient must be non-negative",
+                     HERE);
+      raise::ErrorIf(filled_start and extra_positron_density <= ZERO,
+                     "filled start requires extra_positron_density > 0 as the "
+                     "GJ net-charge scale",
                      HERE);
       raise::ErrorIf(
         params
@@ -689,11 +773,37 @@ namespace user {
                                                    ONE,
                                                    true);
 
+      if (filled_start and fill_density > ZERO) {
+        // CPT2024-style bulk fill: uniform neutral pairs across the active
+        // domain, mimicking the plasma left behind by a previous discharge.
+        const auto fill = polar_cap::FillDensity<D> { fill_density, x_surface };
+        arch::InjectNonUniform<S,
+                               M,
+                               decltype(maxwellian),
+                               decltype(maxwellian),
+                               decltype(fill)>(params,
+                                               domain,
+                                               { electron_index, positron_index },
+                                               { maxwellian, maxwellian },
+                                               fill,
+                                               ONE,
+                                               true);
+      }
+
       // Add only the charge imbalance. A dedicated one-species injector avoids
       // the duplicate-species offset bug in the old {2, 2} pair injection.
+      // In filled mode the imbalance extends through the whole domain with the
+      // prescribed GJ gradient, giving rho_net(x) = rho_GJ(x) and E_x = 0.
+      const auto domain_length = global_x_max - x_surface;
+      raise::ErrorIf(filled_start and domain_length <= ZERO,
+                     "Filled start requires x_max > x_surface",
+                     HERE);
       const auto extra_charge = polar_cap::ExtraPositronDensity<D> {
         x_surface,
-        atmosphere_width
+        atmosphere_width,
+        filled_start,
+        rho_gj_gradient,
+        ONE / domain_length
       };
       // SRPIC current deposition always consumes the stored particle weight.
       // The local injector therefore uses weight only in the dilute tail.

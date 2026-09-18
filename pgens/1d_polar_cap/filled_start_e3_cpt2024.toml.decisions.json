@@ -1,0 +1,17 @@
+{
+  "case": "1d-filled-start",
+  "kind": "entity-pgen.decision-card",
+  "schema_version": 1,
+  "recorded_at": "2026-09-18",
+  "recorded_by": "kimi",
+  "experiment": "E3: full CPT2024-like driving on top of E2",
+  "baseline": "filled_start_e2_atmosphere.toml",
+  "reference": "Witte+2026 (arXiv:2609.08840): j_mag = 2 rho_GJ, rho_GJ(x) = rho0 (1 + 0.8 x/L)",
+  "parameters": {
+    "setup.polar_cap.external_current": -2.0,
+    "setup.polar_cap.rho_gj_gradient": 0.8,
+    "deliberate_omission": "external current kept spatially constant: graded static charge + graded prescribed current violates continuity (same argument that removed the MATCH-layer taper)",
+    "unchanged": "filled start + fill_density=10, quiet atmosphere from E2"
+  },
+  "acceptance": "same E_x(x,t) damping diagnostic; E3 is the full paper-style configuration"
+}
