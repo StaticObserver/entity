@@ -1,0 +1,161 @@
+# Filled-start experiment E4: E3 + Witte+2026/CPT2024 QED thresholds.
+# E3 (filled IC + quiet atmosphere + j=2 j_GJ + GJ gradient 0.8) reproduced
+# the quiet start but did not ignite within t=10: its QED card (inherited
+# from the old "realistic" prototype) has effective thresholds
+# gamma_emit_eff = (gamma_emit^3 rho_c)^(1/3) = 2.58e5 and gamma_rad = 1.27e7,
+# i.e. 25.8x / 15.9x stiffer than the reference runs. This card adopts the
+# CPT2024 Table-1 / Witte+2026 Sec. IV 1D values:
+#   gamma_PC = 3.2e7 (R_pc = 8000 d_e), rho_c = R_pc * Theta = 1.6e5 d_e
+#   (Theta = 20), gamma_rad = 8e5, gamma_emit = 1e4, B0/B_Q = 1.
+# gamma_emit_card^3 * rho_c = (1e4)^3 pins the spectrum energy scale; the
+# rate coefficients follow the CPT2024 Appendix-A renormalization verified
+# against 1d_polar_cap.toml: (3/2)^2 sqrt(3/2)/pi * sqrt(gamma_PC)
+#   * gamma_emit^6 / gamma_rad^4 = 1.211416e4.
+
+[simulation]
+  name    = "polar_cap_qedon_filled_start_e4_witte_qed_nodamp_jm2p0"
+  engine  = "srpic"
+  runtime = 10.0
+
+[grid]
+  resolution = [20000]
+  extent     = [[0.0, 2.0113993789442053]]
+
+  [grid.metric]
+    metric = "minkowski"
+
+  [grid.boundaries]
+    fields    = [["ATMOSPHERE", "MATCH"]]
+    particles = [["ATMOSPHERE", "ABSORB"]]
+
+    [grid.boundaries.match]
+      ds = 0.1
+
+    [grid.boundaries.atmosphere]
+      temperature = 0.01
+      density     = 10.0
+      height      = 0.002605766891419511
+      species     = [1, 2]
+      ds          = 0.006
+
+[scales]
+  larmor0    = 1.6905352425172483e-13
+  skindepth0 = 2.0e-4
+
+[algorithms]
+  current_filters = 16
+
+  [algorithms.timestep]
+    CFL = 0.25
+
+[particles]
+  ppc0                     = 5.0
+  use_weights              = true
+  clear_interval           = 10
+  spatial_sorting_interval = 0
+
+  [[particles.species]]
+    label    = "e-"
+    mass     = 1.0
+    charge   = -1.0
+    maxnpart = 4e8
+    pusher   = "Boris"
+    emission = "custom"
+
+  [[particles.species]]
+    label    = "e+"
+    mass     = 1.0
+    charge   = 1.0
+    maxnpart = 4e8
+    pusher   = "Boris"
+    emission = "custom"
+
+  [[particles.species]]
+    label           = "gamma"
+    mass            = 0.0
+    charge          = 0.0
+    maxnpart        = 5e8
+    pusher          = "Photon"
+    emission        = "none"
+    clear_interval  = 0
+    n_payloads_real = 3
+
+[setup]
+  "polar_cap.B0"                       = -1.0
+  "polar_cap.temperature"              = 0.01
+  "polar_cap.external_current"         = -2.0
+  "polar_cap.initial_e_coefficient"    = 4.2263381062931205e-6
+  "polar_cap.extra_positron_density"   = 1.0
+
+  # Filled start with GJ gradient: E_x = 0 and rho_net(x) = rho_GJ(x)
+  # pointwise, uniform neutral bulk fill of 10 n_GJ.
+  "polar_cap.initial_condition"                 = "filled"
+  "polar_cap.initial_injection.fill_density"    = 10.0
+  "polar_cap.rho_gj_gradient"                   = 0.8
+
+  "polar_cap.initial_injection.minimum_density" = 1e-6
+  "polar_cap.initial_injection.minimum_ppc"     = 1
+
+  "polar_cap.boundary_flux_compensation.enable" = false
+
+  "polar_cap.boundary_ex_damping.enable"   = false
+  "polar_cap.boundary_ex_damping.cells"    = 1000
+  "polar_cap.boundary_ex_damping.strength" = 0.1
+
+  "polar_cap.qed.enable"                        = true
+  "polar_cap.qed.curvature_drag"                = true
+  "polar_cap.qed.curvature_emission"            = true
+  "polar_cap.qed.magnetic_pair_creation"        = true
+  "polar_cap.qed.filter_nonconverting_photons"  = true
+  "polar_cap.qed.photon_recycle_interval"       = 10
+  # CPT2024 Table 1 (R_pc=8000 row) / Witte+2026 Sec. IV thresholds:
+  # rho_c = 1.6e5 d_e (Theta=20), B0/B_Q = 1.
+  "polar_cap.qed.rho_c"                         = 1.6e5
+  # gamma_emit_card^3 * rho_c = (1e4)^3  ->  epsilon_c = (gamma/1e4)^3 mc^2.
+  "polar_cap.qed.gamma_emit"                    = 184.201575
+  "polar_cap.qed.gamma_rad"                     = 8.0e5
+  "polar_cap.qed.reference_electric_field"      = 8.452676212586241e-6
+  "polar_cap.qed.photon_energy_min"             = 2.0
+  # CPT2024 App. A renormalization: (3/2)^2 sqrt(3/2)/pi * sqrt(3.2e7)
+  #   * (1e4)^6 / (8e5)^4 = 1.211416e4 (formula verified on 1d_polar_cap.toml).
+  "polar_cap.qed.emission_coefficient"          = 1.211416e4
+  "polar_cap.qed.pair_coefficient"              = 1.211416e4
+  "polar_cap.qed.b_over_bq"                     = 1.0
+  "polar_cap.qed.max_photons_per_particle_step" = 100
+  "polar_cap.qed.max_drag_fraction"             = 0.2
+  "polar_cap.qed.opacity_substeps"              = 8
+  "polar_cap.qed.conversion_optical_depth"      = 1.0
+  "polar_cap.qed.spectrum_table"                = "data/curvature_ccdf.tsv"
+
+  "polar_cap.radiation_reaction.enable" = false
+
+[output]
+  format        = "bp"
+  interval_time = 0.02
+
+  [output.fields]
+    quantities = ["N_1", "N_2", "N_3", "E", "B", "J"]
+
+    [output.fields.smoothing]
+      method = "spline"
+      order  = 3
+
+  [output.particles]
+    enable  = true
+    species = [1, 2, 3]
+    stride  = 1000
+
+  [output.spectra]
+    enable   = true
+    e_min    = 1e0
+    e_max    = 1e8
+    log_bins = true
+    n_bins   = 512
+
+[diagnostics]
+  interval        = 500
+  colored_stdout  = true
+  blocking_timers = true
+
+[checkpoint]
+  keep = 0
