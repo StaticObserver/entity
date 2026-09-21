@@ -7,7 +7,10 @@
 # CPT2024 Table-1 / Witte+2026 Sec. IV 1D values:
 #   gamma_PC = 3.2e7 (R_pc = 8000 d_e), rho_c = R_pc * Theta = 1.6e5 d_e
 #   (Theta = 20), gamma_rad = 8e5, gamma_emit = 1e4, B0/B_Q = 1.
-# gamma_emit_card^3 * rho_c = (1e4)^3 pins the spectrum energy scale; the
+# gamma_emit_card^3 * rho_c = (1e4)^3 pins the spectrum energy scale. Note
+# the pgen contract takes rho_c in code length units (1 l0 = 5000 d_e at
+# skindepth0 = 2e-4), so the physical rho_c = 1.6e5 d_e is written as 32
+# below and gamma_emit_card = 3149.8 keeps the product at (1e4)^3. The
 # rate coefficients follow the CPT2024 Appendix-A renormalization verified
 # against 1d_polar_cap.toml: (3/2)^2 sqrt(3/2)/pi * sqrt(gamma_PC)
 #   * gamma_emit^6 / gamma_rad^4 = 1.211416e4.
@@ -109,10 +112,11 @@
   "polar_cap.qed.filter_nonconverting_photons"  = true
   "polar_cap.qed.photon_recycle_interval"       = 10
   # CPT2024 Table 1 (R_pc=8000 row) / Witte+2026 Sec. IV thresholds:
-  # rho_c = 1.6e5 d_e (Theta=20), B0/B_Q = 1.
-  "polar_cap.qed.rho_c"                         = 1.6e5
+  # rho_c = 1.6e5 d_e (Theta=20) = 32 code length units (1 l0 = 5000 d_e);
+  # B0/B_Q = 1.
+  "polar_cap.qed.rho_c"                         = 32.0
   # gamma_emit_card^3 * rho_c = (1e4)^3  ->  epsilon_c = (gamma/1e4)^3 mc^2.
-  "polar_cap.qed.gamma_emit"                    = 184.201575
+  "polar_cap.qed.gamma_emit"                    = 3149.8026247371813
   "polar_cap.qed.gamma_rad"                     = 8.0e5
   "polar_cap.qed.reference_electric_field"      = 8.452676212586241e-6
   "polar_cap.qed.photon_energy_min"             = 2.0
