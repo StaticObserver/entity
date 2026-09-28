@@ -247,16 +247,33 @@ namespace user {
     template <Dimension D>
     struct MagnetosphericCurrent {
       const real_t current_x1_contravariant;
+      // Buffer-zone taper: jx1 is the full current for x <= taper_start,
+      // follows a cos^2 ramp down over [taper_start, taper_start + taper_width],
+      // and is zero beyond. taper_start < 0 disables the taper.
+      const real_t taper_start, taper_width;
 
-      MagnetosphericCurrent(real_t current_x1_tetrad, real_t dx)
-        : current_x1_contravariant { current_x1_tetrad / dx } {}
+      MagnetosphericCurrent(real_t current_x1_tetrad,
+                            real_t dx,
+                            real_t taper_start_,
+                            real_t taper_width_)
+        : current_x1_contravariant { current_x1_tetrad / dx }
+        , taper_start { taper_start_ }
+        , taper_width { taper_width_ } {}
 
-      Inline auto jx1(const coord_t<D>&) const -> real_t {
+      Inline auto jx1(const coord_t<D>& x) const -> real_t {
         // Ampere adds this value directly to the deposited contravariant
         // current. The configured current is a tetrad component, so the
         // 1D Minkowski conversion is J^1 = J^(hat 1) / dx. Entity separately
         // handles the ppc0 normalization in CurrentsAmpere_kernel.
-        return current_x1_contravariant;
+        if ((taper_start < ZERO) or (x[0] <= taper_start)) {
+          return current_x1_contravariant;
+        }
+        const auto s = (x[0] - taper_start) / taper_width;
+        if (s >= ONE) {
+          return ZERO;
+        }
+        const auto c = math::cos(static_cast<real_t>(HALF * constant::PI) * s);
+        return current_x1_contravariant * c * c;
       }
       Inline auto jx2(const coord_t<D>&) const -> real_t {
         return ZERO;
@@ -301,6 +318,7 @@ namespace user {
     const bool           radiation_reaction_enabled;
     const real_t         rho_c, gamma_emit, photon_energy_min;
     const real_t         global_x_min, global_x_max;
+    const real_t         jext_taper_start, jext_taper_width;
     const real_t         gamma_rad, reference_electric_field;
     const real_t         emission_step_coefficient, drag_step_coefficient;
     const real_t         opacity_prefactor, b_over_bq;
@@ -389,6 +407,12 @@ namespace user {
         }
       , global_x_min { metadomain.mesh().extent(in::x1).first }
       , global_x_max { metadomain.mesh().extent(in::x1).second }
+      , jext_taper_start { params.template get<real_t>(
+          "setup.polar_cap.buffer.jext_taper_start",
+          -ONE) }
+      , jext_taper_width { params.template get<real_t>(
+          "setup.polar_cap.buffer.jext_taper_width",
+          static_cast<real_t>(0.2)) }
       , gamma_rad {
           qed_enabled and curvature_drag_enabled
             ? params.template get<real_t>("setup.polar_cap.qed.gamma_rad")
@@ -513,7 +537,9 @@ namespace user {
                     filled_start }
       , ext_current { params.template get<real_t>(
                         "setup.polar_cap.external_current"),
-                      params.template get<real_t>("scales.dx0") }
+                      params.template get<real_t>("scales.dx0"),
+                      jext_taper_start,
+                      jext_taper_width }
       , curvature_spectrum {
           // A QED-off run has no custom emission policy and therefore needs
           // neither the host table read nor the two device spectrum arrays.
@@ -566,6 +592,16 @@ namespace user {
             .second <= ZERO,
         "right MATCH width must be positive",
         HERE);
+      raise::ErrorIf(jext_taper_start >= ZERO and jext_taper_width <= ZERO,
+                     "buffer.jext_taper_width must be positive when the taper "
+                     "is enabled",
+                     HERE);
+      raise::ErrorIf(jext_taper_start >= ZERO and
+                       (jext_taper_start <= global_x_min or
+                        jext_taper_start + jext_taper_width >= global_x_max),
+                     "buffer.jext_taper_start(+width) must lie strictly inside "
+                     "the domain",
+                     HERE);
       raise::ErrorIf(qed_enabled and radiation_reaction_enabled,
                      "QED and explicit radiation reaction cannot both be enabled",
                      HERE);
@@ -1016,6 +1052,63 @@ namespace user {
       for (auto i = first; i < ni1; ++i) {
         std::printf(" %+.4e",
                     static_cast<double>(cur_h(i + N_GHOSTS, cur::jx1)));
+      }
+      // Reflection diagnostic: inward-moving (ux1 < 0) weight vs total weight,
+      // per charged species, in two 0.2-wide regions: A just inside the right
+      // edge, B just inside the physical-region boundary (jext_taper_start
+      // when the buffer taper is enabled; coincides with A otherwise). A clean
+      // absorbing edge shows A at statistical-noise level; a working buffer
+      // shows B ~ 0 even when A is nonzero.
+      const real_t region_starts[2] = {
+        global_x_max - static_cast<real_t>(0.2),
+        (jext_taper_start >= ZERO ? jext_taper_start : global_x_max) -
+          static_cast<real_t>(0.2)
+      };
+      for (int r = 0; r < 2; ++r) {
+        const auto region_start = region_starts[r];
+        for (auto s = 0u; s < 2; ++s) {
+          const auto& species = domain.species[s];
+          auto        i1      = species.i1;
+          auto        dx1     = species.dx1;
+          auto        ux1     = species.ux1;
+          auto        w       = species.weight;
+          auto        tag     = species.tag;
+          const auto& metric  = domain.mesh.metric;
+          real_t      total_w = ZERO, inward_w = ZERO;
+          Kokkos::parallel_reduce(
+            "PolarCapReflectTotal",
+            species.rangeActiveParticles(),
+            Lambda(prtlidx_t p, real_t& acc) {
+              if (tag(p) == ParticleTag::dead) {
+                return;
+              }
+              const auto x = metric.template convert<1, Crd::Cd, Crd::Ph>(
+                static_cast<real_t>(i1(p)) + static_cast<real_t>(dx1(p)));
+              if (x >= region_start) {
+                acc += w(p);
+              }
+            },
+            total_w);
+          Kokkos::parallel_reduce(
+            "PolarCapReflectInward",
+            species.rangeActiveParticles(),
+            Lambda(prtlidx_t p, real_t& acc) {
+              if (tag(p) == ParticleTag::dead) {
+                return;
+              }
+              const auto x = metric.template convert<1, Crd::Cd, Crd::Ph>(
+                static_cast<real_t>(i1(p)) + static_cast<real_t>(dx1(p)));
+              if (x >= region_start and ux1(p) < ZERO) {
+                acc += w(p);
+              }
+            },
+            inward_w);
+          std::printf(" %c_sp%u_inw=%.3e/%.3e",
+                      r == 0 ? 'A' : 'B',
+                      s + 1,
+                      static_cast<double>(inward_w),
+                      static_cast<double>(total_w));
+        }
       }
       std::printf("\n");
       std::fflush(stdout);

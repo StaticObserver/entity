@@ -103,9 +103,21 @@
   # active faces from the last active face (strongest at the edge, unity at
   # d = cells). Requires fields = MATCH at x1 max; the engine's MATCH boundary
   # keeps handling Bx1 alone. cells must be <= ni1 and strength in (0, 1).
+  # Long-buffer variant: set cells to the full buffer width in cells (e.g.
+  # 5000) with a small strength (~0.05) to turn this into a slow damping
+  # sponge that drives Ex to ~0 well before the MATCH layer.
   "polar_cap.boundary_ex_damping.enable"   = false
   "polar_cap.boundary_ex_damping.cells"    = 20
   "polar_cap.boundary_ex_damping.strength" = 0.1
+
+  # Buffer-zone taper of the external current: jx1 keeps its full value for
+  # x <= jext_taper_start, follows a cos^2 ramp down to zero over
+  # [jext_taper_start, jext_taper_start + jext_taper_width], and is zero
+  # beyond. Required when the domain is extended past the physical region:
+  # without a taper the unloaded J_ext charges up the particle-free buffer.
+  # jext_taper_start < 0 (default) disables the taper.
+  "polar_cap.buffer.jext_taper_start" = -1.0
+  "polar_cap.buffer.jext_taper_width" = 0.2
 
   # Keep the migration baseline inert until the physical normalization is fixed.
   "polar_cap.qed.enable"                        = false
