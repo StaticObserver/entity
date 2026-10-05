@@ -116,6 +116,17 @@
   # beyond. Required when the domain is extended past the physical region:
   # without a taper the unloaded J_ext charges up the particle-free buffer.
   # jext_taper_start < 0 (default) disables the taper.
+  # jext_taper_start >= 0 also marks the physical-region edge for two other
+  # mechanisms: (1) the QED cascade (curvature emission, recoil drag and
+  # magnetic pair creation) is confined to x <= jext_taper_start, so no pairs
+  # are ever created inside the buffer; (2) in filled-start mode the GJ
+  # imbalance slope rho(x) = 1 + gradient * (x - x_surface) / L_phys is
+  # normalized by the physical length L_phys = jext_taper_start - x_surface
+  # (not the extended domain length), while the linear profile itself
+  # continues through the buffer so that E_x = 0 everywhere at t = 0.
+  # Note: the MATCH field boundary also relaxes Ex -> 0 through its ds layer
+  # (MatchBoundaryFields supplies ex1 = 0), preventing sheath pile-up on the
+  # absorbing edge; this applies with or without the buffer.
   "polar_cap.buffer.jext_taper_start" = -1.0
   "polar_cap.buffer.jext_taper_width" = 0.2
 

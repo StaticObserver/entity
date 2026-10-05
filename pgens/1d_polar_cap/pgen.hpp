@@ -25,6 +25,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <string>
 
 namespace user {
@@ -152,6 +153,14 @@ namespace user {
 
       Inline auto bx1(const coord_t<D>&) const -> real_t {
         return b0;
+      }
+
+      // Relax Ex to zero through the tanh match layer so no sheath field can
+      // accumulate on the absorbing edge. Without this target the MATCH
+      // boundary leaves Ex unevolved and the edge pumps up a spurious field
+      // that reflects incoming particles back into the physical region.
+      Inline auto ex1(const coord_t<D>&) const -> real_t {
+        return ZERO;
       }
     };
 
@@ -319,6 +328,9 @@ namespace user {
     const real_t         rho_c, gamma_emit, photon_energy_min;
     const real_t         global_x_min, global_x_max;
     const real_t         jext_taper_start, jext_taper_width;
+    // Physical-region edge for the cascade gate: emission, recoil drag and
+    // pair creation are all confined to x <= cascade_x_max.
+    const real_t         cascade_x_max;
     const real_t         gamma_rad, reference_electric_field;
     const real_t         emission_step_coefficient, drag_step_coefficient;
     const real_t         opacity_prefactor, b_over_bq;
@@ -413,6 +425,8 @@ namespace user {
       , jext_taper_width { params.template get<real_t>(
           "setup.polar_cap.buffer.jext_taper_width",
           static_cast<real_t>(0.2)) }
+      , cascade_x_max { jext_taper_start >= ZERO ? jext_taper_start
+                                                 : global_x_max }
       , gamma_rad {
           qed_enabled and curvature_drag_enabled
             ? params.template get<real_t>("setup.polar_cap.qed.gamma_rad")
@@ -830,7 +844,13 @@ namespace user {
       // the duplicate-species offset bug in the old {2, 2} pair injection.
       // In filled mode the imbalance extends through the whole domain with the
       // prescribed GJ gradient, giving rho_net(x) = rho_GJ(x) and E_x = 0.
-      const auto domain_length = global_x_max - x_surface;
+      // The gradient is normalized by the PHYSICAL region length: when the
+      // buffer taper is enabled the domain extends past the physical edge at
+      // jext_taper_start, and using the full domain length would silently
+      // flatten the rho_GJ slope inside the physical region.
+      const auto physical_x_max = jext_taper_start >= ZERO ? jext_taper_start
+                                                           : global_x_max;
+      const auto domain_length  = physical_x_max - x_surface;
       raise::ErrorIf(filled_start and domain_length <= ZERO,
                      "Filled start requires x_max > x_surface",
                      HERE);
@@ -882,6 +902,7 @@ namespace user {
         rho_c,
         global_x_min,
         global_x_max,
+        cascade_x_max,
         emission_step_coefficient,
         drag_step_coefficient,
         max_drag_fraction,
@@ -943,12 +964,20 @@ namespace user {
       auto& positrons = domain.species[positron_index - 1];
       auto& photons   = domain.species[photon_index - 1];
 
+      auto cascade_x1_cd = std::numeric_limits<real_t>::max();
+      if (jext_taper_start >= ZERO) {
+        // Convert the physical-edge coordinate to cell code units (including
+        // ghosts) for the pair-creation gate.
+        cascade_x1_cd = domain.mesh.metric.template convert<1, Crd::Ph, Crd::Cd>(
+          jext_taper_start);
+      }
       auto conversion = polar_cap::MagneticPairCreation<D, M::CoordType>(
         photons,
         electrons,
         positrons,
         domain.index(),
-        conversion_optical_depth);
+        conversion_optical_depth,
+        cascade_x1_cd);
       Kokkos::parallel_for("PolarCapMagneticPairCreation",
                            photons.rangeActiveParticles(),
                            conversion);
