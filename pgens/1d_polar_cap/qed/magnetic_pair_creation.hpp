@@ -25,10 +25,6 @@ namespace user::polar_cap {
 
     const real_t conversion_optical_depth;
     const npart_t domain_index;
-    // Cascade spatial gate in cell code coordinates: photons past the
-    // physical edge (buffer zone) never convert and stream into the absorbing
-    // boundary instead. A huge sentinel disables the gate.
-    const real_t cascade_x1_cd;
 
     array_t<int*>      photon_i1;
     array_t<prtldx_t*> photon_dx1;
@@ -57,11 +53,9 @@ namespace user::polar_cap {
                          Particles<D, C>& electrons,
                          Particles<D, C>& positrons,
                          npart_t          domain_index,
-                         real_t           conversion_optical_depth,
-                         real_t           cascade_x1_cd)
+                         real_t           conversion_optical_depth)
       : conversion_optical_depth { conversion_optical_depth }
       , domain_index { domain_index }
-      , cascade_x1_cd { cascade_x1_cd }
       , photon_i1 { photons.i1 }
       , photon_dx1 { photons.dx1 }
       , photon_ux1 { photons.ux1 }
@@ -105,12 +99,6 @@ namespace user::polar_cap {
 
     Inline void operator()(prtlidx_t p) const {
       if (photon_tag(p) != ParticleTag::alive) {
-        return;
-      }
-      // Outside the cascade region (buffer zone) pair creation is disabled:
-      // the photon keeps propagating into the absorbing boundary.
-      if (static_cast<real_t>(photon_i1(p)) + static_cast<real_t>(photon_dx1(p)) >
-          cascade_x1_cd) {
         return;
       }
       const auto photon_energy = photon_pld_r(p, 0);

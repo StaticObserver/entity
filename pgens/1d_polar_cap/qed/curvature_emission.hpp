@@ -68,11 +68,6 @@ namespace user::polar_cap {
     const real_t  gamma_emit;
     const real_t  rho_c;
     const real_t  global_x_min, global_x_max;
-    // Cascade spatial gate: no curvature emission (and no recoil drag) beyond
-    // this x. Equals global_x_max without the buffer taper; equals the
-    // physical edge (jext_taper_start) when the buffer zone is enabled, so the
-    // cascade can only live inside the physical region.
-    const real_t  cascade_x_max;
     const real_t  emission_step_coefficient;
     const real_t  drag_step_coefficient;
     const real_t  max_drag_fraction;
@@ -104,7 +99,6 @@ namespace user::polar_cap {
                       real_t                            rho_c,
                       real_t                            global_x_min,
                       real_t                            global_x_max,
-                      real_t                            cascade_x_max,
                       real_t                            emission_step_coefficient,
                       real_t                            drag_step_coefficient,
                       real_t                            max_drag_fraction,
@@ -120,7 +114,6 @@ namespace user::polar_cap {
       , rho_c { rho_c }
       , global_x_min { global_x_min }
       , global_x_max { global_x_max }
-      , cascade_x_max { cascade_x_max }
       , emission_step_coefficient { emission_step_coefficient }
       , drag_step_coefficient { drag_step_coefficient }
       , max_drag_fraction { max_drag_fraction }
@@ -148,15 +141,12 @@ namespace user::polar_cap {
       Kokkos::deep_copy(photon_injected, 0);
     }
 
-    // Drag-only construction for QED-off runs. The policy still uses Entity's
-    // custom-emission hook so recoil is applied inside the pusher, but it owns
-    // no photon destination and reports no injected species.
-    CurvatureEmission(bool                  apply_drag,
-                      real_t                drag_step_coefficient,
-                      real_t                max_drag_fraction,
-                      random_number_pool_t& pool)
+    // Disabled construction for QED-off runs. The policy still uses Entity's
+    // custom-emission hook but owns no photon destination, applies no drag,
+    // and reports no injected species.
+    CurvatureEmission(random_number_pool_t& pool)
       : emission_enabled { false }
-      , apply_drag { apply_drag }
+      , apply_drag { false }
       , filter_nonconverting_photons { false }
       , photon_species_index { 0 }
       , photon_energy_min { ONE }
@@ -164,10 +154,9 @@ namespace user::polar_cap {
       , rho_c { ONE }
       , global_x_min { ZERO }
       , global_x_max { ZERO }
-      , cascade_x_max { std::numeric_limits<real_t>::max() }
       , emission_step_coefficient { ZERO }
-      , drag_step_coefficient { drag_step_coefficient }
-      , max_drag_fraction { max_drag_fraction }
+      , drag_step_coefficient { ZERO }
+      , max_drag_fraction { ONE }
       , max_photons_per_particle { 0 }
       , spectrum {}
       , random_pool { pool }
@@ -186,10 +175,6 @@ namespace user::polar_cap {
       if (not emission_enabled and not apply_drag) {
         return { false, false };
       }
-      // Outside the cascade region (buffer zone): no emission and no recoil.
-      if (x_Ph[0] > cascade_x_max) {
-        return { false, false };
-      }
 
       const auto u_mag = NORM(u_Ph[0], u_Ph[1], u_Ph[2]);
       if (u_mag <= ZERO) {
@@ -206,10 +191,8 @@ namespace user::polar_cap {
                                                math::abs(u_Ph[0]));
         auto exit_theta = initial_theta;
         if (math::abs(u_Ph[0]) > static_cast<real_t>(0.0)) {
-          // Outward photons exit the cascade at the physical edge when the
-          // buffer gate is active; pair conversion beyond it is disabled.
           const auto exit_x = u_Ph[0] > static_cast<real_t>(0.0)
-                                ? cascade_x_max
+                                ? global_x_max
                                 : global_x_min;
           exit_theta += (exit_x - x_Ph[0]) / rho_c;
         }

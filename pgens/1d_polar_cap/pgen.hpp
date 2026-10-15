@@ -14,7 +14,6 @@
 #include "archetypes/particle_injector.h"
 #include "framework/domain/metadomain.h"
 
-#include "boundary_flux.hpp"
 #include "initial_injection.hpp"
 #include "qed/curvature_emission.hpp"
 #include "qed/curvature_spectrum.hpp"
@@ -25,7 +24,6 @@
 
 #include <cmath>
 #include <cstdio>
-#include <limits>
 #include <string>
 
 namespace user {
@@ -59,74 +57,21 @@ namespace user {
       return default_interval;
     }
 
-    // Prescribed 1D polar-cap background. The electric field is the analytic
-    // integral of the excess-positron charge minus the fixed
-    // Goldreich-Julian background used by ExtraPositronDensity below.
-    // In the filled-start mode the initial state is the CPT2024-style
-    // plasma-filled, Gauss-consistent configuration with E_x = 0.
+    // Filled start (CPT2024-style): the deposited net charge equals the
+    // prescribed GJ background everywhere, so the Gauss-consistent initial
+    // field vanishes. B is uniform.
     template <Dimension D>
     struct InitialFields {
-      const real_t b0, e_coefficient, x_surface, atmosphere_width;
-      const bool   filled;
+      const real_t b0;
 
-      InitialFields(real_t b0,
-                    real_t e_coefficient,
-                    real_t x_surface,
-                    real_t atmosphere_width,
-                    bool   filled)
-        : b0 { b0 }
-        , e_coefficient { e_coefficient }
-        , x_surface { x_surface }
-        , atmosphere_width { atmosphere_width }
-        , filled { filled } {}
+      explicit InitialFields(real_t b0) : b0 { b0 } {}
 
       Inline auto bx1(const coord_t<D>&) const -> real_t {
         return b0;
       }
 
-      Inline auto charge_primitive(real_t value) const -> real_t {
-        // Integral, in transition-length coordinates, of f(t) - 1 from
-        // t = -inf to t = value for the centered logistic profile
-        // f(t) = 1 / (1 + exp(t)).  At s = -inf the integral is zero,
-        // giving E_x = 0 deep inside the atmosphere.
-        return -math::log(ONE + math::exp(value));
-      }
-
-      Inline auto ex1(const coord_t<D>& x_Ph) const -> real_t {
-        // Filled start: the deposited net charge equals the prescribed GJ
-        // background everywhere, so the Gauss-consistent field vanishes.
-        if (filled) {
-          return ZERO;
-        }
-        if (x_Ph[0] < x_surface) {
-          return ZERO;
-        }
-
-        // The excess positron density follows a logistic centered at the
-        // atmosphere edge:
-        //
-        //   f(s) = 1 / (1 + exp(s)),
-        //   s    = (x - atmosphere_edge) / transition.
-        //
-        // dE_x/dx = e_coefficient * (f - 1).  The primitive (charge_primitive)
-        // is zero at s = -inf, giving E_x -> 0 deep inside the atmosphere.
-        const auto atmosphere_edge = x_surface + atmosphere_width;
-        const auto transition = static_cast<real_t>(0.03) * atmosphere_width;
-        const auto cutoff_s = static_cast<real_t>(11.0);
-        const auto s = (x_Ph[0] - atmosphere_edge) / transition;
-
-        if (s < cutoff_s) {
-          return e_coefficient * transition * charge_primitive(s);
-        }
-
-        // The profile is explicitly zero after 11 transition lengths
-        // (x = x_surface + 1.33 * atmosphere_width). Continue E_x linearly
-        // there because only the fixed negative background remains.
-        const auto cutoff_x = atmosphere_edge + cutoff_s * transition;
-        const auto field_at_cutoff =
-          e_coefficient * transition * charge_primitive(cutoff_s);
-        return field_at_cutoff -
-               e_coefficient * (x_Ph[0] - cutoff_x);
+      Inline auto ex1(const coord_t<D>&) const -> real_t {
+        return ZERO;
       }
     };
 
@@ -186,9 +131,9 @@ namespace user {
       }
     };
 
-    // Uniform bulk neutral fill for the filled-start mode (CPT2024-style):
-    // constant density from the surface through the active domain. The near-star
-    // atmosphere is injected separately and adds on top of this floor.
+    // Uniform bulk neutral fill: constant density from the surface through the
+    // active domain. The near-star atmosphere is injected separately and adds
+    // on top of this floor.
     template <Dimension D>
     struct FillDensity {
       const real_t fill_density, x_surface;
@@ -205,28 +150,17 @@ namespace user {
       }
     };
 
-    // The excess positrons fill the atmosphere at unit normalized density.
-    // The S-shaped decline is centered at the atmosphere edge (f = 0.5) and
-    // is truncated after 0.33 atmosphere widths. With peak density equal to
-    // initial_e_coefficient, InitialFields closes the prescribed Gauss law.
-    // In the filled-start mode the profile instead extends through the whole
-    // domain and follows the prescribed GJ charge gradient,
-    // rho(x) = 1 + rho_gj_gradient * (x - x_surface) / L, so that the total
-    // initial charge equals the GJ background pointwise and E_x = 0.
+    // GJ charge imbalance: extends through the whole domain and follows the
+    // prescribed gradient, rho(x) = 1 + rho_gj_gradient * (x - x_surface) / L,
+    // so that the total initial charge equals the GJ background pointwise and
+    // E_x = 0.
     template <Dimension D>
     struct ExtraPositronDensity {
-      const real_t x_surface, atmosphere_width;
-      const bool   filled;
+      const real_t x_surface;
       const real_t gradient, inv_length;
 
-      ExtraPositronDensity(real_t x_surface,
-                           real_t atmosphere_width,
-                           bool   filled,
-                           real_t gradient,
-                           real_t inv_length)
+      ExtraPositronDensity(real_t x_surface, real_t gradient, real_t inv_length)
         : x_surface { x_surface }
-        , atmosphere_width { atmosphere_width }
-        , filled { filled }
         , gradient { gradient }
         , inv_length { inv_length } {}
 
@@ -234,55 +168,23 @@ namespace user {
         if (x_Ph[0] < x_surface) {
           return ZERO;
         }
-        if (filled) {
-          return ONE + gradient * (x_Ph[0] - x_surface) * inv_length;
-        }
-
-        const auto atmosphere_edge = x_surface + atmosphere_width;
-        const auto transition = static_cast<real_t>(0.03) * atmosphere_width;
-        // Center the logistic descent at the atmosphere edge.
-        // f(s) = 1 / (1 + exp(s)),   s = (x - atmosphere_edge) / transition.
-        // f(-inf) = 1 (plateau inside), f(0) = 0.5 (center at edge),
-        // f(+inf) = 0 (tail outside).
-        const auto s = (x_Ph[0] - atmosphere_edge) / transition;
-        if (s >= static_cast<real_t>(11.0)) {
-          return ZERO;
-        }
-
-        return ONE / (ONE + math::exp(s));
+        return ONE + gradient * (x_Ph[0] - x_surface) * inv_length;
       }
     };
 
     template <Dimension D>
     struct MagnetosphericCurrent {
       const real_t current_x1_contravariant;
-      // Buffer-zone taper: jx1 is the full current for x <= taper_start,
-      // follows a cos^2 ramp down over [taper_start, taper_start + taper_width],
-      // and is zero beyond. taper_start < 0 disables the taper.
-      const real_t taper_start, taper_width;
 
-      MagnetosphericCurrent(real_t current_x1_tetrad,
-                            real_t dx,
-                            real_t taper_start_,
-                            real_t taper_width_)
-        : current_x1_contravariant { current_x1_tetrad / dx }
-        , taper_start { taper_start_ }
-        , taper_width { taper_width_ } {}
+      MagnetosphericCurrent(real_t current_x1_tetrad, real_t dx)
+        : current_x1_contravariant { current_x1_tetrad / dx } {}
 
-      Inline auto jx1(const coord_t<D>& x) const -> real_t {
+      Inline auto jx1(const coord_t<D>&) const -> real_t {
         // Ampere adds this value directly to the deposited contravariant
         // current. The configured current is a tetrad component, so the
         // 1D Minkowski conversion is J^1 = J^(hat 1) / dx. Entity separately
         // handles the ppc0 normalization in CurrentsAmpere_kernel.
-        if ((taper_start < ZERO) or (x[0] <= taper_start)) {
-          return current_x1_contravariant;
-        }
-        const auto s = (x[0] - taper_start) / taper_width;
-        if (s >= ONE) {
-          return ZERO;
-        }
-        const auto c = math::cos(static_cast<real_t>(HALF * constant::PI) * s);
-        return current_x1_contravariant * c * c;
+        return current_x1_contravariant;
       }
       Inline auto jx2(const coord_t<D>&) const -> real_t {
         return ZERO;
@@ -317,20 +219,14 @@ namespace user {
 
     const real_t b0, temperature;
     const real_t x_surface, atmosphere_width;
-    const real_t initial_e_coefficient, extra_positron_density;
-    const bool   filled_start;
+    const real_t extra_positron_density;
     const real_t fill_density, rho_gj_gradient;
 
     const bool           qed_enabled, curvature_drag_enabled;
     const bool           curvature_emission_enabled, pair_creation_enabled;
     const bool           filter_nonconverting_photons;
-    const bool           radiation_reaction_enabled;
     const real_t         rho_c, gamma_emit, photon_energy_min;
     const real_t         global_x_min, global_x_max;
-    const real_t         jext_taper_start, jext_taper_width;
-    // Physical-region edge for the cascade gate: emission, recoil drag and
-    // pair creation are all confined to x <= cascade_x_max.
-    const real_t         cascade_x_max;
     const real_t         gamma_rad, reference_electric_field;
     const real_t         emission_step_coefficient, drag_step_coefficient;
     const real_t         opacity_prefactor, b_over_bq;
@@ -338,19 +234,12 @@ namespace user {
     const int max_photons_per_particle;
     const int opacity_substeps;
     const timestep_t photon_recycle_interval;
-    const bool       boundary_flux_compensation_enabled;
-    const real_t     boundary_flux_ampere_coeff;
-    const real_t     boundary_flux_inv_ppc0;
-    const bool       boundary_ex_damping_enabled;
-    const int        boundary_ex_damping_cells;
-    const real_t     boundary_ex_damping_strength;
     const bool       debug_edge_fields;
     const timestep_t debug_edge_fields_interval;
 
-    polar_cap::InitialFields<D>          init_flds;
+    polar_cap::InitialFields<D>         init_flds;
     polar_cap::MagnetosphericCurrent<D> ext_current;
-    polar_cap::CurvatureSpectrum         curvature_spectrum;
-    array_t<real_t*>                     boundary_flux_missing;
+    polar_cap::CurvatureSpectrum        curvature_spectrum;
 
     PGen(const SimulationParams& p, const Metadomain<S, M>& metadomain)
       : params { p }
@@ -366,16 +255,9 @@ namespace user {
         }())
       , atmosphere_width { params.template get<real_t>(
           "grid.boundaries.atmosphere.ds") }
-      , initial_e_coefficient { params.template get<real_t>(
-          "setup.polar_cap.initial_e_coefficient",
-          params.template get<real_t>("scales.larmor0") /
-            SQR(params.template get<real_t>("scales.skindepth0"))) }
       , extra_positron_density { params.template get<real_t>(
           "setup.polar_cap.extra_positron_density",
-          initial_e_coefficient) }
-      , filled_start { params.template get<std::string>(
-                           "setup.polar_cap.initial_condition",
-                           "vacuum_gap") == "filled" }
+          ONE) }
       , fill_density { params.template get<real_t>(
           "setup.polar_cap.initial_injection.fill_density",
           ZERO) }
@@ -398,9 +280,6 @@ namespace user {
             "setup.polar_cap.qed.filter_nonconverting_photons",
             false)
         }
-      , radiation_reaction_enabled { params.template get<bool>(
-          "setup.polar_cap.radiation_reaction.enable",
-          false) }
       , rho_c {
           qed_enabled
             ? params.template get<real_t>("setup.polar_cap.qed.rho_c")
@@ -419,31 +298,16 @@ namespace user {
         }
       , global_x_min { metadomain.mesh().extent(in::x1).first }
       , global_x_max { metadomain.mesh().extent(in::x1).second }
-      , jext_taper_start { params.template get<real_t>(
-          "setup.polar_cap.buffer.jext_taper_start",
-          -ONE) }
-      , jext_taper_width { params.template get<real_t>(
-          "setup.polar_cap.buffer.jext_taper_width",
-          static_cast<real_t>(0.2)) }
-      , cascade_x_max { jext_taper_start >= ZERO ? jext_taper_start
-                                                 : global_x_max }
       , gamma_rad {
           qed_enabled and curvature_drag_enabled
             ? params.template get<real_t>("setup.polar_cap.qed.gamma_rad")
-            : radiation_reaction_enabled
-                ? params.template get<real_t>(
-                    "setup.polar_cap.radiation_reaction.gamma_rad")
-                : static_cast<real_t>(2.0)
+            : static_cast<real_t>(2.0)
         }
       , reference_electric_field {
           qed_enabled and curvature_drag_enabled
             ? params.template get<real_t>(
                 "setup.polar_cap.qed.reference_electric_field")
-            : radiation_reaction_enabled
-                ? params.template get<real_t>(
-                    "setup.polar_cap.radiation_reaction."
-                    "reference_electric_field")
-                : ONE
+            : ONE
         }
       , emission_step_coefficient {
           // Convert the configured photon-number coefficient to a per-step
@@ -457,12 +321,10 @@ namespace user {
           static_cast<real_t>(5.0 * constant::PI / 3.0)
         }
       , drag_step_coefficient {
-          // Both the QED curvature recoil and the QED-off drag-only mode use
-          // the same physical normalization: K*gamma^4 balances
+          // The QED curvature recoil normalization: K*gamma^4 balances
           // omegaB0*E_ref at gamma_rad. This removes any dependence on
           // macro-particle charge or ppc0.
-          (radiation_reaction_enabled or
-           (qed_enabled and curvature_drag_enabled))
+          (qed_enabled and curvature_drag_enabled)
             ? params.template get<real_t>("algorithms.timestep.dt") *
                 params.template get<real_t>("scales.omegaB0") *
                 math::abs(reference_electric_field) /
@@ -487,9 +349,8 @@ namespace user {
             : ONE
         }
       , max_drag_fraction { params.template get<real_t>(
-          "setup.polar_cap.radiation_reaction.max_drag_fraction",
-          params.template get<real_t>("setup.polar_cap.qed.max_drag_fraction",
-                                      static_cast<real_t>(0.2))) }
+          "setup.polar_cap.qed.max_drag_fraction",
+          static_cast<real_t>(0.2)) }
       , conversion_optical_depth { params.template get<real_t>(
           "setup.polar_cap.qed.conversion_optical_depth",
           ONE) }
@@ -505,38 +366,6 @@ namespace user {
       , photon_recycle_interval { polar_cap::PhotonRecycleInterval(
           params,
           qed_enabled and pair_creation_enabled) }
-      , boundary_flux_compensation_enabled { params.template get<bool>(
-          // PGen-level workaround for the old kill-before-deposit engine.
-          // The engine now deposits clamped boundary particles before killing
-          // them (flux-conserving absorption in sr.hpp + srpic::BoundaryAbsorb),
-          // so this switch MUST stay false with the new engine: the pusher-time
-          // policy still sees i1 >= ni1 and would double-count the flux.
-          "setup.polar_cap.boundary_flux_compensation.enable",
-          false) }
-      , boundary_flux_ampere_coeff {
-          // Same current-to-field coefficient as CurrentsAmpere:
-          // coeff = -dt * q0 / (B0 * V0).
-          boundary_flux_compensation_enabled
-            ? -params.template get<real_t>("algorithms.timestep.dt") *
-                params.template get<real_t>("scales.q0") /
-                (params.template get<real_t>("scales.B0") *
-                 params.template get<real_t>("scales.V0"))
-            : ZERO
-        }
-      , boundary_flux_inv_ppc0 {
-          boundary_flux_compensation_enabled
-            ? ONE / params.template get<real_t>("particles.ppc0")
-            : ZERO
-        }
-      , boundary_ex_damping_enabled { params.template get<bool>(
-          "setup.polar_cap.boundary_ex_damping.enable",
-          false) }
-      , boundary_ex_damping_cells { params.template get<int>(
-          "setup.polar_cap.boundary_ex_damping.cells",
-          20) }
-      , boundary_ex_damping_strength { params.template get<real_t>(
-          "setup.polar_cap.boundary_ex_damping.strength",
-          static_cast<real_t>(0.1)) }
       , debug_edge_fields { params.template get<bool>(
           "setup.polar_cap.debug_edge_fields",
           false) }
@@ -544,16 +373,10 @@ namespace user {
           params.template get<int>(
             "setup.polar_cap.debug_edge_fields_interval",
             1000)) }
-      , init_flds { b0,
-                    initial_e_coefficient,
-                    x_surface,
-                    atmosphere_width,
-                    filled_start }
+      , init_flds { b0 }
       , ext_current { params.template get<real_t>(
                         "setup.polar_cap.external_current"),
-                      params.template get<real_t>("scales.dx0"),
-                      jext_taper_start,
-                      jext_taper_width }
+                      params.template get<real_t>("scales.dx0") }
       , curvature_spectrum {
           // A QED-off run has no custom emission policy and therefore needs
           // neither the host table read nor the two device spectrum arrays.
@@ -562,8 +385,7 @@ namespace user {
                 "setup.polar_cap.qed.spectrum_table") }
             : polar_cap::CurvatureSpectrum {}
         }
-      , boundary_flux_missing { "polar_cap_boundary_flux_missing",
-                                polar_cap::BoundaryFluxAccSize } {
+    {
       // Validate signed host-side values before passing compact values into
       // device policies. In particular, negative integers must not wrap.
       raise::ErrorIf(atmosphere_width <= ZERO,
@@ -572,32 +394,15 @@ namespace user {
       raise::ErrorIf(temperature < ZERO,
                      "temperature must be non-negative",
                      HERE);
-      raise::ErrorIf(extra_positron_density < ZERO,
-                     "extra_positron_density must be non-negative",
-                     HERE);
-      {
-        const auto initial_condition = params.template get<std::string>(
-          "setup.polar_cap.initial_condition",
-          "vacuum_gap");
-        raise::ErrorIf(initial_condition != "vacuum_gap" and
-                         initial_condition != "filled",
-                       "initial_condition must be \"vacuum_gap\" or \"filled\"",
-                       HERE);
-      }
-      raise::ErrorIf(not filled_start and rho_gj_gradient != ZERO,
-                     "rho_gj_gradient requires initial_condition = \"filled\": "
-                     "a graded GJ background with the vacuum-gap start breaks "
-                     "the documented initial Gauss closure",
+      raise::ErrorIf(extra_positron_density <= ZERO,
+                     "extra_positron_density must be positive as the GJ "
+                     "net-charge scale",
                      HERE);
       raise::ErrorIf(fill_density < ZERO,
                      "initial_injection.fill_density must be non-negative",
                      HERE);
       raise::ErrorIf(rho_gj_gradient < ZERO,
                      "rho_gj_gradient must be non-negative",
-                     HERE);
-      raise::ErrorIf(filled_start and extra_positron_density <= ZERO,
-                     "filled start requires extra_positron_density > 0 as the "
-                     "GJ net-charge scale",
                      HERE);
       raise::ErrorIf(
         params
@@ -606,54 +411,6 @@ namespace user {
             .second <= ZERO,
         "right MATCH width must be positive",
         HERE);
-      raise::ErrorIf(jext_taper_start >= ZERO and jext_taper_width <= ZERO,
-                     "buffer.jext_taper_width must be positive when the taper "
-                     "is enabled",
-                     HERE);
-      raise::ErrorIf(jext_taper_start >= ZERO and
-                       (jext_taper_start <= global_x_min or
-                        jext_taper_start + jext_taper_width >= global_x_max),
-                     "buffer.jext_taper_start(+width) must lie strictly inside "
-                     "the domain",
-                     HERE);
-      raise::ErrorIf(qed_enabled and radiation_reaction_enabled,
-                     "QED and explicit radiation reaction cannot both be enabled",
-                     HERE);
-      if (boundary_flux_compensation_enabled) {
-        // The compensation predicts the right-edge ABSORB kill in the pusher;
-        // any other right particle boundary makes the prediction wrong.
-        const auto particle_boundaries = metadomain.mesh().prtl_bc();
-        raise::ErrorIf(
-          particle_boundaries[0].second != PrtlBC::ABSORB,
-          "boundary_flux_compensation requires particles=ABSORB at x1 max",
-          HERE);
-      }
-      if (boundary_ex_damping_enabled) {
-        // The damping owns the longitudinal E_x inside the right MATCH layer;
-        // it requires the fields-side MATCH boundary (not the particle-side
-        // bc) at the global x1 max, mirroring the ownership test the engine's
-        // FieldBoundaries uses for the MATCH layer.
-        raise::ErrorIf(D != Dim::_1D,
-                       "boundary_ex_damping is only valid for the 1D build",
-                       HERE);
-        raise::ErrorIf(M::CoordType != Coord::Cartesian,
-                       "boundary_ex_damping requires Cartesian coordinates",
-                       HERE);
-        raise::ErrorIf(
-          metadomain.mesh().flds_bc()[0].second != FldsBC::MATCH,
-          "boundary_ex_damping requires fields=MATCH at x1 max",
-          HERE);
-        raise::ErrorIf(
-          boundary_ex_damping_cells <= 0 or
-            boundary_ex_damping_cells >
-              static_cast<int>(metadomain.mesh().n_active(in::x1)),
-          "boundary_ex_damping.cells must be in (0, ni1]",
-          HERE);
-        raise::ErrorIf(boundary_ex_damping_strength <= ZERO or
-                         boundary_ex_damping_strength >= ONE,
-                       "boundary_ex_damping.strength must be in (0, 1)",
-                       HERE);
-      }
       if (qed_enabled) {
         raise::ErrorIf(
           params.template get<bool>(
@@ -700,8 +457,7 @@ namespace user {
             HERE);
         }
       }
-      if (radiation_reaction_enabled or
-          (qed_enabled and curvature_drag_enabled)) {
+      if (qed_enabled and curvature_drag_enabled) {
         raise::ErrorIf(gamma_rad <= ONE,
                        "curvature-drag gamma_rad must be greater than one",
                        HERE);
@@ -724,11 +480,8 @@ namespace user {
       static_assert(EmissionPolicyClass<polar_cap::CurvatureEmission<M>, M>,
                     "CurvatureEmission does not satisfy EmissionPolicyClass");
       static_assert(
-        CustomParticleUpdatePolicyClass<
-          polar_cap::BoundaryFluxCompensationUpdate<M>,
-          M>,
-        "BoundaryFluxCompensationUpdate does not satisfy "
-        "CustomParticleUpdatePolicyClass");
+        CustomParticleUpdatePolicyClass<polar_cap::PhotonOpacityUpdate<M>, M>,
+        "PhotonOpacityUpdate does not satisfy CustomParticleUpdatePolicyClass");
     }
 
     auto AtmFields(simtime_t) const -> polar_cap::AtmosphereFields<D> {
@@ -786,19 +539,11 @@ namespace user {
           domain.species.size() != 2,
           "QED-off polar-cap requires exactly two species and no photon allocation",
           HERE);
-        if (radiation_reaction_enabled) {
-          raise::ErrorIf(
-            electrons.emission_policy_flag() != EmissionType::CUSTOM or
-              positrons.emission_policy_flag() != EmissionType::CUSTOM,
-            "Radiation-reaction species must use emission=custom",
-            HERE);
-        } else {
-          raise::ErrorIf(
-            electrons.emission_policy_flag() != EmissionType::NONE or
-              positrons.emission_policy_flag() != EmissionType::NONE,
-            "QED-off electron and positron species must use emission=none",
-            HERE);
-        }
+        raise::ErrorIf(
+          electrons.emission_policy_flag() != EmissionType::NONE or
+            positrons.emission_policy_flag() != EmissionType::NONE,
+          "QED-off electron and positron species must use emission=none",
+          HERE);
       }
 
       const auto maxwellian = arch::energy_dist::Maxwellian<M::Dim, M::CoordType>(
@@ -823,9 +568,9 @@ namespace user {
                                                    ONE,
                                                    true);
 
-      if (filled_start and fill_density > ZERO) {
-        // CPT2024-style bulk fill: uniform neutral pairs across the active
-        // domain, mimicking the plasma left behind by a previous discharge.
+      if (fill_density > ZERO) {
+        // Bulk fill: uniform neutral pairs across the active domain, mimicking
+        // the plasma left behind by a previous discharge.
         const auto fill = polar_cap::FillDensity<D> { fill_density, x_surface };
         arch::InjectNonUniform<S,
                                M,
@@ -842,22 +587,14 @@ namespace user {
 
       // Add only the charge imbalance. A dedicated one-species injector avoids
       // the duplicate-species offset bug in the old {2, 2} pair injection.
-      // In filled mode the imbalance extends through the whole domain with the
-      // prescribed GJ gradient, giving rho_net(x) = rho_GJ(x) and E_x = 0.
-      // The gradient is normalized by the PHYSICAL region length: when the
-      // buffer taper is enabled the domain extends past the physical edge at
-      // jext_taper_start, and using the full domain length would silently
-      // flatten the rho_GJ slope inside the physical region.
-      const auto physical_x_max = jext_taper_start >= ZERO ? jext_taper_start
-                                                           : global_x_max;
-      const auto domain_length  = physical_x_max - x_surface;
-      raise::ErrorIf(filled_start and domain_length <= ZERO,
+      // The imbalance extends through the whole domain with the prescribed GJ
+      // gradient, giving rho_net(x) = rho_GJ(x) and E_x = 0.
+      const auto domain_length = global_x_max - x_surface;
+      raise::ErrorIf(domain_length <= ZERO,
                      "Filled start requires x_max > x_surface",
                      HERE);
       const auto extra_charge = polar_cap::ExtraPositronDensity<D> {
         x_surface,
-        atmosphere_width,
-        filled_start,
         rho_gj_gradient,
         ONE / domain_length
       };
@@ -881,15 +618,10 @@ namespace user {
       -> polar_cap::CurvatureEmission<M> {
       // Entity asks for a policy for each species. Only the two charged species
       // activate this custom curvature process.
-      const auto charged = species == electron_index or species == positron_index;
       if (not qed_enabled) {
-        return polar_cap::CurvatureEmission<M> {
-          radiation_reaction_enabled and charged,
-          drag_step_coefficient,
-          max_drag_fraction,
-          domain.random_pool()
-        };
+        return polar_cap::CurvatureEmission<M> { domain.random_pool() };
       }
+      const auto charged = species == electron_index or species == positron_index;
       return polar_cap::CurvatureEmission<M> {
         qed_enabled and curvature_emission_enabled and charged,
         qed_enabled and curvature_drag_enabled and charged,
@@ -902,7 +634,6 @@ namespace user {
         rho_c,
         global_x_min,
         global_x_max,
-        cascade_x_max,
         emission_step_coefficient,
         drag_step_coefficient,
         max_drag_fraction,
@@ -913,49 +644,20 @@ namespace user {
     }
 
     auto CustomParticleUpdate(simtime_t, spidx_t species, Domain<S, M>&) const
-      -> polar_cap::BoundaryFluxCompensationUpdate<M> {
-      // The same policy type is dispatched for every species. The opacity
-      // update is restricted to photons by its own enabled flag; flux
-      // compensation is restricted to the charged species.
-      const auto charged = species == electron_index or species == positron_index;
-      return polar_cap::BoundaryFluxCompensationUpdate<M> {
-        boundary_flux_compensation_enabled and charged,
-        boundary_flux_missing,
-        polar_cap::PhotonOpacityUpdate<M> {
-          qed_enabled and pair_creation_enabled and species == photon_index,
-          photon_index,
-          rho_c,
-          opacity_prefactor,
-          b_over_bq,
-          opacity_substeps
-        }
+      -> polar_cap::PhotonOpacityUpdate<M> {
+      return polar_cap::PhotonOpacityUpdate<M> {
+        qed_enabled and pair_creation_enabled and species == photon_index,
+        photon_index,
+        rho_c,
+        opacity_prefactor,
+        b_over_bq,
+        opacity_substeps
       };
     }
 
     void CustomPostStep(timestep_t step, simtime_t time, Domain<S, M>& domain) {
-      // Default-off diagnostic for the boundary-flux mechanism: prints the
-      // accumulated missing flux and the last active Ex/Jx faces. Read the
-      // accumulator before ApplyBoundaryFluxCompensation clears it.
-      auto missing_total = ZERO;
-      if (debug_edge_fields and boundary_flux_compensation_enabled and
-          (step % debug_edge_fields_interval == 0u)) {
-        auto missing_h = Kokkos::create_mirror_view(boundary_flux_missing);
-        Kokkos::deep_copy(missing_h, boundary_flux_missing);
-        for (std::size_t k = 0; k < polar_cap::BoundaryFluxAccSize; ++k) {
-          missing_total += missing_h(k);
-        }
-      }
-      if (boundary_flux_compensation_enabled) {
-        ApplyBoundaryFluxCompensation(domain);
-      }
-      // Ex damping runs after the flux compensation so both corrections see
-      // the same post-Ampere state; the debug print below then reports the
-      // damped edge fields.
-      if (boundary_ex_damping_enabled) {
-        ApplyBoundaryExDamping(domain);
-      }
       if (debug_edge_fields and (step % debug_edge_fields_interval == 0u)) {
-        DebugPrintEdgeFields(step, time, missing_total, domain);
+        DebugPrintEdgeFields(step, time, domain);
       }
       if (not qed_enabled or not pair_creation_enabled) {
         return;
@@ -964,20 +666,12 @@ namespace user {
       auto& positrons = domain.species[positron_index - 1];
       auto& photons   = domain.species[photon_index - 1];
 
-      auto cascade_x1_cd = std::numeric_limits<real_t>::max();
-      if (jext_taper_start >= ZERO) {
-        // Convert the physical-edge coordinate to cell code units (including
-        // ghosts) for the pair-creation gate.
-        cascade_x1_cd = domain.mesh.metric.template convert<1, Crd::Ph, Crd::Cd>(
-          jext_taper_start);
-      }
       auto conversion = polar_cap::MagneticPairCreation<D, M::CoordType>(
         photons,
         electrons,
         positrons,
         domain.index(),
-        conversion_optical_depth,
-        cascade_x1_cd);
+        conversion_optical_depth);
       Kokkos::parallel_for("PolarCapMagneticPairCreation",
                            photons.rangeActiveParticles(),
                            conversion);
@@ -1002,64 +696,9 @@ namespace user {
       }
     }
 
-    void ApplyBoundaryFluxCompensation(Domain<S, M>& domain) {
-      // Only the domain owning the global right edge collects missing flux:
-      // internal MPI boundaries are SYNC, never ABSORB, so this gate also
-      // keeps the shared accumulator single-writer under domain
-      // decomposition. The engine calls CustomPostStep after CurrentsAmpere,
-      // so the correction uses the same J -> E coefficient the deposited
-      // current would have seen this step.
-      if (domain.mesh.prtl_bc()[0].second != PrtlBC::ABSORB) {
-        return;
-      }
-      const auto ni1 = domain.mesh.n_active(in::x1);
-      auto       nslots = static_cast<ncells_t>(polar_cap::BoundaryFluxAccSize);
-      if (nslots > ni1) {
-        nslots = ni1;
-      }
-      Kokkos::parallel_for(
-        "PolarCapBoundaryFluxCompensation",
-        nslots,
-        polar_cap::BoundaryFluxApplier<M::Dim> {
-          domain.fields.em,
-          domain.fields.cur,
-          boundary_flux_missing,
-          static_cast<cellidx_t>(ni1 - 1 + N_GHOSTS),
-          boundary_flux_ampere_coeff,
-          boundary_flux_inv_ppc0
-        });
-      // deep_copy fences, so the applier finishes before the accumulator is
-      // cleared for the next step.
-      Kokkos::deep_copy(boundary_flux_missing, ZERO);
-    }
-
-    void ApplyBoundaryExDamping(Domain<S, M>& domain) const {
-      // Only the domain owning the global right MATCH boundary damps:
-      // internal MPI boundaries are SYNC, never MATCH, so this fields-side
-      // gate (the same ownership test the engine's FieldBoundaries uses for
-      // the MATCH layer) keeps the pass single-writer under domain
-      // decomposition. CustomPostStep runs after the engine's FieldBoundaries
-      // (BC::E), i.e. after this step's MATCH(Bx) and Ampere updates, which
-      // matches where Aperture4 applies its damping boundary.
-      if (domain.mesh.flds_bc()[0].second != FldsBC::MATCH) {
-        return;
-      }
-      const auto ni1 = domain.mesh.n_active(in::x1);
-      Kokkos::parallel_for(
-        "PolarCapBoundaryExDamping",
-        static_cast<ncells_t>(boundary_ex_damping_cells),
-        polar_cap::BoundaryExDamper<M::Dim> {
-          domain.fields.em,
-          static_cast<cellidx_t>(ni1 - 1 + N_GHOSTS),
-          boundary_ex_damping_cells,
-          boundary_ex_damping_strength
-        });
-    }
-
-    void DebugPrintEdgeFields(timestep_t      step,
-                              simtime_t       time,
-                              real_t          missing_total,
-                              Domain<S, M>&   domain) const {
+    void DebugPrintEdgeFields(timestep_t    step,
+                              simtime_t     time,
+                              Domain<S, M>& domain) const {
       const auto ni1  = domain.mesh.n_active(in::x1);
       auto       em_h = Kokkos::create_mirror_view(domain.fields.em);
       auto       cur_h = Kokkos::create_mirror_view(domain.fields.cur);
@@ -1068,10 +707,9 @@ namespace user {
       const auto first = ni1 > 8 ? ni1 - 8 : 0;
       // Upstream reference 100 cells inside the right edge.
       const auto upstream = ni1 > 100 ? ni1 - 100 : 0;
-      std::printf("EDGE step=%u t=%.5f miss=%+.6e Ex_up=%+.6e Ex=",
+      std::printf("EDGE step=%u t=%.5f Ex_up=%+.6e Ex=",
                   static_cast<unsigned>(step),
                   static_cast<double>(time),
-                  static_cast<double>(missing_total),
                   static_cast<double>(em_h(upstream + N_GHOSTS, em::ex1)));
       for (auto i = first; i < ni1; ++i) {
         std::printf(" %+.4e",
@@ -1083,61 +721,50 @@ namespace user {
                     static_cast<double>(cur_h(i + N_GHOSTS, cur::jx1)));
       }
       // Reflection diagnostic: inward-moving (ux1 < 0) weight vs total weight,
-      // per charged species, in two 0.2-wide regions: A just inside the right
-      // edge, B just inside the physical-region boundary (jext_taper_start
-      // when the buffer taper is enabled; coincides with A otherwise). A clean
-      // absorbing edge shows A at statistical-noise level; a working buffer
-      // shows B ~ 0 even when A is nonzero.
-      const real_t region_starts[2] = {
-        global_x_max - static_cast<real_t>(0.2),
-        (jext_taper_start >= ZERO ? jext_taper_start : global_x_max) -
-          static_cast<real_t>(0.2)
-      };
-      for (int r = 0; r < 2; ++r) {
-        const auto region_start = region_starts[r];
-        for (auto s = 0u; s < 2; ++s) {
-          const auto& species = domain.species[s];
-          auto        i1      = species.i1;
-          auto        dx1     = species.dx1;
-          auto        ux1     = species.ux1;
-          auto        w       = species.weight;
-          auto        tag     = species.tag;
-          const auto& metric  = domain.mesh.metric;
-          real_t      total_w = ZERO, inward_w = ZERO;
-          Kokkos::parallel_reduce(
-            "PolarCapReflectTotal",
-            species.rangeActiveParticles(),
-            Lambda(prtlidx_t p, real_t& acc) {
-              if (tag(p) == ParticleTag::dead) {
-                return;
-              }
-              const auto x = metric.template convert<1, Crd::Cd, Crd::Ph>(
-                static_cast<real_t>(i1(p)) + static_cast<real_t>(dx1(p)));
-              if (x >= region_start) {
-                acc += w(p);
-              }
-            },
-            total_w);
-          Kokkos::parallel_reduce(
-            "PolarCapReflectInward",
-            species.rangeActiveParticles(),
-            Lambda(prtlidx_t p, real_t& acc) {
-              if (tag(p) == ParticleTag::dead) {
-                return;
-              }
-              const auto x = metric.template convert<1, Crd::Cd, Crd::Ph>(
-                static_cast<real_t>(i1(p)) + static_cast<real_t>(dx1(p)));
-              if (x >= region_start and ux1(p) < ZERO) {
-                acc += w(p);
-              }
-            },
-            inward_w);
-          std::printf(" %c_sp%u_inw=%.3e/%.3e",
-                      r == 0 ? 'A' : 'B',
-                      s + 1,
-                      static_cast<double>(inward_w),
-                      static_cast<double>(total_w));
-        }
+      // per charged species, in a 0.2-wide region just inside the right edge.
+      // A clean absorbing edge shows the inward fraction at noise level.
+      const auto region_start = global_x_max - static_cast<real_t>(0.2);
+      for (auto s = 0u; s < 2; ++s) {
+        const auto& species = domain.species[s];
+        auto        i1      = species.i1;
+        auto        dx1     = species.dx1;
+        auto        ux1     = species.ux1;
+        auto        w       = species.weight;
+        auto        tag     = species.tag;
+        const auto& metric  = domain.mesh.metric;
+        real_t      total_w = ZERO, inward_w = ZERO;
+        Kokkos::parallel_reduce(
+          "PolarCapReflectTotal",
+          species.rangeActiveParticles(),
+          Lambda(prtlidx_t p, real_t& acc) {
+            if (tag(p) == ParticleTag::dead) {
+              return;
+            }
+            const auto x = metric.template convert<1, Crd::Cd, Crd::Ph>(
+              static_cast<real_t>(i1(p)) + static_cast<real_t>(dx1(p)));
+            if (x >= region_start) {
+              acc += w(p);
+            }
+          },
+          total_w);
+        Kokkos::parallel_reduce(
+          "PolarCapReflectInward",
+          species.rangeActiveParticles(),
+          Lambda(prtlidx_t p, real_t& acc) {
+            if (tag(p) == ParticleTag::dead) {
+              return;
+            }
+            const auto x = metric.template convert<1, Crd::Cd, Crd::Ph>(
+              static_cast<real_t>(i1(p)) + static_cast<real_t>(dx1(p)));
+            if (x >= region_start and ux1(p) < ZERO) {
+              acc += w(p);
+            }
+          },
+          inward_w);
+        std::printf(" A_sp%u_inw=%.3e/%.3e",
+                    s + 1,
+                    static_cast<double>(inward_w),
+                    static_cast<double>(total_w));
       }
       std::printf("\n");
       std::fflush(stdout);
