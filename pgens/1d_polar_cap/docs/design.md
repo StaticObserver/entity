@@ -34,29 +34,10 @@ Status: implemented, statically checked, not compiled.
 
 Status: implemented, not runtime-verified.
 
-`InitialFields` sets constant `B_x = setup.polar_cap.B0`. The excess charge is
-a unit plateau through the atmosphere, so `E_x = 0` up to
-`x_surface + grid.boundaries.atmosphere.ds`. Beyond that edge, `E_x` is the
-analytic integral of the S-shaped excess-positron decline and the prescribed
-background. After the excess profile reaches its explicit cutoff at
-`x_surface + 1.33 ds`, only the background remains and `E_x` is linear. The
-The atmosphere boundary imposes `E_x = 0` and the background `B_x`. The right
-MATCH boundary relaxes only `B_x`; it deliberately leaves the longitudinal
-`E_x` untouched so the sponge does not violate the one-dimensional Gauss
-constraint.
-
-For `x >= x_surface`, this field obeys
-`dE_x/dx = rho_excess - rho_GJ` when
-`extra_positron_density = initial_e_coefficient`, where the fixed prescribed
-background is `rho_GJ = initial_e_coefficient`. The default parameters satisfy
-this continuous relation. The background is part of the physical
-interpretation and is not represented by a dynamic Entity species.
-
-### Filled start (`setup.polar_cap.initial_condition = "filled"`)
-
-The alternative CPT2024-style initial condition (Chernoglazov, Philippov &
-Timokhin 2024; Witte et al. 2026, arXiv:2609.08840 Sec. IV): the domain is
-plasma-filled and Gauss-consistent with `E_x = 0` everywhere. The deposited
+The filled start (CPT2024-style: Chernoglazov, Philippov & Timokhin 2024;
+Witte et al. 2026, arXiv:2609.08840 Sec. IV) is the only initial condition.
+`InitialFields` sets constant `B_x = setup.polar_cap.B0` and `E_x = 0`
+everywhere: the domain is plasma-filled and Gauss-consistent. The deposited
 net charge equals the prescribed GJ background pointwise,
 
 ```text
@@ -68,10 +49,15 @@ so `dE_x/dx = rho_deposited - rho_GJ = 0` and the discharge is driven out of
 equilibrium by the prescribed `external_current` through Ampere's law, not by
 an initial vacuum field. `rho_gj_gradient = 0.8` reproduces the reference
 `(1 + 0.8x/L)` Lense-Thirring-inspired gradient; `0` gives the uniform
-background. The prescribed external current stays spatially constant in both
-modes: a graded static background charge plus a graded prescribed current
-would violate continuity (the same argument that removed the MATCH-layer
-current taper).
+background. `rho_GJ0` is the `extra_positron_density` scale (default `1`);
+the background is part of the physical interpretation and is not represented
+by a dynamic Entity species. The prescribed external current is spatially
+constant across the whole domain, including the MATCH layer: a graded static
+background charge plus a graded prescribed current would violate continuity.
+
+The atmosphere boundary imposes `E_x = 0` and the background `B_x`. The right
+MATCH boundary relaxes `B_x` to `B0` and `E_x` to zero; the `E_x -> 0` target
+keeps a sheath field from accumulating on the absorbing edge.
 
 ## 4. Initial Particles
 
@@ -86,11 +72,11 @@ height must satisfy
 `height = 0.1302883446`.
 
 A PGen-local single-species injector adds the positron excess required by the
-migrated initial state. Its normalized density is exactly one from the surface
-through `x_surface + ds`, then follows an S-shaped logistic decline with scale
-`0.03 ds`, and is zero from `x_surface + 1.33 ds` onward. It uses stochastic
-rounding, explicit capacity checks, and updates `npart`, `counter`, and sorting
-state.
+initial state. Its normalized density follows the prescribed GJ gradient,
+`1 + rho_gj_gradient * (x - x_surface) / L`, from the surface through the
+whole domain, so the deposited net charge equals the GJ background pointwise
+(Sec. 3). It uses stochastic rounding, explicit capacity checks, and updates
+`npart`, `counter`, and sorting state.
 
 Both paths retain Entity's standard 1D3V Maxwellian. The prototype's global
 injector modification that forced `u2 = u3 = 0` is not restored.
@@ -106,15 +92,12 @@ the global `particles.use_weights` setting, which is enabled for this case, so
 atmosphere replenishment and standard `N_*` moments use the same weighted
 density convention.
 
-In the filled-start mode, two additions apply. First, a uniform neutral
-electron-positron bulk fill of `initial_injection.fill_density` (in n0 units)
-is injected from `x_surface` through the active domain via the same
-`InjectNonUniform` path, mimicking the plasma left behind by a previous
-discharge (the reference value is 10 n_GJ). Second, the excess-positron
-profile no longer declines: it extends through the whole domain following the
-prescribed GJ gradient (Sec. 3), so the deposited net charge equals the GJ
-background pointwise. All filled particles use the same non-relativistic
-Maxwellian (`setup.polar_cap.temperature`), matching the reference practice of
+A uniform neutral electron-positron bulk fill of
+`initial_injection.fill_density` (in n0 units) is injected from `x_surface`
+through the active domain via the same `InjectNonUniform` path, mimicking the
+plasma left behind by a previous discharge (the reference value is 10 n_GJ).
+All filled particles use the same non-relativistic Maxwellian
+(`setup.polar_cap.temperature`), matching the reference practice of
 initializing charges at non-relativistic velocities.
 
 ## 5. Boundaries
@@ -130,39 +113,20 @@ campaign, Phase 2).
   (`engines/srpic/particle_pusher.h`, `kernels/pushers/sr.hpp`). This is the
   same hydrostatic confinement the reference Tristan setup applies explicitly
   via `userDriveParticles`.
-- `x1 max`: three cooperating mechanisms, each owning one aspect of the
+- `x1 max`: two cooperating mechanisms, each owning one aspect of the
   boundary:
-  - fields `MATCH`, relaxing `B_x` only (longitudinal `E_x` is excluded from
-    the match target);
+  - fields `MATCH`, relaxing `B_x` to `B0` and `E_x` to zero through the
+    layer. The `E_x -> 0` target suppresses the DC sheath that hard
+    absorption would otherwise leave at the edge;
   - particles `ABSORB` with flux-conserving bookkeeping in the SR engine: the
     pusher clamps boundary-crossing particles onto the boundary face, the
     standard deposit counts their final displacement, and
     `srpic::BoundaryAbsorb` (src/kernels/boundary_absorb.hpp) tags them dead
     after `CurrentsDeposit`, before particle communication. `x2`/`x3` absorb
     branches keep the old kill-in-pusher behavior;
-  - PGen-level cubic `E_x` damping over the whole MATCH layer
-    (`boundary_ex_damping`): once per step, after the engine's MATCH(Bx) and
-    Ampere updates, `CustomPostStep` scales `E_x` on the last `cells` active
-    faces by `factor(d) = 1 - strength * ((cells - d)/cells)^3`, with `d` the
-    distance in active faces from the last active face. This suppresses the
-    DC sheath that hard absorption leaves at the edge. Production setting:
-    `cells = 1000` covering the entire `ds = 0.1` layer, `strength = 0.1`.
-- Verified with the full-layer damping: 0.76% inward electron flux, edge
-  `E_x` sheath at ~1e-10, and no charge spike — the residual charge is
-  spread through the layer with a bounded integral (~1.08). A small ~3.1e-8
-  `E_x` bump at the layer onset is the expected parasitic fixed point of
-  graded damping and is harmless.
-- `cells` must cover the entire MATCH layer: damping a sub-layer only
-  relocates the sheath to the damping onset (the `cells = 20` experiment
-  leaked 21% inward and was rejected). `strength = 0.1` is the first
-  validated value, between the TRISTAN-MP edge scale (`K ~ 0.15`) and the
-  Aperture4 per-iteration scale (`0.001-0.003`).
-- Known bounded cost: charge is smeared through the layer (local Gauss
-  mismatch of order unity); a periodic Poisson cleaning pass can be added if
-  it ever matters (Zeltron precedent).
-- The optional PGen-local compensation (`boundary_flux_compensation.enable`)
-  predates the engine fix and must stay disabled with it; see Custom
-  Behavior.
+- Engine-level flux-conserving absorption was verified on A100/V100: edge
+  `E_x` sheath 1.79e-6 -> 1.14e-6 and inward electron flux 23% -> 6.9%
+  relative to the unrepaired no-`E_x`-match boundary.
 
 ## 6. Custom Behavior
 
@@ -210,33 +174,16 @@ dt * omegaB0 * abs(qed.reference_electric_field) / qed.gamma_rad^4
 ```
 
 so the intended radiation-reaction energy is independent of `ppc0` and
-macro-particle charge. QED and the separate QED-off radiation-reaction mode
-remain mutually exclusive.
+macro-particle charge.
 
 Entity's built-in synchrotron reaction is intentionally unused. It depends on
 local electromagnetic acceleration, vanishes for ideal parallel motion, and
 does not represent a prescribed field-line curvature radius.
 
-When QED and explicit radiation reaction are both disabled, the TOML contains
-only the electron and positron species, both with `emission = "none"`. Entity
-then dispatches its no-emission policy, the PGen does not access species `3`,
-and no photon particle container or curvature-spectrum device arrays are
-allocated.
-
-A QED-off radiation-reaction test still contains exactly two charged species
-and no photon container, but selects `emission = "custom"` to invoke a
-drag-only policy. Its independent parameters are
-`radiation_reaction.enable`, `radiation_reaction.gamma_rad`,
-`radiation_reaction.reference_electric_field`, and
-`radiation_reaction.max_drag_fraction`. The per-step coefficient is
-
-```text
-dt * omegaB0 * abs(reference_electric_field) / gamma_rad^4
-```
-
-so curvature drag balances electric acceleration at `gamma_rad` when the local
-parallel field equals the configured reference field. It is independent of
-`ppc0`, creates no photons, and cannot be enabled simultaneously with QED.
+When QED is disabled, the TOML contains only the electron and positron
+species, both with `emission = "none"`. Entity then dispatches its
+no-emission policy, the PGen does not access species `3`, and no photon
+particle container or curvature-spectrum device arrays are allocated.
 
 The independent TOML switches are `curvature_drag`,
 `curvature_emission`, and `magnetic_pair_creation`; `enable = false` disables
@@ -269,63 +216,6 @@ boundary-absorbed photons are reclaimed after pair conversion rather than just
 before it. Optimized QED-on inputs set the photon species' standard
 `clear_interval` to zero to avoid a redundant pre-conversion compaction.
 
-When `boundary_flux_compensation.enable = true`, the PGen compensates the
-current dropped by right-edge particle absorption. The engine pushes particles
-before depositing currents, and the deposit kernel skips dead particles, so
-the final displacement of a particle killed by the `x1 max` ABSORB boundary
-never contributes to `J`; Ampere then persistently underestimates the flux
-through the last active face. The composite `CustomParticleUpdate` policy runs
-inside the pusher after the position update but before the boundary condition
-tags the particle dead. For charged species it mirrors the pusher kill
-condition exactly (`is_absorb_i1max && i1 >= ni1`) and accumulates the current
-the deposit kernel would have placed on active faces: the zigzag
-`(1 - dx1_prev) * weight * charge / dt` for `SHAPE_ORDER = 0`, or the
-cumulative Esirkepov stencil current replayed through
-`prtl_shape::for_deposit` for higher orders, keeping only faces at or below
-`ni1 - 1`. `CustomPostStep` — now independent of the QED block — adds the
-accumulated macro current to `E_x` with the CurrentsAmpere coefficient
-`-dt q0 / (B0 V0)` and to the stored `J_x` divided by `ppc0`, then clears the
-accumulator. Only the domain owning the global right edge applies the
-correction; internal MPI boundaries are `SYNC`, never `ABSORB`. The
-compensation bypasses current filtering and covers only the longitudinal
-component; absorbed transverse `J_y`/`J_z` are not restored.
-
-WARNING: this switch is a workaround for the old kill-before-deposit engine.
-The engine now implements flux-conserving absorption (the pusher clamps
-boundary-crossing particles onto the boundary face and `srpic::BoundaryAbsorb`
-kills them after `CurrentsDeposit`), so `boundary_flux_compensation.enable`
-MUST remain `false` with the current engine. The pusher-time policy still
-sees `i1 >= ni1` before the clamp and would add the flux a second time.
-
-When `boundary_ex_damping.enable = true`, `CustomPostStep` damps the
-longitudinal `E_x` inside the right MATCH layer once per step, right after
-the (normally disabled) flux compensation and before the edge-field
-diagnostic, so `debug_edge_fields` reports the damped state. The engine calls
-`CustomPostStep` after `FieldBoundaries(BC::E)`, i.e. after this step's
-MATCH(Bx) relaxation and the Ampere + CurrentsAmpere updates — the same
-relative position Aperture4's damping boundary has after its field-solver
-iterations. The pass multiplies `E_x` on the last `boundary_ex_damping.cells`
-active faces by `1 - strength * ((cells - d)/cells)^3` with `d` the distance
-in active faces from the last active face; no other field component is
-touched, and the engine's MATCH kernel continues to relax `B_x` only (the
-`BoundaryFields::ex1` setter stays unused). The ownership gate uses the
-fields-side bc (`domain.mesh.flds_bc()[0].second == FldsBC::MATCH`), not the
-particle-side bc, matching how the engine assigns the MATCH layer to a rank.
-Enabling the damping requires the 1D Cartesian build, `fields = MATCH` at
-`x1 max`, `0 < cells <= ni1`, and `0 < strength < 1`; with `enable = false`
-the pass is never launched and costs nothing.
-
-Two validated facts constrain the configuration. First, `cells` must span the
-whole MATCH layer: with `cells = 20` the sheath simply re-forms at the
-damping onset (21% inward electron flux, rejected), while `cells = 1000`
-covering the `ds = 0.1` production layer measures 0.76% inward flux and an
-edge `E_x` of ~1e-10. Second, the graded profile has a parasitic fixed point
-per face, `E* = S(1 - lambda)/lambda` with `lambda` the local damping rate,
-so `E_x` is pinned near the edge but a small bump (~3.1e-8, worst over the
-window) persists at the layer onset where `lambda -> 0`; it is static and
-harmless. The damping also decouples `E_x` from the stored `J_x` inside the
-layer, which is acceptable for a sponge.
-
 ## 7. Custom Output
 
 Status: not-used.
@@ -337,9 +227,8 @@ The case requests standard Entity fields and species densities. No
 
 - Electron and positron species must remain indices `1` and `2`, massive and
   oppositely charged.
-- With `qed.enable = false`, exactly two species are allowed and output must
-  not request `N_3`. Charged species use `emission = "custom"` only when
-  `radiation_reaction.enable = true`; otherwise they use `emission = "none"`.
+- With `qed.enable = false`, exactly two species are allowed, both charged
+  species must use `emission = "none"`, and output must not request `N_3`.
 - With `qed.enable = true`, exactly three species are required; both charged
   species use `emission = "custom"`, while photon species `3` is massless,
   neutral, uses the photon pusher, and provides at least three real payloads.
@@ -356,26 +245,20 @@ The case requests standard Entity fields and species densities. No
 - `qed.gamma_rad > 1`, `qed.reference_electric_field > 0`, and
   `0 < qed.max_drag_fraction < 1` are required when QED curvature drag is
   enabled.
-- `radiation_reaction.gamma_rad > 1`,
-  `radiation_reaction.reference_electric_field > 0`, and
-  `0 < radiation_reaction.max_drag_fraction < 1` are required when explicit
-  radiation reaction is enabled.
-- `qed.enable` and `radiation_reaction.enable` are mutually exclusive.
-- `extra_positron_density = initial_e_coefficient` is required for the default
-  continuous initial Gauss closure.
+- `extra_positron_density` (default `1`) must be positive: it is the GJ
+  net-charge scale, so the deposited net charge equals the GJ background
+  pointwise and the Gauss-consistent initial `E_x` vanishes.
 - `grid.boundaries.atmosphere.height` controls only the neutral atmosphere. It
   must not be fitted to the sum of neutral particles and excess positrons.
 - `external_current` is the interior tetrad current normalized to `n0 q0 c`;
   the PGen converts it to a spatially constant internal contravariant `x1`
   component using `scales.dx0`.
-- `initial_condition` is `"vacuum_gap"` (default) or `"filled"`. The filled
-  start requires `extra_positron_density > 0` (the GJ net-charge scale) and
-  keeps every other contract item unchanged.
+- The filled start is the only initial condition; there is no
+  `initial_condition` key.
 - `initial_injection.fill_density` (default `0`) is the uniform neutral bulk
-  fill density in n0 units, used only in the filled start.
+  fill density in n0 units.
 - `rho_gj_gradient` (default `0`, must be non-negative) is the GJ charge
-  gradient amplitude. It is valid only with `initial_condition = "filled"`;
-  with the vacuum-gap start it would break the documented Gauss closure.
+  gradient amplitude applied to the excess-charge profile.
 - `initial_injection.minimum_density` must be non-negative and
   `initial_injection.minimum_ppc` must be a positive integer.
 - Production builds use `deposit=esirkepov` and `shape_order=3`; matching TOML
@@ -383,17 +266,11 @@ The case requests standard Entity fields and species densities. No
 - `spectrum_table` is resolved first from the launch directory and then
   relative to the PGen directory.
 - No `radiative_drag = "synchrotron"` entry belongs on the charged species.
-- `boundary_flux_compensation.enable` requires `particles = ABSORB` at
-  `x1 max` and is only valid for the 1D build; it defaults to `false`.
-- `boundary_ex_damping.enable` requires `fields = MATCH` at `x1 max` and the
-  1D Cartesian build; `boundary_ex_damping.cells` must lie in `(0, ni1]` and
-  `boundary_ex_damping.strength` in `(0, 1)`. It defaults to `false`. In
-  practice `cells` must cover the entire MATCH layer (`1000` for the
-  `ds = 0.1` production layer); sub-layer damping was measured to relocate
-  the sheath rather than remove it.
 - `debug_edge_fields` (default `false`, interval
-  `debug_edge_fields_interval`) prints the per-step accumulated missing flux
-  and the last eight active `E_x`/`J_x` faces to stdout for boundary-flux
+  `debug_edge_fields_interval`) prints the upstream `E_x` reference 100 cells
+  inside the right edge, the last eight active `E_x`/`J_x` faces, and the
+  inward/total weight fraction of each charged species in the 0.2-wide region
+  inside the right edge (`A_sp1_inw`/`A_sp2_inw`) to stdout for boundary
   diagnostics. It changes no physics.
 
 ## 9. Current Status
@@ -414,17 +291,11 @@ Completed:
   `j_ext = 1.5 j_GJ` and `gamma_rad = 1.6e5`;
 - bounded A100 QED-on emission and two-species force-balance measurement
   through `t = 0.2`;
-- PGen-local boundary-flux compensation behind
-  `boundary_flux_compensation.enable` (default off), restoring the deposit
-  current dropped by right-edge absorption.
 - engine-level flux-conserving absorption (kill-after-deposit), verified on
   A100/V100: edge `E_x` sheath 1.79e-6 -> 1.14e-6 and inward electron flux
   23% -> 6.9% relative to the unrepaired no-`E_x`-match boundary;
-- full-layer cubic `E_x` damping (`boundary_ex_damping`, `cells = 1000`),
-  verified on A100/V100: 0.76% inward flux, edge `E_x` ~ 1e-10, bounded
-  in-layer charge (integral ~1.08), harmless ~3.1e-8 onset bump.
-- filled-start initial condition (`initial_condition = "filled"`, CPT2024 /
-  Witte+2026 style): E_x = 0 plasma-filled Gauss-consistent start with uniform
+- filled-start initial condition (CPT2024 / Witte+2026 style), now the only
+  initial condition: E_x = 0 plasma-filled Gauss-consistent start with uniform
   neutral bulk fill (`initial_injection.fill_density`) and optional GJ charge
   gradient (`rho_gj_gradient`); three ladder inputs `filled_start_e1_ic.toml`,
   `filled_start_e2_atmosphere.toml`, `filled_start_e3_cpt2024.toml` with
@@ -442,6 +313,22 @@ Pending:
 
 ## 10. Important Changes
 
+- 2026-10-15: reduced the case to the filled start as the only initial
+  condition (branch `dev/1d-filled-start`, commit 832aa403). Removed the
+  vacuum-gap initial condition together with the `initial_condition` and
+  `initial_e_coefficient` keys (`InitialFields` now returns uniform `B_x`
+  and `E_x = 0`; `extra_positron_density` defaults to `1`); the MATCH-layer
+  external-current taper (`external_current` is spatially uniform across the
+  whole domain); the PGen-level boundary-flux compensation
+  (`boundary_flux_compensation`, obsolete since the engine's flux-conserving
+  absorption); the PGen-level `E_x` damping (`boundary_ex_damping`, replaced
+  by the `E_x -> 0` right MATCH target); and the QED-off explicit
+  radiation-reaction mode (`radiation_reaction.*`, superseded by QED
+  curvature drag — QED-off runs must set both charged species to
+  `emission = "none"`). The `debug_edge_fields` output dropped the
+  missing-flux field and now reports the inward/total weight fractions
+  `A_sp1_inw`/`A_sp2_inw` in a 0.2-wide region inside the right edge.
+
 - 2026-09-18: added the filled-start initial condition (branch
   `dev/1d-filled-start`), following the CPT2024 / Witte+2026 (arXiv:2609.08840)
   1D Tristan setup: plasma-filled Gauss-consistent start with `E_x = 0`,
@@ -455,8 +342,7 @@ Pending:
   atmosphere confinement gravity turned out to be engine-built-in
   (`g = temperature / height`, derived in `parameters/grid.cpp` and applied in
   the pusher), so the quiet-atmosphere experiment only changes density,
-  temperature, and height. All new keys default to the vacuum-gap behavior;
-  existing inputs are bit-identical.
+  temperature, and height.
 
 - Replaced old global pusher/engine modifications with PGen-local v1.4.4
   policies.
@@ -464,20 +350,14 @@ Pending:
   electron and positron containers.
 - Kept curvature radiation custom despite built-in synchrotron support because
   the physical accelerations are different.
-- Added a photon-free, QED-off curvature-drag mode normalized by an explicit
-  `gamma_rad`, removing macro-particle-charge dependence from the balance
-  energy.
 - Applied the same explicit `gamma_rad` normalization to QED-on curvature
   recoil, replacing the migrated macro-particle-charge coefficient.
-- Made inactive QED-only constructor parameters optional so a QED-off
-  radiation-reaction input does not need placeholder QED configuration.
+- Made inactive QED-only constructor parameters optional so a QED-off input
+  does not need placeholder QED configuration.
 - Replaced the old two-table spectrum reader with one validated CCDF table.
 - Fixed missing photon configuration, payload initialization, pair-kernel
   launch, threshold survival, signed opacity, Simpson parity, capacity checks,
   counters, and propagation direction.
-- Removed the prescribed-current taper and excluded longitudinal `E_x` from
-  the right MATCH target so the boundary no longer creates a Gauss-law source
-  across the sponge layer.
 - Added an explicit counter-propagating photon regression test so the signed
   curvature-angle convention cannot silently revert to `abs(ux1)`.
 - Clamp pair-threshold roundoff with an explicit device-visible `real_t(0.0)`
@@ -486,26 +366,7 @@ Pending:
   whose magnetic pair opacity remains identically zero before escape.
 - Moved periodic photon reclamation behind pair conversion and fixed the
   framework cleanup loop so one due species no longer clears every species.
-- Added an optional PGen-level boundary-flux compensation: a composite
-  `CustomParticleUpdate` policy predicts the right-edge ABSORB kill inside the
-  pusher and accumulates the dropped deposit current, and `CustomPostStep`
-  applies it to the last active `E_x`/`J_x` faces with the CurrentsAmpere
-  normalization. The QED early return in `CustomPostStep` was restructured so
-  the compensation also runs in QED-off runs.
 - Replaced kill-before-deposit absorption with flux-conserving absorption in
   the SR engine: the pusher clamps `x1` boundary crossers onto the boundary
   face (unique `dx1` markers) and the new `srpic::BoundaryAbsorb` pass tags
-  them dead after `CurrentsDeposit`, before particle communication. The
-  PGen-level compensation switch must stay disabled with this engine.
-- Added optional PGen-level `E_x` damping inside the right MATCH layer:
-  `CustomPostStep` scales `E_x` on the last active faces once per step with a
-  cubic edge-peaked profile (`boundary_ex_damping.*`), suppressing the
-  honest-sheath `E_x` left by hard absorption while the engine's MATCH kernel
-  keeps relaxing `B_x` alone.
-- Validated the right boundary model in a five-run A100/V100 campaign:
-  full-layer tanh `E_x` relaxation (inward-tight but locally
-  Gauss-inconsistent), no-`E_x`-match without repair (23% inward flux, edge
-  sheath 1.79e-6), engine kill-after-deposit (6.9%, 1.14e-6), local cubic
-  damping (`cells = 20`: sheath relocation, 21%, rejected), and full-layer
-  cubic damping (`cells = 1000`: 0.76% inward flux, edge `E_x` ~ 1e-10,
-  bounded in-layer charge) — the retained production configuration.
+  them dead after `CurrentsDeposit`, before particle communication.

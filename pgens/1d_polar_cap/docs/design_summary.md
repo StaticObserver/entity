@@ -29,43 +29,50 @@ QED 模块;磁力线曲率半径 `rho_c` 为常数给定值。
 
 ## 3. 初始电磁场
 
-`InitialFields` 给定常数 `B_x = B0`。`E_x` 是解析构造的:
-
-- 表面到大气层边缘(`x_surface + ds`)内过剩电荷为单位平台,`E_x = 0`;
-- 边缘之外过剩正电子按 S 形(logistic)轮廓下降,`E_x` 取该轮廓减去
-  固定 GJ 背景的解析积分,在边缘处场及其一阶导数连续;
-- 过剩轮廓在 `x_surface + 1.33 ds`(11 个过渡长度,过渡宽度
-  `0.03 ds`)处截断为零,之后只剩背景,`E_x` 线性延伸。
-
-当 `extra_positron_density = initial_e_coefficient`(默认值)时满足连续
-Gauss 闭合 `dE_x/dx = rho_excess - rho_GJ`。背景电荷是物理解释的一部
-分,不是动态种类。
+filled start(CPT2024 / Witte+2026 式)是唯一初始条件,无
+`initial_condition` 开关。`InitialFields` 给定常数 `B_x = B0`,且全空间
+`E_x = 0`:计算域被等离子体填满并逐点满足 Gauss 闭合 —— 沉积净电荷等于
+给定 GJ 背景
+`rho_GJ(x) = extra_positron_density * (1 + rho_gj_gradient * (x - x_surface) / L)`,
+故 `dE_x/dx = rho_deposited - rho_GJ = 0`,放电由给定外电流经 Ampere
+定律驱动失衡,而非由初始真空电场驱动。背景电荷是物理解释的一部分,
+不是动态种类。
 
 ## 4. 初始粒子
 
-两条注入路径:
+三条注入路径:
 
 1. **中性大气**:Entity 非均匀注入器 `InjectNonUniform`,把配置的总密度
    均分给电子和正电子,指数衰减标高由
    `grid.boundaries.atmosphere.height` 控制(只拟合中性大气,不能拟合
    含过剩电荷的总密度)。
-2. **过剩正电子**:PGen 本地单种类注入器
+2. **均匀体填充**:`initial_injection.fill_density`(n0 单位)的均匀
+   中性电子-正电子填充,经同一 `InjectNonUniform` 路径从 `x_surface`
+   注入到整个活动域,模拟上一次放电留下的等离子体(参考值 10 n_GJ);
+   `fill_density = 0` 时跳过。
+3. **过剩正电子**:PGen 本地单种类注入器
    (`initial_injection.hpp` 的 `SingleSpeciesInjector`),只注入电荷
-   不平衡部分。密度低于 `minimum_density` 的格子跳过;目标 PPC 低于
+   不平衡部分;轮廓贯穿全计算域并按 GJ 梯度
+   `1 + rho_gj_gradient * (x - x_surface) / L` 延伸,使沉积净电荷逐点
+   等于 GJ 背景。密度低于 `minimum_density` 的格子跳过;目标 PPC 低于
    `minimum_ppc` 时保留固定宏粒子数、用权重
    `target_ppc / minimum_ppc` 编码密度(权重参与 SRPIC 电流沉积并被
    发射光子/转化对继承);高于下限时用无偏随机舍入。带显式容量检查,
    注入后更新 `npart`、`counter` 与排序状态。
 
-两条路径都用标准 1D3V Maxwellian;旧原型强制 `u2 = u3 = 0` 的全局修改
+所有路径都用标准 1D3V Maxwellian;旧原型强制 `u2 = u3 = 0` 的全局修改
 未恢复。大气路径读取全局 `particles.use_weights = true`,补充注入与
 `N_*` 矩使用同一加权密度约定。
 
 ## 5. 边界
 
 - `x1 min`:场 ATMOSPHERE、粒子 ATMOSPHERE(持续补充中性大气);
-- `x1 max`:场 MATCH、粒子 ABSORB;
-- 不修改任何全局边界或求解器行为;边界场强制 `E_x = 0`、`B_x = B0`。
+- `x1 max`:场 MATCH(`B_x` 放松到 `B0`、`E_x` 放松到 0,抑制吸收边缘
+  的鞘层累积)、粒子 ABSORB(引擎内 flux-conserving 簿记:推进器把越界
+  粒子钳在边界面、标准沉积计入末段位移,`srpic::BoundaryAbsorb` 在
+  `CurrentsDeposit` 之后才标记 dead);
+- 不修改任何全局边界或求解器行为;大气侧边界场强制 `E_x = 0`、
+  `B_x = B0`。
 
 ## 6. 自定义行为(QED 路径)
 
@@ -74,9 +81,8 @@ Gauss 闭合 `dE_x/dx = rho_excess - rho_GJ`。背景电荷是物理解释的一
 
 - **外部电流**:`MagnetosphericCurrent` 把 tetrad 分量(以 `n0 q0 c`
   归一)转成逆变分量 `J^1 = J^(hat1)/dx` 后由 Ampere 核直接叠加;
-  在右侧 MATCH 层内再乘
-  `tanh[4 (x_max-x)/match_ds]`,与 `E_x` 的边界衰减对齐并在外边界归零;
-  `ppc0` 因子由 Entity 内部处理。
+  电流在全空间(含右侧 MATCH 层)保持均匀;`ppc0` 因子由 Entity 内部
+  处理。
 - **曲率辐射**(`qed/curvature_emission.hpp`,EmissionPolicy):
   - 连续反冲 `-gamma^3 u / rho_c^2`,单步动量损失上限
     `max_drag_fraction`(默认 0.2);
@@ -118,9 +124,10 @@ Gauss 闭合 `dE_x/dx = rho_excess - rho_GJ`。背景电荷是物理解释的一
   `max_photons_per_particle_step`、`opacity_substeps`(偶数)、
   `conversion_optical_depth` 均为正;`max_drag_fraction ∈ (0,1)`;
   构造函数集中做 host 端校验。
-- `extra_positron_density = initial_e_coefficient` 才有连续 Gauss 闭合。
+- `extra_positron_density > 0`(默认 1)是 GJ 净电荷尺度,使沉积净电荷
+  逐点等于 GJ 背景、初始 `E_x = 0` 满足 Gauss 闭合。
 - `external_current` 是内部区域的 tetrad 归一化电流,PGen 负责换算基底,
-  并在右侧 `grid.boundaries.match.ds` 内按 MATCH 轮廓衰减到零。
+  电流在全空间均匀(含 MATCH 层)。
 - `x_surface` 由 `algorithms.current_filters + 2` 与 5 取大得到的缓冲
   格数决定,不在 TOML 中直接配置。
 

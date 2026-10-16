@@ -52,35 +52,27 @@ No global Entity pusher, injector, enum, or engine behavior is modified.
 
 ## Initial-state closure
 
-For `x >= x_surface`, the migrated field and excess-positron profiles obey
+The case uses the filled start (CPT2024 / Witte+2026, arXiv:2609.08840) as
+its only initial condition: the domain is plasma-filled with a uniform
+neutral bulk (`initial_injection.fill_density`), the deposited net charge
+equals the prescribed Goldreich-Julian background pointwise,
 
 ```text
-dE_x/dx = rho_excess - rho_GJ
+rho_GJ(x) = extra_positron_density * (1 + rho_gj_gradient * (x - x_surface) / L)
 ```
 
-when `extra_positron_density = initial_e_coefficient`, with the prescribed
-Goldreich-Julian background `rho_GJ = initial_e_coefficient`. The checked-in
-defaults satisfy this relation. `rho_GJ` is a fixed background in the physical
-interpretation, not an Entity particle species; changing either coefficient
-independently intentionally breaks this initial continuous Gauss closure.
+and `E_x = 0` initially, so `dE_x/dx = rho_deposited - rho_GJ = 0` and the
+discharge develops from the prescribed current rather than from a vacuum
+field. `rho_GJ` is a fixed background in the physical interpretation, not an
+Entity particle species. The engine derives the atmosphere confinement
+gravity itself (`g = temperature / height`); it is not a TOML key. See
+`docs/design.md` Sec. 3.
 
-The excess-positron profile is a unit plateau through
-`x_surface + grid.boundaries.atmosphere.ds`. That atmosphere edge is the start,
-not the midpoint, of its S-shaped decline. The profile is explicitly zero from
-`x_surface + 1.33 ds` onward. The neutral atmosphere scale height is independent
-of this excess component: for total neutral surface density `n0` and requested
-neutral edge density `n_edge`, use
+The excess-positron profile extends through the whole domain following the
+prescribed GJ gradient. The neutral atmosphere scale height is independent
+of this excess component: for total neutral surface density `n0` and
+requested neutral edge density `n_edge`, use
 `height = ds / log(n0 / n_edge)`.
-
-An alternative filled-start initial condition
-(`setup.polar_cap.initial_condition = "filled"`) follows the CPT2024 /
-Witte+2026 (arXiv:2609.08840) 1D setup: the domain is plasma-filled with a
-uniform neutral bulk (`initial_injection.fill_density`), the deposited net
-charge equals the GJ background pointwise (with optional gradient
-`rho_gj_gradient`), and `E_x = 0` initially, so the discharge develops from
-the prescribed current rather than from a vacuum field. The engine derives
-the atmosphere confinement gravity itself (`g = temperature / height`); it is
-not a TOML key. See `docs/design.md` Sec. 3.
 
 ## Radiation model
 
@@ -168,9 +160,8 @@ making every coefficient explicit:
 - `external_current` is the interior tetrad current normalized to `n0 q0 c`.
   Entity's Ampere kernel adds external current directly to the deposited
   contravariant current, so this 1D Minkowski PGen converts
-  `J^(hat 1) -> J^1` by dividing by `scales.dx0`. Across the right MATCH layer
-  it multiplies this value by `tanh(4 (x_max - x) / match_ds)`, matching the
-  electric-field boundary profile and reaching zero at the outer edge. The
+  `J^(hat 1) -> J^1` by dividing by `scales.dx0`. The current is spatially
+  uniform across the whole domain, including the right MATCH layer. The
   kernel's `ppc0` factor cancels against the `ppc0` dependence of `scales.q0`;
   it is independent of this coordinate-basis conversion.
 
